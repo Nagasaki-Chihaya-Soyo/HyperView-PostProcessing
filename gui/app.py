@@ -119,7 +119,7 @@ class Application(tk.Tk):
         self.run_btn.config(state=tk.DISABLED)
         self.progress.start()
         def run():
-            result = self.orchestrator.run_analysis()
+            result = self.orchestrator.run_analysis(model_path, result_path)
             self.after(0, lambda: self._show_result(result))
         threading.Thread(target=run, daemon=True).start()
 
@@ -171,7 +171,7 @@ Deviation from Standard:
     -PartID:{analysis.part_no or 'Not Found'}
     -Allowable:{analysis.allowable:.2f if analysis.allowable else '-' } MPa
     -Margin:{analysis.margin:.2f if analysis.margin else '-'} MPa
-    -Ratio:{analysis.ratio:.2f % if analysis.ratio else '-'}
+    -Ratio:{analysis.ratio:.2% if analysis.ratio else '-'}
 
 Conclusion:{analysis.message}
 
@@ -379,7 +379,7 @@ Report Path:{result['report_path']}
             tag = 'success'
         else:
             tag = 'info'
-        self.log_text.insert(tk.END, f"{msg}\n")
+        self.log_text.insert(tk.END, f"{msg}\n", tag)
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 
@@ -433,6 +433,7 @@ class PartDialog(tk.Toplevel):
         self.part_no_entry = ttk.Entry(frame, width=30)
         self.part_no_entry.grid(row=0, column=1, pady=5)
         if self.data.get('part_no'):
+            self.part_no_entry.insert(0, self.data.get('part_no', ''))
             self.part_no_entry.config(state=tk.DISABLED)
 
         ttk.Label(frame, text="Allowable Stress").grid(row=1, column=0, sticky=tk.W, pady=5)
@@ -458,7 +459,7 @@ class PartDialog(tk.Toplevel):
         ttk.Label(frame, text="Notes").grid(row=5, column=0, sticky=tk.W, pady=5)
         self.notes_entry = ttk.Entry(frame, width=30)
         self.notes_entry.grid(row=5, column=1, pady=5)
-        self.notes_entry.insert(0, self.data.get('Notes', ''))
+        self.notes_entry.insert(0, self.data.get('notes', ''))
 
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=6, column=0, columnspan=2, pady=20)

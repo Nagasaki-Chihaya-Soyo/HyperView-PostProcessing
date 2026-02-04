@@ -55,11 +55,11 @@ class DBStore:
         try:
             with self._get_conn() as conn:
                 conn.execute('''
-                    INSERT INTO parts (part_no,VALUES (?,?,?,?,?,?)
+                    INSERT INTO parts (part_no, allowable_vm, safety_factor, units, name, notes) VALUES (?,?,?,?,?,?)
                 ''', (part_no, allowable_vm, safety_factor, units, name, notes))
                 conn.commit()
             return True
-        except sqlite3.IntternalError:
+        except sqlite3.IntegrityError:
             return False
 
     def update_part(self, part_no: str, **kwargs) -> bool:
@@ -97,7 +97,7 @@ class DBStore:
                 conn.execute('INSERT INTO mapping VALUES (?,?,?)', (map_type, map_value, part_no))
                 conn.commit()
             return True
-        except sqlite3.IntternalError:
+        except sqlite3.IntegrityError:
             return False
 
     def delete_mapping(self, map_type: str, map_value: str) -> bool:

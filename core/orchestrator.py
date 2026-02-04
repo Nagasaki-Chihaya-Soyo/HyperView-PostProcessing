@@ -111,8 +111,8 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         hwi GetSessionHandle sess
         sess GetProjectHandle proj
         proj GetPageHandle page1
-        page GetWindowHandle win1
-        win SetClientType Animation
+        page1 GetWindowHandle win1
+        win1 SetClientType Animation
         win GetClientHandle my_post
 
         my_post AddModel $model_path
@@ -164,7 +164,7 @@ proc process_job {job_file} {
     regexp {"result_path"\\s*:\\s*"([^"]*)"} $content ->result_path
     regexp {"output_dir"\\s*:\\s*"([^"]*)"} $content ->output_dir
 
-    puts "Processing: $job_id $CMD"
+    puts "Processing: $job_id $cmd"
 
     if { [catch {
         switch $cmd {
@@ -174,6 +174,7 @@ proc process_job {job_file} {
                 set pi [lindex $res 1]
                 set ip [lindex $res 2]
                 set json [format {{"success":true,"images":["%s"],"peak":{"value":%s,"entity_id":%s,"coords":[0,0,0],"tags":{"component":"","part":"","property":""}}}} $ip $pv $pi]
+                write_result $job_id $json
             }
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
@@ -206,7 +207,7 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             default {
-                write_error $job_id {{"success":false,"error":"Unknown cmd: $cmd"}}
+                write_result $job_id [format {{"success":false,"error":"Unknown cmd: %s"}} $cmd]
             }
         }
     } err] } {

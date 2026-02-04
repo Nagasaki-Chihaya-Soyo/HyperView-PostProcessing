@@ -63,7 +63,6 @@ class HVBridge:
         self._write_job(job_id, job_data)
         result = self._wait_result(job_id)
         return result if result else {'success': False, 'error': 'No response'}
-        return None
 
     def clear_inbox(self):
         for f in os.listdir(self.inbox_dir):
