@@ -92,12 +92,19 @@ proc write_ready {} {
     puts "Agent Ready"
 }
 
+proc escape_json_string {str} {
+    set str [string map {\\ \\\\ \" \\" \n \\n \r \\r \t \\t} $str]
+    return $str
+}
+
 proc write_result {job_id result_json} {
     global OUTBOX_DIR
     set result_file [file join $OUTBOX_DIR "job_${job_id}.result.json"]
+    puts "Writing result to: $result_file"
     set f [open $result_file w]
     puts $f $result_json
     close $f
+    puts "Result written successfully"
 }
 
 proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
@@ -110,17 +117,17 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         hwi OpenStack
         hwi GetSessionHandle sess
         sess GetProjectHandle proj
-        proj GetPageHandle page1
-        page1 GetWindowHandle win1
+        set pageId [proj GetActivePage]
+        proj GetPageHandle page1 $pageId
+        set winId [page1 GetActiveWindow]
+        page1 GetWindowHandle win1 $winId
         win1 SetClientType Animation
         win1 GetClientHandle my_post
 
+        # 加载模型 (.h3d文件通常包含模型和结果)
         my_post AddModel $model_path
-        if { $result_path ne "" && [file exists $result_path] } {
-            my_post SetResult $result_path
-        }
-
         my_post Draw
+
         my_post GetContourCtrlHandle cc
         cc SetDataType "Stress"
         cc SetDataComponent "vonMises"
@@ -136,7 +143,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 
         file mkdir $output_dir
         set image_path [file join $output_dir "vonmises.png"]
-        win CaptureImage $image_path 0 0 1920 1080
+        win1 CaptureImage $image_path 0 0 1920 1080
 
         my_post ReleaseHandle
         win1 ReleaseHandle
@@ -145,6 +152,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         sess ReleaseHandle
         hwi CloseStack
     } err] } {
+        puts "cmd_export_contour_and_peak_vm error: $err"
         catch { hwi CloseStack }
         error "Failed: $err"
     }
@@ -158,12 +166,66 @@ proc process_job {job_file} {
     set content [read $f]
     close $f
 
-    regexp {"id"\\s*:\\s*"([^"]*)"} $content -> job_id
-    regexp {"cmd"\\s*:\\s*"([^"]*)"} $content -> cmd
-    regexp {"model_path"\\s*:\\s*"([^"]*)"} $content -> model_path
-    regexp {"result_path"\\s*:\\s*"([^"]*)"} $content -> result_path
-    regexp {"output_dir"\\s*:\\s*"([^"]*)"} $content -> output_dir
+    # 初始化变量
+    set job_id ""
+    set cmd ""
+    set model_path ""
+    set result_path ""
+    set output_dir ""
 
+    # 使用string first和string range手动解析JSON
+    # 解析 "id": "value"
+    set idx [string first {"id"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 4}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set job_id [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    # 解析 "cmd": "value"
+    set idx [string first {"cmd"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 5}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set cmd [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    # 解析 "model_path": "value"
+    set idx [string first {"model_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 12}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set model_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    # 解析 "result_path": "value"
+    set idx [string first {"result_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 13}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set result_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    # 解析 "output_dir": "value"
+    set idx [string first {"output_dir"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 12}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set output_dir [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    puts "DEBUG: job_id=$job_id cmd=$cmd"
+    puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
 
     if { [catch {
@@ -180,30 +242,38 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
             "load_model" {
+                puts "Executing load_model command"
+                puts "Model path: $model_path"
                 if { [catch {
                     hwi OpenStack
                     hwi GetSessionHandle sess
                     sess GetProjectHandle proj
-                    proj GetPageHandle page1
-                    page1 GetWindowHandle win1
-                    win1 SetClientType Animation
+                    set pageId [proj GetActivePage]
+                    proj GetPageHandle page1 $pageId
+                    set winId [page1 GetActiveWindow]
+                    page1 GetWindowHandle win1 $winId
+                    win1 SetClientType animation
                     win1 GetClientHandle my_post
+
+                    # 加载模型文件 (.h3d文件通常包含模型和结果)
                     my_post AddModel $model_path
-                    if { $result_path ne "" && [file exists $result_path] } {
-                        my_post SetResult $result_path
-                    }
                     my_post Draw
+
                     my_post ReleaseHandle
                     win1 ReleaseHandle
                     page1 ReleaseHandle
                     proj ReleaseHandle
+                    sess ReleaseHandle
                     hwi CloseStack
                 } err] } {
+                    puts "load_model error: $err"
                     catch { hwi CloseStack }
-                    set err_json [format {{"success":false,"error":"%s"}} $err]
+                    set escaped_err [escape_json_string $err]
+                    set err_json [format {{"success":false,"error":"%s"}} $escaped_err]
                     write_result $job_id $err_json
                     return
                 }
+                puts "load_model completed successfully"
                 write_result $job_id {{"success":true}}
             }
             default {
@@ -211,7 +281,9 @@ proc process_job {job_file} {
             }
         }
     } err] } {
-        write_result $job_id [format {{"success":false,"error":"%s"}} $err]
+        puts "process_job error: $err"
+        set escaped_err [escape_json_string $err]
+        write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
     }
     catch { file delete $job_file }
 }
@@ -222,7 +294,13 @@ proc listen {} {
         set files [glob -nocomplain -directory $INBOX_DIR "job_*.json"]
         foreach f $files {
             if {[string match "*.tmp" $f]} {continue}
-            process_job $f
+            if {[string match "*.processing" $f]} {continue}
+            # 重命名文件防止重复处理
+            set processing_file "${f}.processing"
+            if {[catch {file rename -force $f $processing_file}]} {
+                continue
+            }
+            process_job $processing_file
         }
     } err] } {
         puts "Listen error : $err"
@@ -263,6 +341,7 @@ after 4000 listen
             return False
 
     def run_analysis(self, model_path: str, result_path: str = "") -> Optional[Dict[str, Any]]:
+        self._log(f"run_analysis called with model_path={model_path}")
         if self.state != State.AGENT_READY:
             self._log("HyperView NOT Ready,Start First")
             return None
@@ -271,6 +350,7 @@ after 4000 listen
         run_dir = os.path.join(self.runs_dir, run_id)
         os.makedirs(run_dir, exist_ok=True)
         self._log(f"Begin Analysing:{model_path}")
+        self._log(f"Output dir:{run_dir}")
         result = self.bridge.send_job(cmd="export_contour_and_peak_vm", params={
             "model_path": model_path.replace('\\', '/'),
             "result_path": result_path.replace('\\', '/') if result_path else "",

@@ -116,12 +116,8 @@ class Application(tk.Tk):
             messagebox.showwarning(title="WARNING!", message="Unable to Start HyperView")
             return
         result_path = self.result_entry.get().strip()
-        self.run_btn.config(state=tk.DISABLED)
-        self.progress.start()
-        def run():
-            result = self.orchestrator.run_analysis(model_path, result_path)
-            self.after(0, lambda: self._show_result(result))
-        threading.Thread(target=run, daemon=True).start()
+        # 弹出分析对话框
+        AnalysisDialog(self, self.orchestrator, model_path, result_path)
 
     def _load_model(self):
         model_path = self.model_entry.get().strip()
@@ -532,6 +528,170 @@ class MappingDialog(tk.Toplevel):
             'part_no': part_no
         }
         self.destroy()
+
+
+class AnalysisDialog(tk.Toplevel):
+    """分析功能对话框"""
+
+    def __init__(self, parent, orchestrator, model_path, result_path=""):
+        super().__init__(parent)
+        self.title("Analysis Options")
+        self.geometry("500x400")
+        self.resizable(width=False, height=False)
+        self.transient(parent)
+        self.grab_set()
+
+        self.parent = parent
+        self.orchestrator = orchestrator
+        self.model_path = model_path
+        self.result_path = result_path
+        self.result = None
+
+        self._create_ui()
+
+    def _create_ui(self):
+        # 标题
+        title_frame = ttk.Frame(self, padding=10)
+        title_frame.pack(fill=tk.X)
+        ttk.Label(title_frame, text="Select Analysis Function", font=('Arial', 12, 'bold')).pack()
+
+        # 模型信息
+        info_frame = ttk.LabelFrame(self, text="Model Information", padding=10)
+        info_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(info_frame, text=f"Model: {self.model_path}", wraplength=450).pack(anchor=tk.W)
+        if self.result_path:
+            ttk.Label(info_frame, text=f"Result: {self.result_path}", wraplength=450).pack(anchor=tk.W)
+
+        # 功能按钮区域
+        func_frame = ttk.LabelFrame(self, text="Analysis Functions", padding=10)
+        func_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # 应力分析按钮
+        stress_btn = ttk.Button(func_frame, text="Stress Peak Analysis (Von Mises)",
+                                command=self._analyze_stress_peak, width=40)
+        stress_btn.pack(pady=10)
+        ttk.Label(func_frame, text="Find maximum Von Mises stress location and value",
+                  foreground='gray').pack()
+
+        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+
+        # 云图导出按钮
+        contour_btn = ttk.Button(func_frame, text="Export Contour Image",
+                                 command=self._export_contour, width=40)
+        contour_btn.pack(pady=10)
+        ttk.Label(func_frame, text="Export stress contour plot as image",
+                  foreground='gray').pack()
+
+        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+
+        # 材料对比按钮
+        compare_btn = ttk.Button(func_frame, text="Compare with Material Standards",
+                                 command=self._compare_material, width=40)
+        compare_btn.pack(pady=10)
+        ttk.Label(func_frame, text="Compare peak stress with allowable values from database",
+                  foreground='gray').pack()
+
+        # 底部按钮
+        btn_frame = ttk.Frame(self, padding=10)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Close", command=self.destroy).pack(side=tk.RIGHT, padx=5)
+
+        # 状态栏
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(fill=tk.X, side=tk.BOTTOM)
+
+        # 进度条
+        self.progress = ttk.Progressbar(self, mode='indeterminate')
+        self.progress.pack(fill=tk.X, side=tk.BOTTOM)
+
+    def _set_status(self, msg):
+        self.status_var.set(msg)
+        self.update()
+
+    def _analyze_stress_peak(self):
+        """分析应力峰值"""
+        self._set_status("Analyzing stress peak...")
+        self.progress.start()
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_analysis_complete(result, "stress_peak"))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _export_contour(self):
+        """导出云图"""
+        self._set_status("Exporting contour image...")
+        self.progress.start()
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_analysis_complete(result, "contour"))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _compare_material(self):
+        """与材料标准对比"""
+        self._set_status("Comparing with material standards...")
+        self.progress.start()
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_analysis_complete(result, "compare"))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_analysis_complete(self, result, analysis_type):
+        """分析完成回调"""
+        self.progress.stop()
+
+        if result is None:
+            self._set_status("Analysis failed!")
+            messagebox.showerror(title="Error", message="Analysis failed. Check the log for details.")
+            return
+
+        self._set_status("Analysis complete!")
+        self.result = result
+
+        # 根据分析类型显示不同的结果
+        if analysis_type == "stress_peak":
+            analysis = result['analysis']
+            msg = f"""Stress Peak Analysis Result:
+
+Peak Value: {analysis.peak_value:.4f} MPa
+Entity ID: {analysis.peak_entity_id}
+Location: {analysis.peak_coords}
+
+{analysis.message}"""
+            messagebox.showinfo(title="Stress Peak Analysis", message=msg)
+
+        elif analysis_type == "contour":
+            images = result.get('images', [])
+            if images:
+                messagebox.showinfo(title="Contour Export",
+                                    message=f"Contour image saved to:\n{images[0]}")
+            else:
+                messagebox.showwarning(title="Contour Export", message="No image was generated.")
+
+        elif analysis_type == "compare":
+            analysis = result['analysis']
+            status = "PASSED" if analysis.passed else "FAILED"
+            msg = f"""Material Comparison Result:
+
+Status: {status}
+Peak Value: {analysis.peak_value:.4f} MPa
+Part No: {analysis.part_no or 'Not Found'}
+Allowable: {analysis.allowable:.2f if analysis.allowable else 'N/A'} MPa
+Margin: {analysis.margin:.2f if analysis.margin else 'N/A'} MPa
+Ratio: {analysis.ratio:.2% if analysis.ratio else 'N/A'}
+
+Report: {result['report_path']}"""
+            messagebox.showinfo(title="Material Comparison", message=msg)
+
+        # 通知父窗口更新
+        if hasattr(self.parent, '_show_result'):
+            self.parent._show_result(result)
 
 
 def main():
