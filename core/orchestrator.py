@@ -300,18 +300,20 @@ after 4000 listen
         }
 
     def load_model(self, model_path: str, result_path: str = "") -> bool:
-        if self.state == State.AGENT_READY:
-            self._log(f"Loading Model:{model_path}")
-            result = self.bridge.send_job(cmd="load_model", params={
-                "model_path": model_path.replace('\\', '/'),
-                "result_path": result_path.replace('\\', '/') if result_path else ""
-            })
-            if result.get('success', False):
-                self._log("Model loaded successfully")
-                return True
-            else:
-                self._log(f"Load failed:{result.get('error', 'Unknown')}")
-                return False
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._log(f"Loading Model:{model_path}")
+        result = self.bridge.send_job(cmd="load_model", params={
+            "model_path": model_path.replace('\\', '/'),
+            "result_path": result_path.replace('\\', '/') if result_path else ""
+        })
+        if result.get('success', False):
+            self._log("Model loaded successfully")
+            return True
+        else:
+            self._log(f"Load failed:{result.get('error', 'Unknown')}")
+            return False
 
     def shutdown(self):
         self._log("closing now")
