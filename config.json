@@ -1,0 +1,19 @@
+{
+    "hyperview": {
+        "shortcut_pattern": "HyperView*.lnk",
+        "search_paths": [
+            "C:/ProgramData/Microsoft/Windows/Start Menu"
+        ],
+        "startup_timeout": 120,
+        "job_timeout": 300
+    },
+    "workdir": {
+        "inbox": "workdir/inbox",
+        "outbox": "workdir/outbox",
+        "runs": "workdir/runs",
+        "logs": "workdir/logs"
+    },
+    "database": {
+        "path": "data/standards.db"
+    }
+}
