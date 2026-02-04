@@ -173,22 +173,54 @@ proc process_job {job_file} {
     set result_path ""
     set output_dir ""
 
-    # 简单的字符串解析 (避免复杂正则表达式)
-    foreach line [split $content \n] {
-        if {[string match {*"id"*:*} $line]} {
-            regexp {"id"[^"]*"([^"]*)"} $line -> job_id
+    # 使用string first和string range手动解析JSON
+    # 解析 "id": "value"
+    set idx [string first {"id"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 4}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set job_id [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
-        if {[string match {*"cmd"*:*} $line]} {
-            regexp {"cmd"[^"]*"([^"]*)"} $line -> cmd
+    }
+
+    # 解析 "cmd": "value"
+    set idx [string first {"cmd"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 5}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set cmd [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
-        if {[string match {*"model_path"*:*} $line]} {
-            regexp {"model_path"[^"]*"([^"]*)"} $line -> model_path
+    }
+
+    # 解析 "model_path": "value"
+    set idx [string first {"model_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 12}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set model_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
-        if {[string match {*"result_path"*:*} $line]} {
-            regexp {"result_path"[^"]*"([^"]*)"} $line -> result_path
+    }
+
+    # 解析 "result_path": "value"
+    set idx [string first {"result_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 13}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set result_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
-        if {[string match {*"output_dir"*:*} $line]} {
-            regexp {"output_dir"[^"]*"([^"]*)"} $line -> output_dir
+    }
+
+    # 解析 "output_dir": "value"
+    set idx [string first {"output_dir"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 12}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set output_dir [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
     }
 
