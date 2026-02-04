@@ -113,7 +113,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         proj GetPageHandle page1
         page1 GetWindowHandle win1
         win1 SetClientType Animation
-        win GetClientHandle my_post
+        win1 GetClientHandle my_post
 
         my_post AddModel $model_path
         if { $result_path ne "" && [file exists $result_path] } {
@@ -139,8 +139,8 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         win CaptureImage $image_path 0 0 1920 1080
 
         my_post ReleaseHandle
-        win ReleaseHandle
-        page ReleaseHandle
+        win1 ReleaseHandle
+        page1 ReleaseHandle
         proj ReleaseHandle
         sess ReleaseHandle
         hwi CloseStack
@@ -160,9 +160,9 @@ proc process_job {job_file} {
 
     regexp {"id"\\s*:\\s*"([^"]*)"} $content -> job_id
     regexp {"cmd"\\s*:\\s*"([^"]*)"} $content -> cmd
-    regexp {"model_path"\\s*:\\s*"([^"]*)"} $content ->model_path
-    regexp {"result_path"\\s*:\\s*"([^"]*)"} $content ->result_path
-    regexp {"output_dir"\\s*:\\s*"([^"]*)"} $content ->output_dir
+    regexp {"model_path"\\s*:\\s*"([^"]*)"} $content -> model_path
+    regexp {"result_path"\\s*:\\s*"([^"]*)"} $content -> result_path
+    regexp {"output_dir"\\s*:\\s*"([^"]*)"} $content -> output_dir
 
     puts "Processing: $job_id $cmd"
 
@@ -185,17 +185,17 @@ proc process_job {job_file} {
                     hwi GetSessionHandle sess
                     sess GetProjectHandle proj
                     proj GetPageHandle page1
-                    page GetWindowHandle win1
-                    win SetClientType Animation
-                    win GetClientHandle my_post
+                    page1 GetWindowHandle win1
+                    win1 SetClientType Animation
+                    win1 GetClientHandle my_post
                     my_post AddModel $model_path
                     if { $result_path ne "" && [file exists $result_path] } {
                         my_post SetResult $result_path
                     }
                     my_post Draw
                     my_post ReleaseHandle
-                    win ReleaseHandle
-                    page ReleaseHandle
+                    win1 ReleaseHandle
+                    page1 ReleaseHandle
                     proj ReleaseHandle
                     hwi CloseStack
                 } err] } {
