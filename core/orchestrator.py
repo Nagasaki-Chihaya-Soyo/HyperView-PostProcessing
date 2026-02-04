@@ -173,11 +173,22 @@ proc process_job {job_file} {
     set result_path ""
     set output_dir ""
 
-    # 使用简单的字符串匹配解析JSON (避免正则表达式问题)
-    foreach {key var} {id job_id cmd cmd model_path model_path result_path result_path output_dir output_dir} {
-        set pattern "\"$key\"\\s*:\\s*\"(\[^\"\]*)\""
-        if {[regexp $pattern $content -> value]} {
-            set $var $value
+    # 简单的字符串解析 (避免复杂正则表达式)
+    foreach line [split $content \n] {
+        if {[string match {*"id"*:*} $line]} {
+            regexp {"id"[^"]*"([^"]*)"} $line -> job_id
+        }
+        if {[string match {*"cmd"*:*} $line]} {
+            regexp {"cmd"[^"]*"([^"]*)"} $line -> cmd
+        }
+        if {[string match {*"model_path"*:*} $line]} {
+            regexp {"model_path"[^"]*"([^"]*)"} $line -> model_path
+        }
+        if {[string match {*"result_path"*:*} $line]} {
+            regexp {"result_path"[^"]*"([^"]*)"} $line -> result_path
+        }
+        if {[string match {*"output_dir"*:*} $line]} {
+            regexp {"output_dir"[^"]*"([^"]*)"} $line -> output_dir
         }
     }
 
