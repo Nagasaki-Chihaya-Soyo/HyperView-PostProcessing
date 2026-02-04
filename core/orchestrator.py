@@ -136,13 +136,18 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
-            # 如果有结果文件，加载结果
+            # 如果有结果文件，检查文件类型并加载
             if {$result_path ne ""} {
-                puts "Loading result file for analysis: $result_path"
-                if { [catch {
-                    model1 AddResult $result_path
-                } addResultErr] } {
-                    puts "Warning: Could not load result file: $addResultErr"
+                set ext [string tolower [file extension $result_path]]
+                if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
+                    puts "Loading result file for analysis: $result_path"
+                    if { [catch {
+                        model1 AddResult $result_path
+                    } addResultErr] } {
+                        puts "Warning: Could not load result file: $addResultErr"
+                    }
+                } else {
+                    puts "Note: Result file type '$ext' is not directly supported."
                 }
             }
 
@@ -239,13 +244,18 @@ proc cmd_display_contour {model_path result_path} {
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
-            # 如果有结果文件，加载结果
+            # 如果有结果文件，检查文件类型并加载
             if {$result_path ne ""} {
-                puts "Loading result file for contour: $result_path"
-                if { [catch {
-                    model1 AddResult $result_path
-                } addResultErr] } {
-                    puts "Warning: Could not load result file: $addResultErr"
+                set ext [string tolower [file extension $result_path]]
+                if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
+                    puts "Loading result file for contour: $result_path"
+                    if { [catch {
+                        model1 AddResult $result_path
+                    } addResultErr] } {
+                        puts "Warning: Could not load result file: $addResultErr"
+                    }
+                } else {
+                    puts "Note: Result file type '$ext' is not directly supported."
                 }
             }
 
@@ -415,20 +425,27 @@ proc process_job {job_file} {
                     my_post AddModel $model_path
                     my_post Draw
 
-                    # 如果有结果文件，加载结果
+                    # 如果有结果文件，检查文件类型
                     if {$result_path ne ""} {
-                        puts "Loading result file: $result_path"
-                        set modelCount [my_post GetNumberOfModels]
-                        if {$modelCount > 0} {
-                            my_post GetModelHandle model1 1
-                            if { [catch {
-                                model1 AddResult $result_path
-                            } resultErr] } {
-                                puts "Warning: Could not load result file: $resultErr"
+                        set ext [string tolower [file extension $result_path]]
+                        # .h3d文件已包含结果，.op2/.pch/.rst等是支持的结果文件
+                        # .out文件通常不被直接支持
+                        if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
+                            puts "Loading result file: $result_path"
+                            set modelCount [my_post GetNumberOfModels]
+                            if {$modelCount > 0} {
+                                my_post GetModelHandle model1 1
+                                if { [catch {
+                                    model1 AddResult $result_path
+                                } resultErr] } {
+                                    puts "Warning: Could not load result file: $resultErr"
+                                }
+                                model1 ReleaseHandle
                             }
-                            model1 ReleaseHandle
+                            my_post Draw
+                        } else {
+                            puts "Note: Result file type '$ext' is not directly supported. Model file should contain results."
                         }
-                        my_post Draw
                     }
 
                     my_post ReleaseHandle
