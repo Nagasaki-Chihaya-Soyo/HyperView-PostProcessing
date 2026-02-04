@@ -604,9 +604,10 @@ class AnalysisDialog(tk.Toplevel):
         status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W, padding=5)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # 进度条
-        self.progress = ttk.Progressbar(bottom_frame, mode='indeterminate', length=480)
+        # 进度条 (确定模式，显示百分比)
+        self.progress = ttk.Progressbar(bottom_frame, mode='determinate', length=480, maximum=100)
         self.progress.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
+        self._progress_running = False
 
         # 关闭按钮
         btn_frame = ttk.Frame(bottom_frame, padding=10)
@@ -617,10 +618,36 @@ class AnalysisDialog(tk.Toplevel):
         self.status_var.set(msg)
         self.update()
 
+    def _start_progress(self):
+        """启动进度条动画"""
+        self.progress['value'] = 0
+        self._progress_running = True
+        self._update_progress()
+
+    def _update_progress(self):
+        """更新进度条（模拟进度）"""
+        if not self._progress_running:
+            return
+        current = self.progress['value']
+        # 逐渐增加到90%，留10%给完成时
+        if current < 90:
+            # 开始快，后面慢
+            increment = max(1, (90 - current) / 20)
+            self.progress['value'] = min(90, current + increment)
+            self.after(200, self._update_progress)
+
+    def _stop_progress(self, success=True):
+        """停止进度条"""
+        self._progress_running = False
+        if success:
+            self.progress['value'] = 100
+        else:
+            self.progress['value'] = 0
+
     def _analyze_stress_peak(self):
         """分析应力峰值"""
         self._set_status("Analyzing stress peak...")
-        self.progress.start()
+        self._start_progress()
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
@@ -631,7 +658,7 @@ class AnalysisDialog(tk.Toplevel):
     def _export_contour(self):
         """导出云图"""
         self._set_status("Exporting contour image...")
-        self.progress.start()
+        self._start_progress()
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
@@ -642,7 +669,7 @@ class AnalysisDialog(tk.Toplevel):
     def _compare_material(self):
         """与材料标准对比"""
         self._set_status("Comparing with material standards...")
-        self.progress.start()
+        self._start_progress()
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
@@ -652,12 +679,13 @@ class AnalysisDialog(tk.Toplevel):
 
     def _on_analysis_complete(self, result, analysis_type):
         """分析完成回调"""
-        self.progress.stop()
-
         if result is None:
+            self._stop_progress(success=False)
             self._set_status("Analysis failed!")
             messagebox.showerror(title="Error", message="Analysis failed. Check the log for details.")
             return
+
+        self._stop_progress(success=True)
 
         self._set_status("Analysis complete!")
         self.result = result
