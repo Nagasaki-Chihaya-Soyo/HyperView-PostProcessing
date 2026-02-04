@@ -159,6 +159,9 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
                     }
                 }
 
+                # 应用结果设置
+                resultCtrl Apply
+
                 resultCtrl ReleaseHandle
             } resultErr] } {
                 puts "Result control error: $resultErr"
@@ -167,8 +170,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
             model1 ReleaseHandle
         }
 
-        # 启用云图显示
-        my_post SetContourState true
+        # 刷新显示
         my_post Draw
 
         # 获取最大值
@@ -250,6 +252,9 @@ proc cmd_display_contour {model_path result_path} {
                     }
                 }
 
+                # 应用结果设置 - 这会自动启用云图显示
+                resultCtrl Apply
+
                 resultCtrl ReleaseHandle
             } resultErr] } {
                 puts "Result control error: $resultErr"
@@ -258,8 +263,7 @@ proc cmd_display_contour {model_path result_path} {
             model1 ReleaseHandle
         }
 
-        # 启用云图显示
-        my_post SetContourState true
+        # 刷新显示
         my_post Draw
 
         my_post ReleaseHandle
