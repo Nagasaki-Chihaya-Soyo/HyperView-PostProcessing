@@ -124,12 +124,10 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         win1 SetClientType Animation
         win1 GetClientHandle my_post
 
+        # 加载模型 (.h3d文件通常包含模型和结果)
         my_post AddModel $model_path
-        if { $result_path ne "" && [file exists $result_path] } {
-            my_post SetResult $result_path
-        }
-
         my_post Draw
+
         my_post GetContourCtrlHandle cc
         cc SetDataType "Stress"
         cc SetDataComponent "vonMises"
@@ -175,12 +173,13 @@ proc process_job {job_file} {
     set result_path ""
     set output_dir ""
 
-    # 使用简单的正则表达式解析JSON
-    if {[regexp {"id"\s*:\s*"([^"]*)"} $content match job_id]} {}
-    if {[regexp {"cmd"\s*:\s*"([^"]*)"} $content match cmd]} {}
-    if {[regexp {"model_path"\s*:\s*"([^"]*)"} $content match model_path]} {}
-    if {[regexp {"result_path"\s*:\s*"([^"]*)"} $content match result_path]} {}
-    if {[regexp {"output_dir"\s*:\s*"([^"]*)"} $content match output_dir]} {}
+    # 使用简单的字符串匹配解析JSON (避免正则表达式问题)
+    foreach {key var} {id job_id cmd cmd model_path model_path result_path result_path output_dir output_dir} {
+        set pattern "\"$key\"\\s*:\\s*\"(\[^\"\]*)\""
+        if {[regexp $pattern $content -> value]} {
+            set $var $value
+        }
+    }
 
     puts "Processing: $job_id $cmd"
 
@@ -199,6 +198,7 @@ proc process_job {job_file} {
             }
             "load_model" {
                 puts "Executing load_model command"
+                puts "Model path: $model_path"
                 if { [catch {
                     hwi OpenStack
                     hwi GetSessionHandle sess
@@ -207,13 +207,13 @@ proc process_job {job_file} {
                     proj GetPageHandle page1 $pageId
                     set winId [page1 GetActiveWindow]
                     page1 GetWindowHandle win1 $winId
-                    win1 SetClientType Animation
+                    win1 SetClientType animation
                     win1 GetClientHandle my_post
+
+                    # 加载模型文件 (.h3d文件通常包含模型和结果)
                     my_post AddModel $model_path
-                    if { $result_path ne "" && [file exists $result_path] } {
-                        my_post AddResult $result_path
-                    }
                     my_post Draw
+
                     my_post ReleaseHandle
                     win1 ReleaseHandle
                     page1 ReleaseHandle
