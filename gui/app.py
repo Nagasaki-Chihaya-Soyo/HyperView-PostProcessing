@@ -117,8 +117,12 @@ class Application(tk.Tk):
             messagebox.showwarning(title="WARNING!", message="Unable to Start HyperView")
             return
         result_path = self.result_entry.get().strip()
+        # 最小化主窗口
+        self.iconify()
         # 弹出分析对话框
-        AnalysisDialog(self, self.orchestrator, model_path, result_path)
+        dialog = AnalysisDialog(self, self.orchestrator, model_path, result_path)
+        # 对话框关闭后恢复主窗口
+        self.deiconify()
 
     def _start_progress(self):
         """启动进度条动画"""
