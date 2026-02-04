@@ -341,6 +341,7 @@ after 4000 listen
             return False
 
     def run_analysis(self, model_path: str, result_path: str = "") -> Optional[Dict[str, Any]]:
+        self._log(f"run_analysis called with model_path={model_path}")
         if self.state != State.AGENT_READY:
             self._log("HyperView NOT Ready,Start First")
             return None
@@ -349,6 +350,7 @@ after 4000 listen
         run_dir = os.path.join(self.runs_dir, run_id)
         os.makedirs(run_dir, exist_ok=True)
         self._log(f"Begin Analysing:{model_path}")
+        self._log(f"Output dir:{run_dir}")
         result = self.bridge.send_job(cmd="export_contour_and_peak_vm", params={
             "model_path": model_path.replace('\\', '/'),
             "result_path": result_path.replace('\\', '/') if result_path else "",
