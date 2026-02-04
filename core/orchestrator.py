@@ -121,25 +121,58 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         proj GetPageHandle page1 $pageId
         set winId [page1 GetActiveWindow]
         page1 GetWindowHandle win1 $winId
-        win1 SetClientType Animation
+        win1 SetClientType animation
         win1 GetClientHandle my_post
 
         # 加载模型 (.h3d文件通常包含模型和结果)
         my_post AddModel $model_path
         my_post Draw
 
-        my_post GetContourCtrlHandle cc
-        cc SetDataType "Stress"
-        cc SetDataComponent "vonMises"
-        cc SetEnableState true
-        cc ReleaseHandle
+        # 获取模型句柄并设置结果类型
+        set modelCount [my_post GetNumberOfModels]
+        if {$modelCount > 0} {
+            my_post GetModelHandle model1 1
+            model1 GetResultCtrlHandle resultCtrl
 
+            # 设置结果类型为应力
+            set numDataTypes [resultCtrl GetNumberOfDataTypes]
+            for {set i 1} {$i <= $numDataTypes} {incr i} {
+                set dtype [resultCtrl GetDataTypeLabel $i]
+                if {[string match -nocase "*stress*" $dtype]} {
+                    resultCtrl SetCurrentDataType $i
+                    break
+                }
+            }
+
+            # 设置分量为vonMises
+            set numComponents [resultCtrl GetNumberOfDataComponents]
+            for {set j 1} {$j <= $numComponents} {incr j} {
+                set comp [resultCtrl GetDataComponentLabel $j]
+                if {[string match -nocase "*mises*" $comp] || [string match -nocase "*von*" $comp]} {
+                    resultCtrl SetCurrentDataComponent $j
+                    break
+                }
+            }
+
+            resultCtrl ReleaseHandle
+            model1 ReleaseHandle
+        }
+
+        # 启用云图显示
+        my_post SetContourState true
         my_post Draw
 
-        my_post GetQueryCtrlHandle qc
-        set MAX_VALUE [qc GetContourMaxValue]
-        set MAX_ID [qc GetContourMaxID]
-        qc ReleaseHandle
+        # 获取最大值
+        if { [catch {
+            my_post GetQueryCtrlHandle qc
+            set MAX_VALUE [qc GetContourMaxValue]
+            set MAX_ID [qc GetContourMaxID]
+            qc ReleaseHandle
+        } qerr] } {
+            puts "Query error (using defaults): $qerr"
+            set MAX_VALUE 0.0
+            set MAX_ID 0
+        }
 
         file mkdir $output_dir
         set image_path [file join $output_dir "vonmises.png"]
@@ -346,38 +379,43 @@ after 4000 listen
             self._log("HyperView NOT Ready,Start First")
             return None
         self._set_state(State.RUNNING)
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_dir = os.path.join(self.runs_dir, run_id)
-        os.makedirs(run_dir, exist_ok=True)
-        self._log(f"Begin Analysing:{model_path}")
-        self._log(f"Output dir:{run_dir}")
-        result = self.bridge.send_job(cmd="export_contour_and_peak_vm", params={
-            "model_path": model_path.replace('\\', '/'),
-            "result_path": result_path.replace('\\', '/') if result_path else "",
-            "output_dir": run_dir.replace('\\', '/')
-        })
-        if not result.get('success', False):
-            self._set_state(State.AGENT_READY)
-            self._log(f"Tasks Failed:{result.get('error', 'Unknown')}")
+        try:
+            run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_dir = os.path.join(self.runs_dir, run_id)
+            os.makedirs(run_dir, exist_ok=True)
+            self._log(f"Begin Analysing:{model_path}")
+            self._log(f"Output dir:{run_dir}")
+            result = self.bridge.send_job(cmd="export_contour_and_peak_vm", params={
+                "model_path": model_path.replace('\\', '/'),
+                "result_path": result_path.replace('\\', '/') if result_path else "",
+                "output_dir": run_dir.replace('\\', '/')
+            })
+            if not result.get('success', False):
+                self._log(f"Tasks Failed:{result.get('error', 'Unknown')}")
+                return None
+            peak_data = result.get('peak', {})
+            analysis_result = self.analyzer.analyze(peak_data)
+            report_path = os.path.join(run_dir, 'report.html')
+            self.reporter.generate(
+                results=[analysis_result],
+                images=result.get('images', []),
+                model_path=model_path,
+                result_path=result_path,
+                output_path=report_path
+            )
+            self._log(f"Analyzing Complete,Report:{report_path}")
+            return {
+                'success': True,
+                'analysis': analysis_result,
+                'report_path': report_path,
+                'run_dir': run_dir
+            }
+        except Exception as e:
+            self._log(f"Analysis error: {str(e)}")
             return None
-        peak_data = result.get('peak', {})
-        analysis_result = self.analyzer.analyze(peak_data)
-        report_path = os.path.join(run_dir, 'report.html')
-        self.reporter.generate(
-            results=[analysis_result],
-            images=result.get('images', []),
-            model_path=model_path,
-            result_path=result_path,
-            output_path=report_path
-        )
-        self._set_state(State.AGENT_READY)
-        self._log(f"Analyzing Complete,Report:{report_path}")
-        return {
-            'success': True,
-            'analysis': analysis_result,
-            'report_path': report_path,
-            'run_dir': run_dir
-        }
+        finally:
+            # 确保状态总是恢复到AGENT_READY
+            self._set_state(State.AGENT_READY)
 
     def load_model(self, model_path: str, result_path: str = "") -> bool:
         if self.state != State.AGENT_READY:

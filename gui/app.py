@@ -550,20 +550,24 @@ class AnalysisDialog(tk.Toplevel):
         self._create_ui()
 
     def _create_ui(self):
+        # 主容器
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
         # 标题
-        title_frame = ttk.Frame(self, padding=10)
+        title_frame = ttk.Frame(main_frame, padding=10)
         title_frame.pack(fill=tk.X)
         ttk.Label(title_frame, text="Select Analysis Function", font=('Arial', 12, 'bold')).pack()
 
         # 模型信息
-        info_frame = ttk.LabelFrame(self, text="Model Information", padding=10)
+        info_frame = ttk.LabelFrame(main_frame, text="Model Information", padding=10)
         info_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(info_frame, text=f"Model: {self.model_path}", wraplength=450).pack(anchor=tk.W)
+        ttk.Label(info_frame, text=f"Model: {os.path.basename(self.model_path)}", wraplength=450).pack(anchor=tk.W)
         if self.result_path:
-            ttk.Label(info_frame, text=f"Result: {self.result_path}", wraplength=450).pack(anchor=tk.W)
+            ttk.Label(info_frame, text=f"Result: {os.path.basename(self.result_path)}", wraplength=450).pack(anchor=tk.W)
 
         # 功能按钮区域
-        func_frame = ttk.LabelFrame(self, text="Analysis Functions", padding=10)
+        func_frame = ttk.LabelFrame(main_frame, text="Analysis Functions", padding=10)
         func_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         # 应力分析按钮
@@ -591,19 +595,23 @@ class AnalysisDialog(tk.Toplevel):
         ttk.Label(func_frame, text="Compare peak stress with allowable values from database",
                   foreground='gray').pack()
 
-        # 底部按钮
-        btn_frame = ttk.Frame(self, padding=10)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Close", command=self.destroy).pack(side=tk.RIGHT, padx=5)
+        # 底部区域 (从下往上: 状态栏 -> 进度条 -> 关闭按钮)
+        bottom_frame = ttk.Frame(self)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
         # 状态栏
         self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W, padding=5)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
         # 进度条
-        self.progress = ttk.Progressbar(self, mode='indeterminate')
-        self.progress.pack(fill=tk.X, side=tk.BOTTOM)
+        self.progress = ttk.Progressbar(bottom_frame, mode='indeterminate', length=480)
+        self.progress.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
+
+        # 关闭按钮
+        btn_frame = ttk.Frame(bottom_frame, padding=10)
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        ttk.Button(btn_frame, text="Close", command=self.destroy, width=15).pack(side=tk.RIGHT, padx=5)
 
     def _set_status(self, msg):
         self.status_var.set(msg)
