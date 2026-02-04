@@ -240,7 +240,13 @@ proc listen {} {
         set files [glob -nocomplain -directory $INBOX_DIR "job_*.json"]
         foreach f $files {
             if {[string match "*.tmp" $f]} {continue}
-            process_job $f
+            if {[string match "*.processing" $f]} {continue}
+            # 重命名文件防止重复处理
+            set processing_file "${f}.processing"
+            if {[catch {file rename -force $f $processing_file}]} {
+                continue
+            }
+            process_job $processing_file
         }
     } err] } {
         puts "Listen error : $err"
