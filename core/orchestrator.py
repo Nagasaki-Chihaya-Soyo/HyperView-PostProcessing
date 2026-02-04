@@ -203,6 +203,80 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
     return [list $MAX_VALUE $MAX_ID $image_path]
 }
 
+proc cmd_display_contour {model_path result_path} {
+    if { [catch {
+        hwi OpenStack
+        hwi GetSessionHandle sess
+        sess GetProjectHandle proj
+        set pageId [proj GetActivePage]
+        proj GetPageHandle page1 $pageId
+        set winId [page1 GetActiveWindow]
+        page1 GetWindowHandle win1 $winId
+        win1 SetClientType animation
+        win1 GetClientHandle my_post
+
+        # 检查是否已有模型加载，如果没有才加载
+        set modelCount [my_post GetNumberOfModels]
+        if {$modelCount == 0} {
+            my_post AddModel $model_path
+            my_post Draw
+            set modelCount [my_post GetNumberOfModels]
+        }
+
+        # 获取模型句柄并设置结果类型
+        if {$modelCount > 0} {
+            my_post GetModelHandle model1 1
+
+            if { [catch {
+                model1 GetResultCtrlHandle resultCtrl
+
+                # 设置结果类型为应力
+                set numDataTypes [resultCtrl GetNumberOfDataTypes]
+                for {set i 1} {$i <= $numDataTypes} {incr i} {
+                    set dtype [resultCtrl GetDataTypeLabel $i]
+                    if {[string match -nocase "*stress*" $dtype]} {
+                        resultCtrl SetCurrentDataType $i
+                        break
+                    }
+                }
+
+                # 设置分量为vonMises
+                set numComponents [resultCtrl GetNumberOfDataComponents]
+                for {set j 1} {$j <= $numComponents} {incr j} {
+                    set comp [resultCtrl GetDataComponentLabel $j]
+                    if {[string match -nocase "*mises*" $comp] || [string match -nocase "*von*" $comp]} {
+                        resultCtrl SetCurrentDataComponent $j
+                        break
+                    }
+                }
+
+                resultCtrl ReleaseHandle
+            } resultErr] } {
+                puts "Result control error: $resultErr"
+            }
+
+            model1 ReleaseHandle
+        }
+
+        # 启用云图显示
+        my_post SetContourState true
+        my_post Draw
+
+        my_post ReleaseHandle
+        win1 ReleaseHandle
+        page1 ReleaseHandle
+        proj ReleaseHandle
+        sess ReleaseHandle
+        hwi CloseStack
+    } err] } {
+        puts "cmd_display_contour error: $err"
+        catch { hwi CloseStack }
+        return 0
+    }
+
+    return 1
+}
+
 proc process_job {job_file} {
     global MAX_VALUE MAX_ID
     set f [open $job_file r]
@@ -288,6 +362,15 @@ proc process_job {job_file} {
             }
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
+            }
+            "display_contour" {
+                puts "Executing display_contour command"
+                set res [cmd_display_contour $model_path $result_path]
+                if {$res == 1} {
+                    write_result $job_id {{"success":true,"message":"Contour displayed"}}
+                } else {
+                    write_result $job_id {{"success":false,"error":"Failed to display contour"}}
+                }
             }
             "load_model" {
                 puts "Executing load_model command"
@@ -430,6 +513,33 @@ after 4000 listen
             return None
         finally:
             # 确保状态总是恢复到AGENT_READY
+            self._set_state(State.AGENT_READY)
+
+    def display_contour(self, model_path: str, result_path: str = "") -> Optional[Dict[str, Any]]:
+        """仅显示云图，不进行峰值分析"""
+        self._log(f"display_contour called with model_path={model_path}")
+        if self.state != State.AGENT_READY:
+            self._log("HyperView NOT Ready, Start First")
+            return None
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Displaying contour for: {model_path}")
+            result = self.bridge.send_job(cmd="display_contour", params={
+                "model_path": model_path.replace('\\', '/'),
+                "result_path": result_path.replace('\\', '/') if result_path else ""
+            })
+            if not result.get('success', False):
+                self._log(f"Display contour failed: {result.get('error', 'Unknown')}")
+                return None
+            self._log("Contour displayed successfully")
+            return {
+                'success': True,
+                'message': 'Contour displayed'
+            }
+        except Exception as e:
+            self._log(f"Display contour error: {str(e)}")
+            return None
+        finally:
             self._set_state(State.AGENT_READY)
 
     def load_model(self, model_path: str, result_path: str = "") -> bool:

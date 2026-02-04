@@ -609,19 +609,28 @@ class AnalysisDialog(tk.Toplevel):
         func_frame = ttk.LabelFrame(main_frame, text="Analysis Functions", padding=10)
         func_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # 应力分析按钮
-        stress_btn = ttk.Button(func_frame, text="Stress Peak Analysis (Von Mises)",
+        # 显示云图按钮
+        contour_btn = ttk.Button(func_frame, text="Display Stress Contour",
+                                command=self._display_contour, width=40)
+        contour_btn.pack(pady=8)
+        ttk.Label(func_frame, text="Display Von Mises stress contour on the model",
+                  foreground='gray').pack()
+
+        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=8)
+
+        # 应力峰值分析按钮
+        stress_btn = ttk.Button(func_frame, text="Stress Peak Analysis",
                                 command=self._analyze_stress_peak, width=40)
-        stress_btn.pack(pady=10)
+        stress_btn.pack(pady=8)
         ttk.Label(func_frame, text="Find maximum Von Mises stress location and value",
                   foreground='gray').pack()
 
-        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=8)
 
         # 材料对比按钮
         compare_btn = ttk.Button(func_frame, text="Compare with Material Standards",
                                  command=self._compare_material, width=40)
-        compare_btn.pack(pady=10)
+        compare_btn.pack(pady=8)
         ttk.Label(func_frame, text="Compare peak stress with allowable values from database",
                   foreground='gray').pack()
 
@@ -674,6 +683,17 @@ class AnalysisDialog(tk.Toplevel):
         else:
             self.progress['value'] = 0
 
+    def _display_contour(self):
+        """显示云图"""
+        self._set_status("Displaying stress contour...")
+        self._start_progress()
+
+        def run():
+            result = self.orchestrator.display_contour(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_analysis_complete(result, "contour"))
+
+        threading.Thread(target=run, daemon=True).start()
+
     def _analyze_stress_peak(self):
         """分析应力峰值"""
         self._set_status("Analyzing stress peak...")
@@ -710,7 +730,11 @@ class AnalysisDialog(tk.Toplevel):
         self.result = result
 
         # 根据分析类型显示不同的结果
-        if analysis_type == "stress_peak":
+        if analysis_type == "contour":
+            self._set_status("Contour displayed successfully!")
+            messagebox.showinfo(title="Display Contour", message="Stress contour has been displayed on the model.\n\nYou can now view the contour in HyperView.")
+
+        elif analysis_type == "stress_peak":
             analysis = result['analysis']
             msg = f"""Stress Peak Analysis Result:
 
