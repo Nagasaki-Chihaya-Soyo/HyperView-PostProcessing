@@ -192,6 +192,8 @@ proc process_job {job_file} {
         }
     }
 
+    puts "DEBUG: job_id=$job_id cmd=$cmd"
+    puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
 
     if { [catch {
