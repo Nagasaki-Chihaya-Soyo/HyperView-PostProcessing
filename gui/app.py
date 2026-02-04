@@ -67,8 +67,9 @@ class Application(tk.Tk):
         self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis)
         self.run_btn.pack(side=tk.LEFT, padx=20)
 
-        self.progress = ttk.Progressbar(btn_frame, mode='indeterminate', length=200)
+        self.progress = ttk.Progressbar(btn_frame, mode='determinate', length=200, maximum=100)
         self.progress.pack(side=tk.LEFT, padx=20)
+        self._progress_running = False
 
         result_frame = ttk.LabelFrame(tab, text="Analysing Result", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -119,6 +120,27 @@ class Application(tk.Tk):
         # 弹出分析对话框
         AnalysisDialog(self, self.orchestrator, model_path, result_path)
 
+    def _start_progress(self):
+        """启动进度条动画"""
+        self.progress['value'] = 0
+        self._progress_running = True
+        self._update_progress()
+
+    def _update_progress(self):
+        """更新进度条（模拟进度）"""
+        if not self._progress_running:
+            return
+        current = self.progress['value']
+        if current < 90:
+            increment = max(1, (90 - current) / 20)
+            self.progress['value'] = min(90, current + increment)
+            self.after(200, self._update_progress)
+
+    def _stop_progress(self, success=True):
+        """停止进度条"""
+        self._progress_running = False
+        self.progress['value'] = 100 if success else 0
+
     def _load_model(self):
         model_path = self.model_entry.get().strip()
         if not model_path:
@@ -129,14 +151,14 @@ class Application(tk.Tk):
             return
         result_path = self.result_entry.get().strip()
         self.load_btn.config(state=tk.DISABLED)
-        self.progress.start()
+        self._start_progress()
         def load():
             success = self.orchestrator.load_model(model_path, result_path)
             self.after(0, lambda: self._on_model_loaded(success))
         threading.Thread(target=load, daemon=True).start()
 
     def _on_model_loaded(self, success: bool):
-        self.progress.stop()
+        self._stop_progress(success)
         self.load_btn.config(state=tk.NORMAL)
         if success:
             messagebox.showinfo(title="Success", message="Model loaded successfully")
