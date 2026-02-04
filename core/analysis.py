@@ -57,9 +57,9 @@ class Analyzer:
         margin = allowable - peak_value
         ratio = peak_value / allowable if allowable > 0 else float('inf')
         if passed:
-            messages = f"通过-峰值{peak_value:.2f} MPa ≤ 许用值 {allowable:.2f} Mpa 裕度为{margin:.2f} Mpa"
+            messages = f"通过-峰值{peak_value:.2f} MPa ≤ 许用值 {allowable:.2f} MPa 裕度为{margin:.2f} MPa"
         else:
-            messages = f"通过-峰值{peak_value:.2f} MPa ≥ 许用值 {allowable:.2f} Mpa 超出{margin:.2f} Mpa"
+            messages = f"未通过-峰值{peak_value:.2f} MPa > 许用值 {allowable:.2f} MPa 超出{-margin:.2f} MPa"
         return AnalysisResult(
             peak_value=peak_value,
             peak_entity_id=entity_id,

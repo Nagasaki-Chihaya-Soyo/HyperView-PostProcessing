@@ -111,9 +111,9 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         hwi GetSessionHandle sess
         sess GetProjectHandle proj
         proj GetPageHandle page1
-        page GetWindowHandle win1
-        win SetClientType Animation
-        win GetClientHandle my_post
+        page1 GetWindowHandle win1
+        win1 SetClientType Animation
+        win1 GetClientHandle my_post
 
         my_post AddModel $model_path
         if { $result_path ne "" && [file exists $result_path] } {
@@ -139,8 +139,8 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         win CaptureImage $image_path 0 0 1920 1080
 
         my_post ReleaseHandle
-        win ReleaseHandle
-        page ReleaseHandle
+        win1 ReleaseHandle
+        page1 ReleaseHandle
         proj ReleaseHandle
         sess ReleaseHandle
         hwi CloseStack
@@ -160,11 +160,11 @@ proc process_job {job_file} {
 
     regexp {"id"\\s*:\\s*"([^"]*)"} $content -> job_id
     regexp {"cmd"\\s*:\\s*"([^"]*)"} $content -> cmd
-    regexp {"model_path"\\s*:\\s*"([^"]*)"} $content ->model_path
-    regexp {"result_path"\\s*:\\s*"([^"]*)"} $content ->result_path
-    regexp {"output_dir"\\s*:\\s*"([^"]*)"} $content ->output_dir
+    regexp {"model_path"\\s*:\\s*"([^"]*)"} $content -> model_path
+    regexp {"result_path"\\s*:\\s*"([^"]*)"} $content -> result_path
+    regexp {"output_dir"\\s*:\\s*"([^"]*)"} $content -> output_dir
 
-    puts "Processing: $job_id $CMD"
+    puts "Processing: $job_id $cmd"
 
     if { [catch {
         switch $cmd {
@@ -174,6 +174,7 @@ proc process_job {job_file} {
                 set pi [lindex $res 1]
                 set ip [lindex $res 2]
                 set json [format {{"success":true,"images":["%s"],"peak":{"value":%s,"entity_id":%s,"coords":[0,0,0],"tags":{"component":"","part":"","property":""}}}} $ip $pv $pi]
+                write_result $job_id $json
             }
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
@@ -184,17 +185,17 @@ proc process_job {job_file} {
                     hwi GetSessionHandle sess
                     sess GetProjectHandle proj
                     proj GetPageHandle page1
-                    page GetWindowHandle win1
-                    win SetClientType Animation
-                    win GetClientHandle my_post
+                    page1 GetWindowHandle win1
+                    win1 SetClientType Animation
+                    win1 GetClientHandle my_post
                     my_post AddModel $model_path
                     if { $result_path ne "" && [file exists $result_path] } {
                         my_post SetResult $result_path
                     }
                     my_post Draw
                     my_post ReleaseHandle
-                    win ReleaseHandle
-                    page ReleaseHandle
+                    win1 ReleaseHandle
+                    page1 ReleaseHandle
                     proj ReleaseHandle
                     hwi CloseStack
                 } err] } {
@@ -206,7 +207,7 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             default {
-                write_error $job_id {{"success":false,"error":"Unknown cmd: $cmd"}}
+                write_result $job_id [format {{"success":false,"error":"Unknown cmd: %s"}} $cmd]
             }
         }
     } err] } {
@@ -299,18 +300,20 @@ after 4000 listen
         }
 
     def load_model(self, model_path: str, result_path: str = "") -> bool:
-        if self.state == State.AGENT_READY:
-            self._log(f"Loading Model:{model_path}")
-            result = self.bridge.send_job(cmd="load_model", params={
-                "model_path": model_path.replace('\\', '/'),
-                "result_path": result_path.replace('\\', '/') if result_path else ""
-            })
-            if result.get('success', False):
-                self._log("Model loaded successfully")
-                return True
-            else:
-                self._log(f"Load failed:{result.get('error', 'Unknown')}")
-                return False
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._log(f"Loading Model:{model_path}")
+        result = self.bridge.send_job(cmd="load_model", params={
+            "model_path": model_path.replace('\\', '/'),
+            "result_path": result_path.replace('\\', '/') if result_path else ""
+        })
+        if result.get('success', False):
+            self._log("Model loaded successfully")
+            return True
+        else:
+            self._log(f"Load failed:{result.get('error', 'Unknown')}")
+            return False
 
     def shutdown(self):
         self._log("closing now")

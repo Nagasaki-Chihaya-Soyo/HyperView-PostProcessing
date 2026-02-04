@@ -129,7 +129,7 @@ class HTMLReporter:
         .image-item{{
             text-align:center;
         }}
-        .image-time img{{
+        .image-item img{{
             max-width: 100%;
         }}
         .image-item p {{
@@ -175,9 +175,11 @@ class HTMLReporter:
             <div class="label">失败项</div>
             <div class="value" style="color:#dc3545">{failed_count}</div>
         </div>
-        </div>
-        <div class="section-title">文件信息</h2>
-        <table class="info_table">
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">文件信息</h2>
+        <table class="info-table">
             <tr><td>模型文件</td><td>{model_path}</td></tr>
             <tr><td>结果文件</td><td>{result_path or '-'}</td></tr>
         </table>
