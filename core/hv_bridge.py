@@ -61,7 +61,9 @@ class HVBridge:
             job_data.update(params)
         log_info(f"发送任务:{cmd} (job_{job_id})")
         self._write_job(job_id, job_data)
+        log_info(f"等待结果:job_{job_id}")
         result = self._wait_result(job_id)
+        log_debug(f"收到原始结果: {result}")
         return result if result else {'success': False, 'error': 'No response'}
 
     def clear_inbox(self):

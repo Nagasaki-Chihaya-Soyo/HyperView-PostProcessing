@@ -92,12 +92,19 @@ proc write_ready {} {
     puts "Agent Ready"
 }
 
+proc escape_json_string {str} {
+    set str [string map {\\ \\\\ \" \\" \n \\n \r \\r \t \\t} $str]
+    return $str
+}
+
 proc write_result {job_id result_json} {
     global OUTBOX_DIR
     set result_file [file join $OUTBOX_DIR "job_${job_id}.result.json"]
+    puts "Writing result to: $result_file"
     set f [open $result_file w]
     puts $f $result_json
     close $f
+    puts "Result written successfully"
 }
 
 proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
@@ -136,7 +143,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 
         file mkdir $output_dir
         set image_path [file join $output_dir "vonmises.png"]
-        win CaptureImage $image_path 0 0 1920 1080
+        win1 CaptureImage $image_path 0 0 1920 1080
 
         my_post ReleaseHandle
         win1 ReleaseHandle
@@ -145,6 +152,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         sess ReleaseHandle
         hwi CloseStack
     } err] } {
+        puts "cmd_export_contour_and_peak_vm error: $err"
         catch { hwi CloseStack }
         error "Failed: $err"
     }
@@ -180,6 +188,7 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
             "load_model" {
+                puts "Executing load_model command"
                 if { [catch {
                     hwi OpenStack
                     hwi GetSessionHandle sess
@@ -199,11 +208,14 @@ proc process_job {job_file} {
                     proj ReleaseHandle
                     hwi CloseStack
                 } err] } {
+                    puts "load_model error: $err"
                     catch { hwi CloseStack }
-                    set err_json [format {{"success":false,"error":"%s"}} $err]
+                    set escaped_err [escape_json_string $err]
+                    set err_json [format {{"success":false,"error":"%s"}} $escaped_err]
                     write_result $job_id $err_json
                     return
                 }
+                puts "load_model completed successfully"
                 write_result $job_id {{"success":true}}
             }
             default {
@@ -211,7 +223,9 @@ proc process_job {job_file} {
             }
         }
     } err] } {
-        write_result $job_id [format {{"success":false,"error":"%s"}} $err]
+        puts "process_job error: $err"
+        set escaped_err [escape_json_string $err]
+        write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
     }
     catch { file delete $job_file }
 }
