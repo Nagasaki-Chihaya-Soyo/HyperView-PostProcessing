@@ -576,8 +576,7 @@ class AnalysisDialog(tk.Toplevel):
         self.title("Analysis Options")
         self.geometry("500x400")
         self.resizable(width=False, height=False)
-        self.transient(parent)
-        # 不使用 grab_set()，允许用户与主窗口交互
+        # 不使用 transient 和 grab_set，让窗口独立运行
 
         self.parent = parent
         self.orchestrator = orchestrator
