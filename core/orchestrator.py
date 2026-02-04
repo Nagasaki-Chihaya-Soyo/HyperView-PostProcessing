@@ -168,11 +168,19 @@ proc process_job {job_file} {
     set content [read $f]
     close $f
 
-    regexp {\"id\"[^\"]*\"([^\"]*)} $content -> job_id
-    regexp {\"cmd\"[^\"]*\"([^\"]*)} $content -> cmd
-    regexp {\"model_path\"[^\"]*\"([^\"]*)} $content -> model_path
-    regexp {\"result_path\"[^\"]*\"([^\"]*)} $content -> result_path
-    regexp {\"output_dir\"[^\"]*\"([^\"]*)} $content -> output_dir
+    # 初始化变量
+    set job_id ""
+    set cmd ""
+    set model_path ""
+    set result_path ""
+    set output_dir ""
+
+    # 使用简单的正则表达式解析JSON
+    if {[regexp {"id"\s*:\s*"([^"]*)"} $content match job_id]} {}
+    if {[regexp {"cmd"\s*:\s*"([^"]*)"} $content match cmd]} {}
+    if {[regexp {"model_path"\s*:\s*"([^"]*)"} $content match model_path]} {}
+    if {[regexp {"result_path"\s*:\s*"([^"]*)"} $content match result_path]} {}
+    if {[regexp {"output_dir"\s*:\s*"([^"]*)"} $content match output_dir]} {}
 
     puts "Processing: $job_id $cmd"
 
@@ -203,13 +211,14 @@ proc process_job {job_file} {
                     win1 GetClientHandle my_post
                     my_post AddModel $model_path
                     if { $result_path ne "" && [file exists $result_path] } {
-                        my_post SetResult $result_path
+                        my_post AddResult $result_path
                     }
                     my_post Draw
                     my_post ReleaseHandle
                     win1 ReleaseHandle
                     page1 ReleaseHandle
                     proj ReleaseHandle
+                    sess ReleaseHandle
                     hwi CloseStack
                 } err] } {
                     puts "load_model error: $err"
