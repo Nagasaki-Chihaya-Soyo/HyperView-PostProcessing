@@ -136,6 +136,16 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
+            # 如果有结果文件，加载结果
+            if {$result_path ne ""} {
+                puts "Loading result file for analysis: $result_path"
+                if { [catch {
+                    model1 AddResult $result_path
+                } addResultErr] } {
+                    puts "Warning: Could not load result file: $addResultErr"
+                }
+            }
+
             if { [catch {
                 model1 GetResultCtrlHandle resultCtrl
 
@@ -225,9 +235,19 @@ proc cmd_display_contour {model_path result_path} {
             set modelCount [my_post GetNumberOfModels]
         }
 
-        # 获取模型句柄并设置结果类型
+        # 获取模型句柄
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
+
+            # 如果有结果文件，加载结果
+            if {$result_path ne ""} {
+                puts "Loading result file for contour: $result_path"
+                if { [catch {
+                    model1 AddResult $result_path
+                } addResultErr] } {
+                    puts "Warning: Could not load result file: $addResultErr"
+                }
+            }
 
             if { [catch {
                 model1 GetResultCtrlHandle resultCtrl
@@ -379,6 +399,7 @@ proc process_job {job_file} {
             "load_model" {
                 puts "Executing load_model command"
                 puts "Model path: $model_path"
+                puts "Result path: $result_path"
                 if { [catch {
                     hwi OpenStack
                     hwi GetSessionHandle sess
@@ -390,9 +411,25 @@ proc process_job {job_file} {
                     win1 SetClientType animation
                     win1 GetClientHandle my_post
 
-                    # 加载模型文件 (.h3d文件通常包含模型和结果)
+                    # 加载模型文件
                     my_post AddModel $model_path
                     my_post Draw
+
+                    # 如果有结果文件，加载结果
+                    if {$result_path ne ""} {
+                        puts "Loading result file: $result_path"
+                        set modelCount [my_post GetNumberOfModels]
+                        if {$modelCount > 0} {
+                            my_post GetModelHandle model1 1
+                            if { [catch {
+                                model1 AddResult $result_path
+                            } resultErr] } {
+                                puts "Warning: Could not load result file: $resultErr"
+                            }
+                            model1 ReleaseHandle
+                        }
+                        my_post Draw
+                    }
 
                     my_post ReleaseHandle
                     win1 ReleaseHandle

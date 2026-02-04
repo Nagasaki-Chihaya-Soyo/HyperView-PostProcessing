@@ -119,13 +119,22 @@ class Application(tk.Tk):
 
     def _run_analysis(self):
         model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+
+        # 验证输入
+        if not model_path and result_path:
+            # 只有结果文件，没有模型文件
+            messagebox.showinfo(title="Info", message="Please select a model file first.\nResult file requires a model file to be loaded.")
+            self.result_entry.delete(0, tk.END)
+            return
+
         if not model_path:
             messagebox.showwarning(title="WARNING!", message="You Need to Select model files")
             return
         if self.orchestrator.state != State.AGENT_READY:
             messagebox.showwarning(title="WARNING!", message="Unable to Start HyperView")
             return
-        result_path = self.result_entry.get().strip()
+
         # 根据选项决定是否最小化主窗口
         should_minimize = self.auto_minimize_var.get()
         if should_minimize:
@@ -159,13 +168,22 @@ class Application(tk.Tk):
 
     def _load_model(self):
         model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+
+        # 验证输入
+        if not model_path and result_path:
+            # 只有结果文件，没有模型文件
+            messagebox.showinfo(title="Info", message="Please select a model file first.\nResult file requires a model file to be loaded.")
+            self.result_entry.delete(0, tk.END)
+            return
+
         if not model_path:
             messagebox.showwarning(title="WARNING!", message="You Need to Select model files")
             return
         if self.orchestrator.state != State.AGENT_READY:
             messagebox.showwarning(title="WARNING!", message="HyperView is not ready")
             return
-        result_path = self.result_entry.get().strip()
+
         self.load_btn.config(state=tk.DISABLED)
         self._start_progress()
         def load():
