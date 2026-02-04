@@ -618,15 +618,6 @@ class AnalysisDialog(tk.Toplevel):
 
         ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
 
-        # 云图导出按钮
-        contour_btn = ttk.Button(func_frame, text="Export Contour Image",
-                                 command=self._export_contour, width=40)
-        contour_btn.pack(pady=10)
-        ttk.Label(func_frame, text="Export stress contour plot as image",
-                  foreground='gray').pack()
-
-        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
-
         # 材料对比按钮
         compare_btn = ttk.Button(func_frame, text="Compare with Material Standards",
                                  command=self._compare_material, width=40)
@@ -694,17 +685,6 @@ class AnalysisDialog(tk.Toplevel):
 
         threading.Thread(target=run, daemon=True).start()
 
-    def _export_contour(self):
-        """导出云图"""
-        self._set_status("Exporting contour image...")
-        self._start_progress()
-
-        def run():
-            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            self.after(0, lambda: self._on_analysis_complete(result, "contour"))
-
-        threading.Thread(target=run, daemon=True).start()
-
     def _compare_material(self):
         """与材料标准对比"""
         self._set_status("Comparing with material standards...")
@@ -740,14 +720,6 @@ Location: {analysis.peak_coords}
 
 {analysis.message}"""
             messagebox.showinfo(title="Stress Peak Analysis", message=msg)
-
-        elif analysis_type == "contour":
-            images = result.get('images', [])
-            if images:
-                messagebox.showinfo(title="Contour Export",
-                                    message=f"Contour image saved to:\n{images[0]}")
-            else:
-                messagebox.showwarning(title="Contour Export", message="No image was generated.")
 
         elif analysis_type == "compare":
             analysis = result['analysis']
