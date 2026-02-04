@@ -117,8 +117,10 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         hwi OpenStack
         hwi GetSessionHandle sess
         sess GetProjectHandle proj
-        proj GetPageHandle page1 1
-        page1 GetWindowHandle win1 1
+        set pageId [proj GetActivePage]
+        proj GetPageHandle page1 $pageId
+        set winId [page1 GetActiveWindow]
+        page1 GetWindowHandle win1 $winId
         win1 SetClientType Animation
         win1 GetClientHandle my_post
 
@@ -166,11 +168,11 @@ proc process_job {job_file} {
     set content [read $f]
     close $f
 
-    regexp {"id"\s*:\s*"([^"]*)"} $content -> job_id
-    regexp {"cmd"\s*:\s*"([^"]*)"} $content -> cmd
-    regexp {"model_path"\s*:\s*"([^"]*)"} $content -> model_path
-    regexp {"result_path"\s*:\s*"([^"]*)"} $content -> result_path
-    regexp {"output_dir"\s*:\s*"([^"]*)"} $content -> output_dir
+    regexp {\"id\"[^\"]*\"([^\"]*)} $content -> job_id
+    regexp {\"cmd\"[^\"]*\"([^\"]*)} $content -> cmd
+    regexp {\"model_path\"[^\"]*\"([^\"]*)} $content -> model_path
+    regexp {\"result_path\"[^\"]*\"([^\"]*)} $content -> result_path
+    regexp {\"output_dir\"[^\"]*\"([^\"]*)} $content -> output_dir
 
     puts "Processing: $job_id $cmd"
 
@@ -193,8 +195,10 @@ proc process_job {job_file} {
                     hwi OpenStack
                     hwi GetSessionHandle sess
                     sess GetProjectHandle proj
-                    proj GetPageHandle page1 1
-                    page1 GetWindowHandle win1 1
+                    set pageId [proj GetActivePage]
+                    proj GetPageHandle page1 $pageId
+                    set winId [page1 GetActiveWindow]
+                    page1 GetWindowHandle win1 $winId
                     win1 SetClientType Animation
                     win1 GetClientHandle my_post
                     my_post AddModel $model_path
