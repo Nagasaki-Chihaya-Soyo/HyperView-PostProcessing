@@ -577,7 +577,7 @@ class AnalysisDialog(tk.Toplevel):
         self.geometry("500x400")
         self.resizable(width=False, height=False)
         self.transient(parent)
-        self.grab_set()
+        # 不使用 grab_set()，允许用户与主窗口交互
 
         self.parent = parent
         self.orchestrator = orchestrator
@@ -586,6 +586,8 @@ class AnalysisDialog(tk.Toplevel):
         self.result = None
 
         self._create_ui()
+        # 等待窗口关闭
+        self.wait_window()
 
     def _create_ui(self):
         # 主容器
