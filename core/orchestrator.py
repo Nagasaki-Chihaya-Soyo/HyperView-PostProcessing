@@ -124,37 +124,46 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         win1 SetClientType animation
         win1 GetClientHandle my_post
 
-        # 加载模型 (.h3d文件通常包含模型和结果)
-        my_post AddModel $model_path
-        my_post Draw
+        # 检查是否已有模型加载，如果没有才加载
+        set modelCount [my_post GetNumberOfModels]
+        if {$modelCount == 0} {
+            my_post AddModel $model_path
+            my_post Draw
+            set modelCount [my_post GetNumberOfModels]
+        }
 
         # 获取模型句柄并设置结果类型
-        set modelCount [my_post GetNumberOfModels]
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
-            model1 GetResultCtrlHandle resultCtrl
 
-            # 设置结果类型为应力
-            set numDataTypes [resultCtrl GetNumberOfDataTypes]
-            for {set i 1} {$i <= $numDataTypes} {incr i} {
-                set dtype [resultCtrl GetDataTypeLabel $i]
-                if {[string match -nocase "*stress*" $dtype]} {
-                    resultCtrl SetCurrentDataType $i
-                    break
+            if { [catch {
+                model1 GetResultCtrlHandle resultCtrl
+
+                # 设置结果类型为应力
+                set numDataTypes [resultCtrl GetNumberOfDataTypes]
+                for {set i 1} {$i <= $numDataTypes} {incr i} {
+                    set dtype [resultCtrl GetDataTypeLabel $i]
+                    if {[string match -nocase "*stress*" $dtype]} {
+                        resultCtrl SetCurrentDataType $i
+                        break
+                    }
                 }
+
+                # 设置分量为vonMises
+                set numComponents [resultCtrl GetNumberOfDataComponents]
+                for {set j 1} {$j <= $numComponents} {incr j} {
+                    set comp [resultCtrl GetDataComponentLabel $j]
+                    if {[string match -nocase "*mises*" $comp] || [string match -nocase "*von*" $comp]} {
+                        resultCtrl SetCurrentDataComponent $j
+                        break
+                    }
+                }
+
+                resultCtrl ReleaseHandle
+            } resultErr] } {
+                puts "Result control error: $resultErr"
             }
 
-            # 设置分量为vonMises
-            set numComponents [resultCtrl GetNumberOfDataComponents]
-            for {set j 1} {$j <= $numComponents} {incr j} {
-                set comp [resultCtrl GetDataComponentLabel $j]
-                if {[string match -nocase "*mises*" $comp] || [string match -nocase "*von*" $comp]} {
-                    resultCtrl SetCurrentDataComponent $j
-                    break
-                }
-            }
-
-            resultCtrl ReleaseHandle
             model1 ReleaseHandle
         }
 
@@ -187,7 +196,8 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
     } err] } {
         puts "cmd_export_contour_and_peak_vm error: $err"
         catch { hwi CloseStack }
-        error "Failed: $err"
+        # 返回默认值而不是抛出错误，避免错误传播问题
+        return [list 0.0 0 ""]
     }
 
     return [list $MAX_VALUE $MAX_ID $image_path]
@@ -268,8 +278,13 @@ proc process_job {job_file} {
                 set pv [lindex $res 0]
                 set pi [lindex $res 1]
                 set ip [lindex $res 2]
-                set json [format {{"success":true,"images":["%s"],"peak":{"value":%s,"entity_id":%s,"coords":[0,0,0],"tags":{"component":"","part":"","property":""}}}} $ip $pv $pi]
-                write_result $job_id $json
+                # 检查结果是否有效
+                if {$ip eq "" || $pv == 0.0} {
+                    write_result $job_id {{"success":false,"error":"Analysis failed - no valid results"}}
+                } else {
+                    set json [format {{"success":true,"images":["%s"],"peak":{"value":%s,"entity_id":%s,"coords":[0,0,0],"tags":{"component":"","part":"","property":""}}}} $ip $pv $pi]
+                    write_result $job_id $json
+                }
             }
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
