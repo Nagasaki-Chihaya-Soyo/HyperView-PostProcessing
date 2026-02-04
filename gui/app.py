@@ -71,6 +71,15 @@ class Application(tk.Tk):
         self.progress.pack(side=tk.LEFT, padx=20)
         self._progress_running = False
 
+        # 自动最小化选项
+        self.auto_minimize_var = tk.BooleanVar(value=True)
+        self.auto_minimize_cb = ttk.Checkbutton(
+            btn_frame,
+            text="Auto Minimize",
+            variable=self.auto_minimize_var
+        )
+        self.auto_minimize_cb.pack(side=tk.LEFT, padx=20)
+
         result_frame = ttk.LabelFrame(tab, text="Analysing Result", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -117,12 +126,15 @@ class Application(tk.Tk):
             messagebox.showwarning(title="WARNING!", message="Unable to Start HyperView")
             return
         result_path = self.result_entry.get().strip()
-        # 最小化主窗口
-        self.iconify()
+        # 根据选项决定是否最小化主窗口
+        should_minimize = self.auto_minimize_var.get()
+        if should_minimize:
+            self.iconify()
         # 弹出分析对话框
         dialog = AnalysisDialog(self, self.orchestrator, model_path, result_path)
         # 对话框关闭后恢复主窗口
-        self.deiconify()
+        if should_minimize:
+            self.deiconify()
 
     def _start_progress(self):
         """启动进度条动画"""
