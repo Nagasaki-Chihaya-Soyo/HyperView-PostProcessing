@@ -99,6 +99,7 @@ proc escape_json_string {str} {
 
 proc cleanup_handles {} {
     # 清理可能存在的旧句柄，防止重复定义错误
+    catch { legendH ReleaseHandle }
     catch { selSet ReleaseHandle }
     catch { my_post ReleaseHandle }
     catch { model1 ReleaseHandle }
@@ -262,26 +263,46 @@ proc cmd_display_contour {model_path result_path} {
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
-            # 第一步：选中当前界面的所有实体模型
-            puts "Step 1: Selecting all entities in current view..."
+            # 获取结果控制句柄
+            model1 GetResultCtrlHandle resultCtrl
 
-            # 通过model句柄获取选择集
-            model1 GetSelectionSetHandle selSet
+            # 获取云图控制句柄
+            resultCtrl GetContourCtrlHandle contourCtrl
 
-            # 清除当前选择
-            selSet Clear
+            # 设置数据类型为应力
+            puts "Setting contour data type to Stress..."
+            contourCtrl SetDataType "Stress"
 
-            # 选择所有元素 (elements)
-            selSet Add "element" "all"
-            puts "Selected all elements"
+            # 设置数据分量为vonMises
+            puts "Setting data component to vonMises..."
+            contourCtrl SetDataComponent "vonMises"
 
-            # 获取选中的实体数量
-            set elemCount [selSet GetCount "element"]
-            puts "Total elements selected: $elemCount"
+            # 启用云图显示
+            puts "Enabling contour display..."
+            contourCtrl SetEnableState true
+
+            # 设置图例可见
+            if { [catch {
+                contourCtrl GetLegendHandle legendH
+                legendH SetVisibility true
+                legendH ReleaseHandle
+            } legErr] } {
+                puts "Legend warning: $legErr"
+            }
+
+            # 应用更改
+            resultCtrl Apply
+
+            # 设置显示选项
+            my_post SetDisplayOptions contour true
+            my_post SetDisplayOptions legend true
 
             # 释放句柄
-            selSet ReleaseHandle
+            contourCtrl ReleaseHandle
+            resultCtrl ReleaseHandle
             model1 ReleaseHandle
+
+            puts "Contour display enabled successfully"
         } else {
             puts "No model loaded in current view"
         }
