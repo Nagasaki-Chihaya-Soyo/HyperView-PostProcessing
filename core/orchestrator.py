@@ -242,96 +242,15 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 }
 
 proc cmd_display_contour {model_path result_path} {
-    puts "=== Display Contour V2 ==="
-    # 清理可能存在的旧句柄
-    cleanup_handles
+    puts "=== Display Contour V3 (HWC) ==="
 
     if { [catch {
-        puts "Opening HWI stack..."
-        hwi OpenStack
-        hwi GetSessionHandle sess
-        sess GetProjectHandle proj
-        set pageId [proj GetActivePage]
-        proj GetPageHandle page1 $pageId
-        set winId [page1 GetActiveWindow]
-        page1 GetWindowHandle win1 $winId
-        win1 SetClientType animation
-        win1 GetClientHandle my_post
-        puts "Got client handle"
-
-        # 检查是否已有模型加载
-        set modelCount [my_post GetNumberOfModels]
-        puts "Model count: $modelCount"
-
-        if {$modelCount > 0} {
-            puts "Getting model handle..."
-            my_post GetModelHandle model1 1
-            puts "Got model1 handle"
-
-            # 获取结果控制句柄
-            puts "Getting ResultCtrlHandle..."
-            model1 GetResultCtrlHandle resultCtrl
-            puts "Got resultCtrl handle"
-
-            # 获取云图控制句柄
-            puts "Getting ContourCtrlHandle..."
-            resultCtrl GetContourCtrlHandle contourCtrl
-            puts "Got contourCtrl handle"
-
-            # 设置数据类型为应力
-            puts "Setting contour data type to Stress..."
-            contourCtrl SetDataType "Stress"
-            puts "DataType set"
-
-            # 设置数据分量为vonMises
-            puts "Setting data component to vonMises..."
-            contourCtrl SetDataComponent "vonMises"
-            puts "DataComponent set"
-
-            # 启用云图显示
-            puts "Enabling contour display..."
-            contourCtrl SetEnableState true
-            puts "EnableState set"
-
-            # 设置图例可见
-            puts "Setting legend visibility..."
-            if { [catch {
-                contourCtrl GetLegendHandle legendH
-                legendH SetVisibility true
-                legendH ReleaseHandle
-                puts "Legend set"
-            } legErr] } {
-                puts "Legend warning: $legErr"
-            }
-
-            # 设置显示选项
-            puts "Setting display options..."
-            my_post SetDisplayOptions contour true
-            my_post SetDisplayOptions legend true
-            puts "Display options set"
-
-            # 释放句柄
-            contourCtrl ReleaseHandle
-            resultCtrl ReleaseHandle
-            model1 ReleaseHandle
-
-            puts "Contour display enabled successfully"
-        } else {
-            puts "No model loaded in current view"
-        }
-
-        # 刷新显示
-        my_post Draw
-
-        my_post ReleaseHandle
-        win1 ReleaseHandle
-        page1 ReleaseHandle
-        proj ReleaseHandle
-        sess ReleaseHandle
-        hwi CloseStack
+        # 使用HWC指令显示云图
+        puts "Plotting contour using HWC command..."
+        hwc result scalar plot current contour
+        puts "Contour plotted successfully"
     } err] } {
         puts "cmd_display_contour error: $err"
-        catch { hwi CloseStack }
         return 0
     }
 
