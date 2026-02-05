@@ -105,7 +105,6 @@ class Application(tk.Tk):
 
     def _browse_result(self):
         filetypes = [
-            ("Output Files", "*.out"),
             ("H3D Results", "*.h3d"),
             ("Nastran Results", "*.op2;*.pch"),
             ("LS-DYNA Files", "*.d3plot"),
