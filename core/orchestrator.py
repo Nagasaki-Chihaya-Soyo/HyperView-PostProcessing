@@ -132,7 +132,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
             set modelCount [my_post GetNumberOfModels]
         }
 
-        # 获取模型句柄
+        # 获取模型句柄并设置云图
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
@@ -151,10 +151,43 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
                 }
             }
 
+            # 获取ResultCtrlHandle和ContourCtrlHandle来启用应力云图
+            if { [catch {
+                model1 GetResultCtrlHandle resultCtrl
+                resultCtrl GetContourCtrlHandle contourCtrl
+
+                # 设置数据类型为应力(Stress) von Mises
+                if { [catch {
+                    contourCtrl SetDataType "Stress"
+                    contourCtrl SetDataComponent "vonMises"
+                } setErr] } {
+                    puts "SetDataType/Component warning: $setErr"
+                }
+
+                # 启用云图显示
+                if { [catch {
+                    contourCtrl SetEnableState true
+                } enableErr] } {
+                    puts "SetEnableState warning: $enableErr"
+                }
+
+                # 应用更改
+                if { [catch {
+                    resultCtrl Apply
+                } applyErr] } {
+                    puts "Apply warning: $applyErr"
+                }
+
+                contourCtrl ReleaseHandle
+                resultCtrl ReleaseHandle
+            } resultErr] } {
+                puts "Result/Contour ctrl warning: $resultErr"
+            }
+
             model1 ReleaseHandle
         }
 
-        # 刷新显示 - h3d文件已包含结果数据
+        # 刷新显示
         my_post Draw
 
         # 获取最大值
@@ -209,7 +242,7 @@ proc cmd_display_contour {model_path result_path} {
             set modelCount [my_post GetNumberOfModels]
         }
 
-        # 获取模型句柄
+        # 获取模型句柄并设置云图显示
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
@@ -228,10 +261,45 @@ proc cmd_display_contour {model_path result_path} {
                 }
             }
 
+            # 获取ResultCtrlHandle和ContourCtrlHandle来启用云图
+            if { [catch {
+                model1 GetResultCtrlHandle resultCtrl
+                resultCtrl GetContourCtrlHandle contourCtrl
+
+                # 尝试设置数据类型为应力(Stress)并启用云图
+                # 常见的数据类型: Stress, Displacement, Strain等
+                if { [catch {
+                    contourCtrl SetDataType "Stress"
+                    contourCtrl SetDataComponent "vonMises"
+                } setErr] } {
+                    puts "SetDataType/Component warning: $setErr"
+                    # 如果设置失败，尝试使用默认数据类型
+                }
+
+                # 启用云图显示
+                if { [catch {
+                    contourCtrl SetEnableState true
+                } enableErr] } {
+                    puts "SetEnableState warning: $enableErr"
+                }
+
+                # 应用更改
+                if { [catch {
+                    resultCtrl Apply
+                } applyErr] } {
+                    puts "Apply warning: $applyErr"
+                }
+
+                contourCtrl ReleaseHandle
+                resultCtrl ReleaseHandle
+            } resultErr] } {
+                puts "Result/Contour ctrl warning: $resultErr"
+            }
+
             model1 ReleaseHandle
         }
 
-        # 刷新显示 - h3d文件已包含结果数据，会自动显示云图
+        # 刷新显示
         my_post Draw
 
         my_post ReleaseHandle
@@ -367,7 +435,6 @@ proc process_job {job_file} {
                     if {$result_path ne ""} {
                         set ext [string tolower [file extension $result_path]]
                         # .h3d文件已包含结果，.op2/.pch/.rst等是支持的结果文件
-                        # .out文件通常不被直接支持
                         if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
                             puts "Loading result file: $result_path"
                             set modelCount [my_post GetNumberOfModels]
@@ -378,6 +445,21 @@ proc process_job {job_file} {
                                 } resultErr] } {
                                     puts "Warning: Could not load result file: $resultErr"
                                 }
+
+                                # 启用云图显示
+                                if { [catch {
+                                    model1 GetResultCtrlHandle resultCtrl
+                                    resultCtrl GetContourCtrlHandle contourCtrl
+                                    catch { contourCtrl SetDataType "Stress" }
+                                    catch { contourCtrl SetDataComponent "vonMises" }
+                                    catch { contourCtrl SetEnableState true }
+                                    catch { resultCtrl Apply }
+                                    contourCtrl ReleaseHandle
+                                    resultCtrl ReleaseHandle
+                                } contourErr] } {
+                                    puts "Contour setup warning: $contourErr"
+                                }
+
                                 model1 ReleaseHandle
                             }
                             my_post Draw
