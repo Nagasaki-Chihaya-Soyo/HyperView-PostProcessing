@@ -151,31 +151,17 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
                 }
             }
 
+            # 尝试设置结果类型 - 使用简化的方法
             if { [catch {
                 model1 GetResultCtrlHandle resultCtrl
 
-                # 设置结果类型为应力
-                set numDataTypes [resultCtrl GetNumberOfDataTypes]
-                for {set i 1} {$i <= $numDataTypes} {incr i} {
-                    set dtype [resultCtrl GetDataTypeLabel $i]
-                    if {[string match -nocase "*stress*" $dtype]} {
-                        resultCtrl SetCurrentDataType $i
-                        break
-                    }
+                # 直接设置数据类型和分量（使用字符串方式）
+                if { [catch {
+                    resultCtrl SetDataType "Stress"
+                    resultCtrl SetDataComponent "vonMises"
+                } setErr] } {
+                    puts "SetDataType/Component error: $setErr"
                 }
-
-                # 设置分量为vonMises
-                set numComponents [resultCtrl GetNumberOfDataComponents]
-                for {set j 1} {$j <= $numComponents} {incr j} {
-                    set comp [resultCtrl GetDataComponentLabel $j]
-                    if {[string match -nocase "*mises*" $comp] || [string match -nocase "*von*" $comp]} {
-                        resultCtrl SetCurrentDataComponent $j
-                        break
-                    }
-                }
-
-                # 应用结果设置
-                resultCtrl Apply
 
                 resultCtrl ReleaseHandle
             } resultErr] } {
@@ -259,31 +245,17 @@ proc cmd_display_contour {model_path result_path} {
                 }
             }
 
+            # 尝试设置结果类型 - 使用简化的方法
             if { [catch {
                 model1 GetResultCtrlHandle resultCtrl
 
-                # 设置结果类型为应力
-                set numDataTypes [resultCtrl GetNumberOfDataTypes]
-                for {set i 1} {$i <= $numDataTypes} {incr i} {
-                    set dtype [resultCtrl GetDataTypeLabel $i]
-                    if {[string match -nocase "*stress*" $dtype]} {
-                        resultCtrl SetCurrentDataType $i
-                        break
-                    }
+                # 直接设置数据类型和分量（使用字符串方式）
+                if { [catch {
+                    resultCtrl SetDataType "Stress"
+                    resultCtrl SetDataComponent "vonMises"
+                } setErr] } {
+                    puts "SetDataType/Component error: $setErr"
                 }
-
-                # 设置分量为vonMises
-                set numComponents [resultCtrl GetNumberOfDataComponents]
-                for {set j 1} {$j <= $numComponents} {incr j} {
-                    set comp [resultCtrl GetDataComponentLabel $j]
-                    if {[string match -nocase "*mises*" $comp] || [string match -nocase "*von*" $comp]} {
-                        resultCtrl SetCurrentDataComponent $j
-                        break
-                    }
-                }
-
-                # 应用结果设置 - 这会自动启用云图显示
-                resultCtrl Apply
 
                 resultCtrl ReleaseHandle
             } resultErr] } {
@@ -306,6 +278,10 @@ proc cmd_display_contour {model_path result_path} {
         puts "cmd_display_contour error: $err"
         catch { hwi CloseStack }
         return 0
+    }
+
+    return 1
+}
     }
 
     return 1
