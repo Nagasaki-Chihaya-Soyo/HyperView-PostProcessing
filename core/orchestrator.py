@@ -247,7 +247,7 @@ proc cmd_display_contour {model_path result_path} {
     if { [catch {
         # 使用HWC指令显示云图
         puts "Plotting contour using HWC command..."
-        hwc result scalar plot current contour
+        hwc result scalar plot "Current Contour"
         puts "Contour plotted successfully"
     } err] } {
         puts "cmd_display_contour error: $err"
