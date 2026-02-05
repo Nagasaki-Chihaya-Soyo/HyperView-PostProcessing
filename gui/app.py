@@ -777,8 +777,8 @@ Ratio: {analysis.ratio:.2% if analysis.ratio else 'N/A'}
 Report: {result['report_path']}"""
             messagebox.showinfo(title="Material Comparison", message=msg)
 
-        # 通知父窗口更新
-        if hasattr(self.parent, '_show_result'):
+        # 通知父窗口更新 (只对有analysis结果的类型)
+        if analysis_type in ("stress_peak", "compare") and hasattr(self.parent, '_show_result'):
             self.parent._show_result(result)
 
 
