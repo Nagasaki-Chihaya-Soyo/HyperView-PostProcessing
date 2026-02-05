@@ -99,6 +99,7 @@ proc escape_json_string {str} {
 
 proc cleanup_handles {} {
     # 清理可能存在的旧句柄，防止重复定义错误
+    catch { selSet ReleaseHandle }
     catch { my_post ReleaseHandle }
     catch { model1 ReleaseHandle }
     catch { contourCtrl ReleaseHandle }
@@ -254,69 +255,35 @@ proc cmd_display_contour {model_path result_path} {
         win1 SetClientType animation
         win1 GetClientHandle my_post
 
-        # 检查是否已有模型加载，如果没有才加载
+        # 检查是否已有模型加载
         set modelCount [my_post GetNumberOfModels]
-        if {$modelCount == 0} {
-            my_post AddModel $model_path
-            my_post Draw
-            set modelCount [my_post GetNumberOfModels]
-        }
+        puts "Model count: $modelCount"
 
-        # 获取模型句柄并设置云图显示
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
-            # 如果有结果文件，检查文件类型并加载
-            if {$result_path ne ""} {
-                set ext [string tolower [file extension $result_path]]
-                if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
-                    puts "Loading result file for contour: $result_path"
-                    if { [catch {
-                        model1 AddResult $result_path
-                    } addResultErr] } {
-                        puts "Warning: Could not load result file: $addResultErr"
-                    }
-                } else {
-                    puts "Note: Result file type '$ext' is not directly supported."
-                }
-            }
+            # 第一步：选中当前界面的所有实体模型
+            puts "Step 1: Selecting all entities in current view..."
 
-            # 获取ResultCtrlHandle和ContourCtrlHandle来启用云图
-            if { [catch {
-                model1 GetResultCtrlHandle resultCtrl
-                resultCtrl GetContourCtrlHandle contourCtrl
+            # 获取选择集句柄
+            my_post GetSelectionSetHandle selSet
 
-                # 尝试设置数据类型为应力(Stress)并启用云图
-                # 常见的数据类型: Stress, Displacement, Strain等
-                if { [catch {
-                    contourCtrl SetDataType "Stress"
-                    contourCtrl SetDataComponent "vonMises"
-                } setErr] } {
-                    puts "SetDataType/Component warning: $setErr"
-                    # 如果设置失败，尝试使用默认数据类型
-                }
+            # 清除当前选择
+            selSet Clear
 
-                # 启用云图显示
-                if { [catch {
-                    contourCtrl SetEnableState true
-                } enableErr] } {
-                    puts "SetEnableState warning: $enableErr"
-                }
+            # 选择所有元素 (elements)
+            selSet Add "element" "all"
+            puts "Selected all elements"
 
-                # 应用更改
-                if { [catch {
-                    resultCtrl Apply
-                } applyErr] } {
-                    puts "Apply warning: $applyErr"
-                }
+            # 获取选中的实体数量
+            set elemCount [selSet GetCount "element"]
+            puts "Total elements selected: $elemCount"
 
-                contourCtrl ReleaseHandle
-                resultCtrl ReleaseHandle
-            } resultErr] } {
-                puts "Result/Contour ctrl warning: $resultErr"
-            }
-
+            # 释放句柄
+            selSet ReleaseHandle
             model1 ReleaseHandle
+        } else {
+            puts "No model loaded in current view"
         }
 
         # 刷新显示
