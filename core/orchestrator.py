@@ -265,14 +265,28 @@ proc cmd_display_contour {model_path result_path} {
             # 第一步：选中当前界面的所有实体模型
             puts "Step 1: Selecting all entities in current view..."
 
-            # 获取选择集句柄（不同HyperView版本能力不同）
+            # 获取选择集句柄（不同HyperView版本能力不同，参数签名也可能不同）
             set hasSelSet 0
-            if {![catch { model1 GetSelectionSetHandle selSet } selErr]} {
+            set selErr ""
+
+            # 优先尝试model对象（部分版本仅在model上提供选择集接口）
+            if {![catch { model1 GetSelectionSetHandle selSet } e1]} {
                 set hasSelSet 1
-            } elseif {![catch { my_post GetSelectionSetHandle selSet } selErr]} {
+            } elseif {![catch { model1 GetSelectionSetHandle selSet 1 } e2]} {
                 set hasSelSet 1
             } else {
-                puts "Selection set is not available in this HyperView version: $selErr"
+                # 记录model层失败信息，用于诊断
+                set selErr "model1.GetSelectionSetHandle failed: $e1 / $e2"
+
+                # 最后再尝试post层（老版本或特定配置）
+                if {![catch { my_post GetSelectionSetHandle selSet } e3]} {
+                    set hasSelSet 1
+                } elseif {![catch { my_post GetSelectionSetHandle selSet 1 } e4]} {
+                    set hasSelSet 1
+                } else {
+                    append selErr " ; my_post.GetSelectionSetHandle failed: $e3 / $e4"
+                    puts "Selection set is not available in this HyperView version: $selErr"
+                }
             }
 
             if {$hasSelSet} {
@@ -280,18 +294,34 @@ proc cmd_display_contour {model_path result_path} {
                 catch { selSet Clear }
 
                 # 优先选中所有单元；失败时退化为节点选择
+                set selected 0
                 if {![catch { selSet Add "element" "all" } addElemErr]} {
+                    set selected 1
+                } elseif {![catch { selSet Add "element all" } addElemErr2]} {
+                    set selected 1
+                }
+
+                if {$selected} {
                     puts "Selected all elements"
                     if {![catch { set elemCount [selSet GetCount "element"] } countErr]} {
                         puts "Total elements selected: $elemCount"
                     }
-                } elseif {![catch { selSet Add "node" "all" } addNodeErr]} {
-                    puts "Element selection not supported, selected all nodes instead"
-                    if {![catch { set nodeCount [selSet GetCount "node"] } nCountErr]} {
-                        puts "Total nodes selected: $nodeCount"
-                    }
                 } else {
-                    puts "Failed to select all entities: $addElemErr / $addNodeErr"
+                    set selectedNode 0
+                    if {![catch { selSet Add "node" "all" } addNodeErr]} {
+                        set selectedNode 1
+                    } elseif {![catch { selSet Add "node all" } addNodeErr2]} {
+                        set selectedNode 1
+                    }
+
+                    if {$selectedNode} {
+                        puts "Element selection not supported, selected all nodes instead"
+                        if {![catch { set nodeCount [selSet GetCount "node"] } nCountErr]} {
+                            puts "Total nodes selected: $nodeCount"
+                        }
+                    } else {
+                        puts "Failed to select all entities: $addElemErr / $addElemErr2 / $addNodeErr / $addNodeErr2"
+                    }
                 }
 
                 # 释放句柄
