@@ -242,10 +242,12 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 }
 
 proc cmd_display_contour {model_path result_path} {
+    puts "=== Display Contour V2 ==="
     # 清理可能存在的旧句柄
     cleanup_handles
 
     if { [catch {
+        puts "Opening HWI stack..."
         hwi OpenStack
         hwi GetSessionHandle sess
         sess GetProjectHandle proj
@@ -255,47 +257,63 @@ proc cmd_display_contour {model_path result_path} {
         page1 GetWindowHandle win1 $winId
         win1 SetClientType animation
         win1 GetClientHandle my_post
+        puts "Got client handle"
 
         # 检查是否已有模型加载
         set modelCount [my_post GetNumberOfModels]
         puts "Model count: $modelCount"
 
         if {$modelCount > 0} {
+            puts "Getting model handle..."
             my_post GetModelHandle model1 1
+            puts "Got model1 handle"
 
             # 获取结果控制句柄
+            puts "Getting ResultCtrlHandle..."
             model1 GetResultCtrlHandle resultCtrl
+            puts "Got resultCtrl handle"
 
             # 获取云图控制句柄
+            puts "Getting ContourCtrlHandle..."
             resultCtrl GetContourCtrlHandle contourCtrl
+            puts "Got contourCtrl handle"
 
             # 设置数据类型为应力
             puts "Setting contour data type to Stress..."
             contourCtrl SetDataType "Stress"
+            puts "DataType set"
 
             # 设置数据分量为vonMises
             puts "Setting data component to vonMises..."
             contourCtrl SetDataComponent "vonMises"
+            puts "DataComponent set"
 
             # 启用云图显示
             puts "Enabling contour display..."
             contourCtrl SetEnableState true
+            puts "EnableState set"
 
             # 设置图例可见
+            puts "Setting legend visibility..."
             if { [catch {
                 contourCtrl GetLegendHandle legendH
                 legendH SetVisibility true
                 legendH ReleaseHandle
+                puts "Legend set"
             } legErr] } {
                 puts "Legend warning: $legErr"
             }
 
             # 应用更改
+            puts "Applying changes..."
             resultCtrl Apply
+            puts "Applied"
 
             # 设置显示选项
+            puts "Setting display options..."
             my_post SetDisplayOptions contour true
             my_post SetDisplayOptions legend true
+            puts "Display options set"
 
             # 释放句柄
             contourCtrl ReleaseHandle
