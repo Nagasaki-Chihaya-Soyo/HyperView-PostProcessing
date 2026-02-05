@@ -282,10 +282,6 @@ proc cmd_display_contour {model_path result_path} {
 
     return 1
 }
-    }
-
-    return 1
-}
 
 proc process_job {job_file} {
     global MAX_VALUE MAX_ID
