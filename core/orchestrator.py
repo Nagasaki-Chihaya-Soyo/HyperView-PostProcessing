@@ -265,8 +265,8 @@ proc cmd_display_contour {model_path result_path} {
             # 第一步：选中当前界面的所有实体模型
             puts "Step 1: Selecting all entities in current view..."
 
-            # 获取选择集句柄
-            my_post GetSelectionSetHandle selSet
+            # 通过model句柄获取选择集
+            model1 GetSelectionSetHandle selSet
 
             # 清除当前选择
             selSet Clear
