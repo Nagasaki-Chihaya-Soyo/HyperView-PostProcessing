@@ -265,22 +265,38 @@ proc cmd_display_contour {model_path result_path} {
             # 第一步：选中当前界面的所有实体模型
             puts "Step 1: Selecting all entities in current view..."
 
-            # 获取选择集句柄
-            my_post GetSelectionSetHandle selSet
+            # 获取选择集句柄（不同HyperView版本能力不同）
+            set hasSelSet 0
+            if {![catch { model1 GetSelectionSetHandle selSet } selErr]} {
+                set hasSelSet 1
+            } elseif {![catch { my_post GetSelectionSetHandle selSet } selErr]} {
+                set hasSelSet 1
+            } else {
+                puts "Selection set is not available in this HyperView version: $selErr"
+            }
 
-            # 清除当前选择
-            selSet Clear
+            if {$hasSelSet} {
+                # 清除当前选择
+                catch { selSet Clear }
 
-            # 选择所有元素 (elements)
-            selSet Add "element" "all"
-            puts "Selected all elements"
+                # 优先选中所有单元；失败时退化为节点选择
+                if {![catch { selSet Add "element" "all" } addElemErr]} {
+                    puts "Selected all elements"
+                    if {![catch { set elemCount [selSet GetCount "element"] } countErr]} {
+                        puts "Total elements selected: $elemCount"
+                    }
+                } elseif {![catch { selSet Add "node" "all" } addNodeErr]} {
+                    puts "Element selection not supported, selected all nodes instead"
+                    if {![catch { set nodeCount [selSet GetCount "node"] } nCountErr]} {
+                        puts "Total nodes selected: $nodeCount"
+                    }
+                } else {
+                    puts "Failed to select all entities: $addElemErr / $addNodeErr"
+                }
 
-            # 获取选中的实体数量
-            set elemCount [selSet GetCount "element"]
-            puts "Total elements selected: $elemCount"
-
-            # 释放句柄
-            selSet ReleaseHandle
+                # 释放句柄
+                catch { selSet ReleaseHandle }
+            }
             model1 ReleaseHandle
         } else {
             puts "No model loaded in current view"
