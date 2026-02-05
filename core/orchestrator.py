@@ -304,11 +304,6 @@ proc cmd_display_contour {model_path result_path} {
                 puts "Legend warning: $legErr"
             }
 
-            # 应用更改
-            puts "Applying changes..."
-            resultCtrl Apply
-            puts "Applied"
-
             # 设置显示选项
             puts "Setting display options..."
             my_post SetDisplayOptions contour true
