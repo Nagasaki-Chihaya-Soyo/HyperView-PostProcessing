@@ -132,7 +132,7 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
             set modelCount [my_post GetNumberOfModels]
         }
 
-        # 获取模型句柄并设置结果类型
+        # 获取模型句柄
         if {$modelCount > 0} {
             my_post GetModelHandle model1 1
 
@@ -151,27 +151,10 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
                 }
             }
 
-            # 尝试设置结果类型 - 使用简化的方法
-            if { [catch {
-                model1 GetResultCtrlHandle resultCtrl
-
-                # 直接设置数据类型和分量（使用字符串方式）
-                if { [catch {
-                    resultCtrl SetDataType "Stress"
-                    resultCtrl SetDataComponent "vonMises"
-                } setErr] } {
-                    puts "SetDataType/Component error: $setErr"
-                }
-
-                resultCtrl ReleaseHandle
-            } resultErr] } {
-                puts "Result control error: $resultErr"
-            }
-
             model1 ReleaseHandle
         }
 
-        # 刷新显示
+        # 刷新显示 - h3d文件已包含结果数据
         my_post Draw
 
         # 获取最大值
@@ -245,27 +228,10 @@ proc cmd_display_contour {model_path result_path} {
                 }
             }
 
-            # 尝试设置结果类型 - 使用简化的方法
-            if { [catch {
-                model1 GetResultCtrlHandle resultCtrl
-
-                # 直接设置数据类型和分量（使用字符串方式）
-                if { [catch {
-                    resultCtrl SetDataType "Stress"
-                    resultCtrl SetDataComponent "vonMises"
-                } setErr] } {
-                    puts "SetDataType/Component error: $setErr"
-                }
-
-                resultCtrl ReleaseHandle
-            } resultErr] } {
-                puts "Result control error: $resultErr"
-            }
-
             model1 ReleaseHandle
         }
 
-        # 刷新显示
+        # 刷新显示 - h3d文件已包含结果数据，会自动显示云图
         my_post Draw
 
         my_post ReleaseHandle
