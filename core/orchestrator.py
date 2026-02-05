@@ -97,6 +97,20 @@ proc escape_json_string {str} {
     return $str
 }
 
+proc cleanup_handles {} {
+    # 清理可能存在的旧句柄，防止重复定义错误
+    catch { my_post ReleaseHandle }
+    catch { model1 ReleaseHandle }
+    catch { contourCtrl ReleaseHandle }
+    catch { resultCtrl ReleaseHandle }
+    catch { qc ReleaseHandle }
+    catch { win1 ReleaseHandle }
+    catch { page1 ReleaseHandle }
+    catch { proj ReleaseHandle }
+    catch { sess ReleaseHandle }
+    catch { hwi CloseStack }
+}
+
 proc write_result {job_id result_json} {
     global OUTBOX_DIR
     set result_file [file join $OUTBOX_DIR "job_${job_id}.result.json"]
@@ -112,6 +126,9 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
     set MAX_VALUE 0.0
     set MAX_ID 0
     set image_path ""
+
+    # 清理可能存在的旧句柄
+    cleanup_handles
 
     if { [catch {
         hwi OpenStack
@@ -223,6 +240,9 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 }
 
 proc cmd_display_contour {model_path result_path} {
+    # 清理可能存在的旧句柄
+    cleanup_handles
+
     if { [catch {
         hwi OpenStack
         hwi GetSessionHandle sess
@@ -416,6 +436,8 @@ proc process_job {job_file} {
                 puts "Executing load_model command"
                 puts "Model path: $model_path"
                 puts "Result path: $result_path"
+                # 清理可能存在的旧句柄
+                cleanup_handles
                 if { [catch {
                     hwi OpenStack
                     hwi GetSessionHandle sess
