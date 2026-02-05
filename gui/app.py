@@ -67,8 +67,18 @@ class Application(tk.Tk):
         self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis)
         self.run_btn.pack(side=tk.LEFT, padx=20)
 
-        self.progress = ttk.Progressbar(btn_frame, mode='indeterminate', length=200)
+        self.progress = ttk.Progressbar(btn_frame, mode='determinate', length=200, maximum=100)
         self.progress.pack(side=tk.LEFT, padx=20)
+        self._progress_running = False
+
+        # 自动最小化选项
+        self.auto_minimize_var = tk.BooleanVar(value=True)
+        self.auto_minimize_cb = ttk.Checkbutton(
+            btn_frame,
+            text="Auto Minimize",
+            variable=self.auto_minimize_var
+        )
+        self.auto_minimize_cb.pack(side=tk.LEFT, padx=20)
 
         result_frame = ttk.LabelFrame(tab, text="Analysing Result", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -95,7 +105,6 @@ class Application(tk.Tk):
 
     def _browse_result(self):
         filetypes = [
-            ("Output Files", "*.out"),
             ("H3D Results", "*.h3d"),
             ("Nastran Results", "*.op2;*.pch"),
             ("LS-DYNA Files", "*.d3plot"),
@@ -109,34 +118,80 @@ class Application(tk.Tk):
 
     def _run_analysis(self):
         model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+
+        # 验证输入
+        if not model_path and result_path:
+            # 只有结果文件，没有模型文件
+            messagebox.showinfo(title="Info", message="Please select a model file first.\nResult file requires a model file to be loaded.")
+            self.result_entry.delete(0, tk.END)
+            return
+
         if not model_path:
             messagebox.showwarning(title="WARNING!", message="You Need to Select model files")
             return
         if self.orchestrator.state != State.AGENT_READY:
             messagebox.showwarning(title="WARNING!", message="Unable to Start HyperView")
             return
-        result_path = self.result_entry.get().strip()
+
+        # 根据选项决定是否最小化主窗口
+        should_minimize = self.auto_minimize_var.get()
+        if should_minimize:
+            self.iconify()
         # 弹出分析对话框
-        AnalysisDialog(self, self.orchestrator, model_path, result_path)
+        dialog = AnalysisDialog(self, self.orchestrator, model_path, result_path)
+        # 对话框关闭后恢复主窗口
+        if should_minimize:
+            self.deiconify()
+
+    def _start_progress(self):
+        """启动进度条动画"""
+        self.progress['value'] = 0
+        self._progress_running = True
+        self._update_progress()
+
+    def _update_progress(self):
+        """更新进度条（模拟进度）"""
+        if not self._progress_running:
+            return
+        current = self.progress['value']
+        if current < 90:
+            increment = max(1, (90 - current) / 20)
+            self.progress['value'] = min(90, current + increment)
+            self.after(200, self._update_progress)
+
+    def _stop_progress(self, success=True):
+        """停止进度条"""
+        self._progress_running = False
+        self.progress['value'] = 100 if success else 0
 
     def _load_model(self):
         model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+
+        # 验证输入
+        if not model_path and result_path:
+            # 只有结果文件，没有模型文件
+            messagebox.showinfo(title="Info", message="Please select a model file first.\nResult file requires a model file to be loaded.")
+            self.result_entry.delete(0, tk.END)
+            return
+
         if not model_path:
             messagebox.showwarning(title="WARNING!", message="You Need to Select model files")
             return
         if self.orchestrator.state != State.AGENT_READY:
             messagebox.showwarning(title="WARNING!", message="HyperView is not ready")
             return
-        result_path = self.result_entry.get().strip()
+
         self.load_btn.config(state=tk.DISABLED)
-        self.progress.start()
+        self._start_progress()
         def load():
             success = self.orchestrator.load_model(model_path, result_path)
             self.after(0, lambda: self._on_model_loaded(success))
         threading.Thread(target=load, daemon=True).start()
 
     def _on_model_loaded(self, success: bool):
-        self.progress.stop()
+        self._stop_progress(success)
         self.load_btn.config(state=tk.NORMAL)
         if success:
             messagebox.showinfo(title="Success", message="Model loaded successfully")
@@ -538,8 +593,7 @@ class AnalysisDialog(tk.Toplevel):
         self.title("Analysis Options")
         self.geometry("500x400")
         self.resizable(width=False, height=False)
-        self.transient(parent)
-        self.grab_set()
+        # 不使用 transient 和 grab_set，让窗口独立运行
 
         self.parent = parent
         self.orchestrator = orchestrator
@@ -548,71 +602,119 @@ class AnalysisDialog(tk.Toplevel):
         self.result = None
 
         self._create_ui()
+        # 等待窗口关闭
+        self.wait_window()
 
     def _create_ui(self):
+        # 主容器
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
         # 标题
-        title_frame = ttk.Frame(self, padding=10)
+        title_frame = ttk.Frame(main_frame, padding=10)
         title_frame.pack(fill=tk.X)
         ttk.Label(title_frame, text="Select Analysis Function", font=('Arial', 12, 'bold')).pack()
 
         # 模型信息
-        info_frame = ttk.LabelFrame(self, text="Model Information", padding=10)
+        info_frame = ttk.LabelFrame(main_frame, text="Model Information", padding=10)
         info_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(info_frame, text=f"Model: {self.model_path}", wraplength=450).pack(anchor=tk.W)
+        ttk.Label(info_frame, text=f"Model: {os.path.basename(self.model_path)}", wraplength=450).pack(anchor=tk.W)
         if self.result_path:
-            ttk.Label(info_frame, text=f"Result: {self.result_path}", wraplength=450).pack(anchor=tk.W)
+            ttk.Label(info_frame, text=f"Result: {os.path.basename(self.result_path)}", wraplength=450).pack(anchor=tk.W)
 
         # 功能按钮区域
-        func_frame = ttk.LabelFrame(self, text="Analysis Functions", padding=10)
+        func_frame = ttk.LabelFrame(main_frame, text="Analysis Functions", padding=10)
         func_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # 应力分析按钮
-        stress_btn = ttk.Button(func_frame, text="Stress Peak Analysis (Von Mises)",
+        # 显示云图按钮
+        contour_btn = ttk.Button(func_frame, text="Display Stress Contour",
+                                command=self._display_contour, width=40)
+        contour_btn.pack(pady=8)
+        ttk.Label(func_frame, text="Display Von Mises stress contour on the model",
+                  foreground='gray').pack()
+
+        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=8)
+
+        # 应力峰值分析按钮
+        stress_btn = ttk.Button(func_frame, text="Stress Peak Analysis",
                                 command=self._analyze_stress_peak, width=40)
-        stress_btn.pack(pady=10)
+        stress_btn.pack(pady=8)
         ttk.Label(func_frame, text="Find maximum Von Mises stress location and value",
                   foreground='gray').pack()
 
-        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
-
-        # 云图导出按钮
-        contour_btn = ttk.Button(func_frame, text="Export Contour Image",
-                                 command=self._export_contour, width=40)
-        contour_btn.pack(pady=10)
-        ttk.Label(func_frame, text="Export stress contour plot as image",
-                  foreground='gray').pack()
-
-        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=8)
 
         # 材料对比按钮
         compare_btn = ttk.Button(func_frame, text="Compare with Material Standards",
                                  command=self._compare_material, width=40)
-        compare_btn.pack(pady=10)
+        compare_btn.pack(pady=8)
         ttk.Label(func_frame, text="Compare peak stress with allowable values from database",
                   foreground='gray').pack()
 
-        # 底部按钮
-        btn_frame = ttk.Frame(self, padding=10)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Close", command=self.destroy).pack(side=tk.RIGHT, padx=5)
+        # 底部区域 (从下往上: 状态栏 -> 进度条 -> 关闭按钮)
+        bottom_frame = ttk.Frame(self)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
         # 状态栏
         self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W, padding=5)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # 进度条
-        self.progress = ttk.Progressbar(self, mode='indeterminate')
-        self.progress.pack(fill=tk.X, side=tk.BOTTOM)
+        # 进度条 (确定模式，显示百分比)
+        self.progress = ttk.Progressbar(bottom_frame, mode='determinate', length=480, maximum=100)
+        self.progress.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
+        self._progress_running = False
+
+        # 关闭按钮
+        btn_frame = ttk.Frame(bottom_frame, padding=10)
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        ttk.Button(btn_frame, text="Close", command=self.destroy, width=15).pack(side=tk.RIGHT, padx=5)
 
     def _set_status(self, msg):
         self.status_var.set(msg)
         self.update()
 
+    def _start_progress(self):
+        """启动进度条动画"""
+        self.progress['value'] = 0
+        self._progress_running = True
+        self._update_progress()
+
+    def _update_progress(self):
+        """更新进度条（模拟进度）"""
+        if not self._progress_running:
+            return
+        current = self.progress['value']
+        # 逐渐增加到90%，留10%给完成时
+        if current < 90:
+            # 开始快，后面慢
+            increment = max(1, (90 - current) / 20)
+            self.progress['value'] = min(90, current + increment)
+            self.after(200, self._update_progress)
+
+    def _stop_progress(self, success=True):
+        """停止进度条"""
+        self._progress_running = False
+        if success:
+            self.progress['value'] = 100
+        else:
+            self.progress['value'] = 0
+
+    def _display_contour(self):
+        """显示云图"""
+        self._set_status("Displaying stress contour...")
+        self._start_progress()
+
+        def run():
+            result = self.orchestrator.display_contour(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_analysis_complete(result, "contour"))
+
+        threading.Thread(target=run, daemon=True).start()
+
     def _analyze_stress_peak(self):
         """分析应力峰值"""
         self._set_status("Analyzing stress peak...")
-        self.progress.start()
+        self._start_progress()
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
@@ -620,21 +722,10 @@ class AnalysisDialog(tk.Toplevel):
 
         threading.Thread(target=run, daemon=True).start()
 
-    def _export_contour(self):
-        """导出云图"""
-        self._set_status("Exporting contour image...")
-        self.progress.start()
-
-        def run():
-            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            self.after(0, lambda: self._on_analysis_complete(result, "contour"))
-
-        threading.Thread(target=run, daemon=True).start()
-
     def _compare_material(self):
         """与材料标准对比"""
         self._set_status("Comparing with material standards...")
-        self.progress.start()
+        self._start_progress()
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
@@ -644,18 +735,23 @@ class AnalysisDialog(tk.Toplevel):
 
     def _on_analysis_complete(self, result, analysis_type):
         """分析完成回调"""
-        self.progress.stop()
-
         if result is None:
+            self._stop_progress(success=False)
             self._set_status("Analysis failed!")
             messagebox.showerror(title="Error", message="Analysis failed. Check the log for details.")
             return
+
+        self._stop_progress(success=True)
 
         self._set_status("Analysis complete!")
         self.result = result
 
         # 根据分析类型显示不同的结果
-        if analysis_type == "stress_peak":
+        if analysis_type == "contour":
+            self._set_status("Contour displayed successfully!")
+            messagebox.showinfo(title="Display Contour", message="Stress contour has been displayed on the model.\n\nYou can now view the contour in HyperView.")
+
+        elif analysis_type == "stress_peak":
             analysis = result['analysis']
             msg = f"""Stress Peak Analysis Result:
 
@@ -665,14 +761,6 @@ Location: {analysis.peak_coords}
 
 {analysis.message}"""
             messagebox.showinfo(title="Stress Peak Analysis", message=msg)
-
-        elif analysis_type == "contour":
-            images = result.get('images', [])
-            if images:
-                messagebox.showinfo(title="Contour Export",
-                                    message=f"Contour image saved to:\n{images[0]}")
-            else:
-                messagebox.showwarning(title="Contour Export", message="No image was generated.")
 
         elif analysis_type == "compare":
             analysis = result['analysis']
@@ -689,8 +777,8 @@ Ratio: {analysis.ratio:.2% if analysis.ratio else 'N/A'}
 Report: {result['report_path']}"""
             messagebox.showinfo(title="Material Comparison", message=msg)
 
-        # 通知父窗口更新
-        if hasattr(self.parent, '_show_result'):
+        # 通知父窗口更新 (只对有analysis结果的类型)
+        if analysis_type in ("stress_peak", "compare") and hasattr(self.parent, '_show_result'):
             self.parent._show_result(result)
 
 

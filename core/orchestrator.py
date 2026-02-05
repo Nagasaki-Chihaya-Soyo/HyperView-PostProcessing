@@ -121,25 +121,86 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
         proj GetPageHandle page1 $pageId
         set winId [page1 GetActiveWindow]
         page1 GetWindowHandle win1 $winId
-        win1 SetClientType Animation
+        win1 SetClientType animation
         win1 GetClientHandle my_post
 
-        # 加载模型 (.h3d文件通常包含模型和结果)
-        my_post AddModel $model_path
+        # 检查是否已有模型加载，如果没有才加载
+        set modelCount [my_post GetNumberOfModels]
+        if {$modelCount == 0} {
+            my_post AddModel $model_path
+            my_post Draw
+            set modelCount [my_post GetNumberOfModels]
+        }
+
+        # 获取模型句柄并设置云图
+        if {$modelCount > 0} {
+            my_post GetModelHandle model1 1
+
+            # 如果有结果文件，检查文件类型并加载
+            if {$result_path ne ""} {
+                set ext [string tolower [file extension $result_path]]
+                if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
+                    puts "Loading result file for analysis: $result_path"
+                    if { [catch {
+                        model1 AddResult $result_path
+                    } addResultErr] } {
+                        puts "Warning: Could not load result file: $addResultErr"
+                    }
+                } else {
+                    puts "Note: Result file type '$ext' is not directly supported."
+                }
+            }
+
+            # 获取ResultCtrlHandle和ContourCtrlHandle来启用应力云图
+            if { [catch {
+                model1 GetResultCtrlHandle resultCtrl
+                resultCtrl GetContourCtrlHandle contourCtrl
+
+                # 设置数据类型为应力(Stress) von Mises
+                if { [catch {
+                    contourCtrl SetDataType "Stress"
+                    contourCtrl SetDataComponent "vonMises"
+                } setErr] } {
+                    puts "SetDataType/Component warning: $setErr"
+                }
+
+                # 启用云图显示
+                if { [catch {
+                    contourCtrl SetEnableState true
+                } enableErr] } {
+                    puts "SetEnableState warning: $enableErr"
+                }
+
+                # 应用更改
+                if { [catch {
+                    resultCtrl Apply
+                } applyErr] } {
+                    puts "Apply warning: $applyErr"
+                }
+
+                contourCtrl ReleaseHandle
+                resultCtrl ReleaseHandle
+            } resultErr] } {
+                puts "Result/Contour ctrl warning: $resultErr"
+            }
+
+            model1 ReleaseHandle
+        }
+
+        # 刷新显示
         my_post Draw
 
-        my_post GetContourCtrlHandle cc
-        cc SetDataType "Stress"
-        cc SetDataComponent "vonMises"
-        cc SetEnableState true
-        cc ReleaseHandle
-
-        my_post Draw
-
-        my_post GetQueryCtrlHandle qc
-        set MAX_VALUE [qc GetContourMaxValue]
-        set MAX_ID [qc GetContourMaxID]
-        qc ReleaseHandle
+        # 获取最大值
+        if { [catch {
+            my_post GetQueryCtrlHandle qc
+            set MAX_VALUE [qc GetContourMaxValue]
+            set MAX_ID [qc GetContourMaxID]
+            qc ReleaseHandle
+        } qerr] } {
+            puts "Query error (using defaults): $qerr"
+            set MAX_VALUE 0.0
+            set MAX_ID 0
+        }
 
         file mkdir $output_dir
         set image_path [file join $output_dir "vonmises.png"]
@@ -154,10 +215,106 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
     } err] } {
         puts "cmd_export_contour_and_peak_vm error: $err"
         catch { hwi CloseStack }
-        error "Failed: $err"
+        # 返回默认值而不是抛出错误，避免错误传播问题
+        return [list 0.0 0 ""]
     }
 
     return [list $MAX_VALUE $MAX_ID $image_path]
+}
+
+proc cmd_display_contour {model_path result_path} {
+    if { [catch {
+        hwi OpenStack
+        hwi GetSessionHandle sess
+        sess GetProjectHandle proj
+        set pageId [proj GetActivePage]
+        proj GetPageHandle page1 $pageId
+        set winId [page1 GetActiveWindow]
+        page1 GetWindowHandle win1 $winId
+        win1 SetClientType animation
+        win1 GetClientHandle my_post
+
+        # 检查是否已有模型加载，如果没有才加载
+        set modelCount [my_post GetNumberOfModels]
+        if {$modelCount == 0} {
+            my_post AddModel $model_path
+            my_post Draw
+            set modelCount [my_post GetNumberOfModels]
+        }
+
+        # 获取模型句柄并设置云图显示
+        if {$modelCount > 0} {
+            my_post GetModelHandle model1 1
+
+            # 如果有结果文件，检查文件类型并加载
+            if {$result_path ne ""} {
+                set ext [string tolower [file extension $result_path]]
+                if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
+                    puts "Loading result file for contour: $result_path"
+                    if { [catch {
+                        model1 AddResult $result_path
+                    } addResultErr] } {
+                        puts "Warning: Could not load result file: $addResultErr"
+                    }
+                } else {
+                    puts "Note: Result file type '$ext' is not directly supported."
+                }
+            }
+
+            # 获取ResultCtrlHandle和ContourCtrlHandle来启用云图
+            if { [catch {
+                model1 GetResultCtrlHandle resultCtrl
+                resultCtrl GetContourCtrlHandle contourCtrl
+
+                # 尝试设置数据类型为应力(Stress)并启用云图
+                # 常见的数据类型: Stress, Displacement, Strain等
+                if { [catch {
+                    contourCtrl SetDataType "Stress"
+                    contourCtrl SetDataComponent "vonMises"
+                } setErr] } {
+                    puts "SetDataType/Component warning: $setErr"
+                    # 如果设置失败，尝试使用默认数据类型
+                }
+
+                # 启用云图显示
+                if { [catch {
+                    contourCtrl SetEnableState true
+                } enableErr] } {
+                    puts "SetEnableState warning: $enableErr"
+                }
+
+                # 应用更改
+                if { [catch {
+                    resultCtrl Apply
+                } applyErr] } {
+                    puts "Apply warning: $applyErr"
+                }
+
+                contourCtrl ReleaseHandle
+                resultCtrl ReleaseHandle
+            } resultErr] } {
+                puts "Result/Contour ctrl warning: $resultErr"
+            }
+
+            model1 ReleaseHandle
+        }
+
+        # 刷新显示
+        my_post Draw
+
+        my_post ReleaseHandle
+        win1 ReleaseHandle
+        page1 ReleaseHandle
+        proj ReleaseHandle
+        sess ReleaseHandle
+        hwi CloseStack
+    } err] } {
+        puts "cmd_display_contour error: $err"
+        catch { hwi CloseStack }
+        return 0
+    }
+
+    return 1
 }
 
 proc process_job {job_file} {
@@ -235,15 +392,30 @@ proc process_job {job_file} {
                 set pv [lindex $res 0]
                 set pi [lindex $res 1]
                 set ip [lindex $res 2]
-                set json [format {{"success":true,"images":["%s"],"peak":{"value":%s,"entity_id":%s,"coords":[0,0,0],"tags":{"component":"","part":"","property":""}}}} $ip $pv $pi]
-                write_result $job_id $json
+                # 检查结果是否有效
+                if {$ip eq "" || $pv == 0.0} {
+                    write_result $job_id {{"success":false,"error":"Analysis failed - no valid results"}}
+                } else {
+                    set json [format {{"success":true,"images":["%s"],"peak":{"value":%s,"entity_id":%s,"coords":[0,0,0],"tags":{"component":"","part":"","property":""}}}} $ip $pv $pi]
+                    write_result $job_id $json
+                }
             }
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
+            "display_contour" {
+                puts "Executing display_contour command"
+                set res [cmd_display_contour $model_path $result_path]
+                if {$res == 1} {
+                    write_result $job_id {{"success":true,"message":"Contour displayed"}}
+                } else {
+                    write_result $job_id {{"success":false,"error":"Failed to display contour"}}
+                }
+            }
             "load_model" {
                 puts "Executing load_model command"
                 puts "Model path: $model_path"
+                puts "Result path: $result_path"
                 if { [catch {
                     hwi OpenStack
                     hwi GetSessionHandle sess
@@ -255,9 +427,46 @@ proc process_job {job_file} {
                     win1 SetClientType animation
                     win1 GetClientHandle my_post
 
-                    # 加载模型文件 (.h3d文件通常包含模型和结果)
+                    # 加载模型文件
                     my_post AddModel $model_path
                     my_post Draw
+
+                    # 如果有结果文件，检查文件类型
+                    if {$result_path ne ""} {
+                        set ext [string tolower [file extension $result_path]]
+                        # .h3d文件已包含结果，.op2/.pch/.rst等是支持的结果文件
+                        if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
+                            puts "Loading result file: $result_path"
+                            set modelCount [my_post GetNumberOfModels]
+                            if {$modelCount > 0} {
+                                my_post GetModelHandle model1 1
+                                if { [catch {
+                                    model1 AddResult $result_path
+                                } resultErr] } {
+                                    puts "Warning: Could not load result file: $resultErr"
+                                }
+
+                                # 启用云图显示
+                                if { [catch {
+                                    model1 GetResultCtrlHandle resultCtrl
+                                    resultCtrl GetContourCtrlHandle contourCtrl
+                                    catch { contourCtrl SetDataType "Stress" }
+                                    catch { contourCtrl SetDataComponent "vonMises" }
+                                    catch { contourCtrl SetEnableState true }
+                                    catch { resultCtrl Apply }
+                                    contourCtrl ReleaseHandle
+                                    resultCtrl ReleaseHandle
+                                } contourErr] } {
+                                    puts "Contour setup warning: $contourErr"
+                                }
+
+                                model1 ReleaseHandle
+                            }
+                            my_post Draw
+                        } else {
+                            puts "Note: Result file type '$ext' is not directly supported. Model file should contain results."
+                        }
+                    }
 
                     my_post ReleaseHandle
                     win1 ReleaseHandle
@@ -346,38 +555,70 @@ after 4000 listen
             self._log("HyperView NOT Ready,Start First")
             return None
         self._set_state(State.RUNNING)
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_dir = os.path.join(self.runs_dir, run_id)
-        os.makedirs(run_dir, exist_ok=True)
-        self._log(f"Begin Analysing:{model_path}")
-        self._log(f"Output dir:{run_dir}")
-        result = self.bridge.send_job(cmd="export_contour_and_peak_vm", params={
-            "model_path": model_path.replace('\\', '/'),
-            "result_path": result_path.replace('\\', '/') if result_path else "",
-            "output_dir": run_dir.replace('\\', '/')
-        })
-        if not result.get('success', False):
-            self._set_state(State.AGENT_READY)
-            self._log(f"Tasks Failed:{result.get('error', 'Unknown')}")
+        try:
+            run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_dir = os.path.join(self.runs_dir, run_id)
+            os.makedirs(run_dir, exist_ok=True)
+            self._log(f"Begin Analysing:{model_path}")
+            self._log(f"Output dir:{run_dir}")
+            result = self.bridge.send_job(cmd="export_contour_and_peak_vm", params={
+                "model_path": model_path.replace('\\', '/'),
+                "result_path": result_path.replace('\\', '/') if result_path else "",
+                "output_dir": run_dir.replace('\\', '/')
+            })
+            if not result.get('success', False):
+                self._log(f"Tasks Failed:{result.get('error', 'Unknown')}")
+                return None
+            peak_data = result.get('peak', {})
+            analysis_result = self.analyzer.analyze(peak_data)
+            report_path = os.path.join(run_dir, 'report.html')
+            self.reporter.generate(
+                results=[analysis_result],
+                images=result.get('images', []),
+                model_path=model_path,
+                result_path=result_path,
+                output_path=report_path
+            )
+            self._log(f"Analyzing Complete,Report:{report_path}")
+            return {
+                'success': True,
+                'analysis': analysis_result,
+                'report_path': report_path,
+                'run_dir': run_dir
+            }
+        except Exception as e:
+            self._log(f"Analysis error: {str(e)}")
             return None
-        peak_data = result.get('peak', {})
-        analysis_result = self.analyzer.analyze(peak_data)
-        report_path = os.path.join(run_dir, 'report.html')
-        self.reporter.generate(
-            results=[analysis_result],
-            images=result.get('images', []),
-            model_path=model_path,
-            result_path=result_path,
-            output_path=report_path
-        )
-        self._set_state(State.AGENT_READY)
-        self._log(f"Analyzing Complete,Report:{report_path}")
-        return {
-            'success': True,
-            'analysis': analysis_result,
-            'report_path': report_path,
-            'run_dir': run_dir
-        }
+        finally:
+            # 确保状态总是恢复到AGENT_READY
+            self._set_state(State.AGENT_READY)
+
+    def display_contour(self, model_path: str, result_path: str = "") -> Optional[Dict[str, Any]]:
+        """仅显示云图，不进行峰值分析"""
+        self._log(f"display_contour called with model_path={model_path}")
+        if self.state != State.AGENT_READY:
+            self._log("HyperView NOT Ready, Start First")
+            return None
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Displaying contour for: {model_path}")
+            result = self.bridge.send_job(cmd="display_contour", params={
+                "model_path": model_path.replace('\\', '/'),
+                "result_path": result_path.replace('\\', '/') if result_path else ""
+            })
+            if not result.get('success', False):
+                self._log(f"Display contour failed: {result.get('error', 'Unknown')}")
+                return None
+            self._log("Contour displayed successfully")
+            return {
+                'success': True,
+                'message': 'Contour displayed'
+            }
+        except Exception as e:
+            self._log(f"Display contour error: {str(e)}")
+            return None
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def load_model(self, model_path: str, result_path: str = "") -> bool:
         if self.state != State.AGENT_READY:
