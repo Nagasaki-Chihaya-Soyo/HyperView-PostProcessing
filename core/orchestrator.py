@@ -288,6 +288,16 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "load_all": true/false
+    set load_all 1
+    set idx [string first {"load_all"} $content]
+    if {$idx >= 0} {
+        set after_key [string range $content [expr {$idx + 10}] [expr {$idx + 20}]]
+        if {[string match "*false*" $after_key]} {
+            set load_all 0
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -378,6 +388,35 @@ proc process_job {job_file} {
                     return
                 }
                 puts "load_model completed successfully"
+                write_result $job_id {{"success":true}}
+            }
+            "load_model_hwc" {
+                puts "Executing load_model_hwc command"
+                puts "Model path: $model_path"
+                puts "Result path: $result_path"
+                puts "Load all: $load_all"
+                if { [catch {
+                    # 使用HWC指令加载模型
+                    hwc open animation "model:$model_path"
+                    puts "Model opened"
+
+                    # 加载结果文件
+                    hwc open animation "result:$result_path"
+                    puts "Result opened"
+
+                    # 如果load_all为true，加载所有结果
+                    if {$load_all} {
+                        hwc result animation load all
+                        puts "All results loaded"
+                    }
+                } err] } {
+                    puts "load_model_hwc error: $err"
+                    set escaped_err [escape_json_string $err]
+                    set err_json [format {{"success":false,"error":"%s"}} $escaped_err]
+                    write_result $job_id $err_json
+                    return
+                }
+                puts "load_model_hwc completed successfully"
                 write_result $job_id {{"success":true}}
             }
             default {
@@ -530,6 +569,33 @@ after 4000 listen
         else:
             self._log(f"Load failed:{result.get('error', 'Unknown')}")
             return False
+
+    def load_model_hwc(self, model_path: str, result_path: str = "", load_all: bool = True) -> bool:
+        """使用HWC指令加载模型"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Loading Model (HWC): {model_path}")
+            self._log(f"Result Path: {result_path}")
+            self._log(f"Load All: {load_all}")
+            result = self.bridge.send_job(cmd="load_model_hwc", params={
+                "model_path": model_path.replace('\\', '/'),
+                "result_path": result_path.replace('\\', '/') if result_path else model_path.replace('\\', '/'),
+                "load_all": load_all
+            })
+            if result.get('success', False):
+                self._log("Model loaded successfully (HWC)")
+                return True
+            else:
+                self._log(f"Load failed: {result.get('error', 'Unknown')}")
+                return False
+        except Exception as e:
+            self._log(f"Load model error: {str(e)}")
+            return False
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def shutdown(self):
         self._log("closing now")

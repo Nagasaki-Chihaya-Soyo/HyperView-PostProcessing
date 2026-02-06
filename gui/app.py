@@ -51,20 +51,22 @@ class Application(tk.Tk):
         ttk.Label(file_frame, text="Model Files:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.model_entry = ttk.Entry(file_frame, width=60)
         self.model_entry.grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(file_frame, text="View...", command=self._browse_model).grid(row=0, column=2, pady=5)
+        self.model_browse_btn = ttk.Button(file_frame, text="View...", command=self._browse_model, state=tk.DISABLED)
+        self.model_browse_btn.grid(row=0, column=2, pady=5)
 
         ttk.Label(file_frame, text="Result Files:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.result_entry = ttk.Entry(file_frame, width=60)
         self.result_entry.grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(file_frame, text="View...", command=self._browse_result).grid(row=1, column=2, pady=5)
+        self.result_browse_btn = ttk.Button(file_frame, text="View...", command=self._browse_result, state=tk.DISABLED)
+        self.result_browse_btn.grid(row=1, column=2, pady=5)
 
         btn_frame = ttk.Frame(tab)
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        self.load_btn = ttk.Button(btn_frame, text="Load Model", padding=10, command=self._load_model)
+        self.load_btn = ttk.Button(btn_frame, text="Load Model", padding=10, command=self._load_model, state=tk.DISABLED)
         self.load_btn.pack(side=tk.LEFT, padx=10)
 
-        self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis)
+        self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis, state=tk.DISABLED)
         self.run_btn.pack(side=tk.LEFT, padx=20)
 
         self.progress = ttk.Progressbar(btn_frame, mode='determinate', length=200, maximum=100)
@@ -89,6 +91,9 @@ class Application(tk.Tk):
         self.report_btn = ttk.Button(result_frame, text="Open Report Files", state=tk.DISABLED, command=self._open_report)
         self.report_btn.pack(pady=10)
 
+        # 模型是否已加载标志
+        self._model_loaded = False
+
     def _browse_model(self):
         filetypes = [("Model Files", "*.h3d"),
                      ("HyperMesh Files", "*.h3m"),
@@ -102,6 +107,12 @@ class Application(tk.Tk):
         if path:
             self.model_entry.delete(0, tk.END)
             self.model_entry.insert(0, path)
+            # 同时填充结果路径
+            self.result_entry.delete(0, tk.END)
+            self.result_entry.insert(0, path)
+            # 启用结果View按钮和Load Model按钮
+            self.result_browse_btn.config(state=tk.NORMAL)
+            self.load_btn.config(state=tk.NORMAL)
 
     def _browse_result(self):
         filetypes = [
@@ -166,12 +177,50 @@ class Application(tk.Tk):
         self.progress['value'] = 100 if success else 0
 
     def _load_model(self):
-        """加载模型 - 待实现"""
-        pass
+        """加载模型"""
+        model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+
+        if not model_path:
+            messagebox.showwarning(title="WARNING!", message="Please select a model file first")
+            return
+
+        # 检查是否已加载模型
+        if self._model_loaded:
+            reload = messagebox.askyesno(
+                title="Model Already Loaded",
+                message="A model is already loaded. Do you want to reload?"
+            )
+            if not reload:
+                return
+
+        # 询问是否 Load All
+        load_all = messagebox.askyesno(
+            title="Load All Results",
+            message="Do you want to load all results?\n\nYes: Load all result data\nNo: Load model and result file only"
+        )
+
+        self.load_btn.config(state=tk.DISABLED)
+        self._start_progress()
+
+        def load():
+            success = self.orchestrator.load_model_hwc(model_path, result_path, load_all)
+            self.after(0, lambda: self._on_model_loaded(success))
+
+        threading.Thread(target=load, daemon=True).start()
 
     def _on_model_loaded(self, success: bool):
-        """模型加载完成回调 - 待实现"""
-        pass
+        """模型加载完成回调"""
+        self._stop_progress(success)
+        self.load_btn.config(state=tk.NORMAL)
+
+        if success:
+            self._model_loaded = True
+            # 解锁 Analysing 按钮
+            self.run_btn.config(state=tk.NORMAL)
+            messagebox.showinfo(title="Success", message="Model loaded successfully")
+        else:
+            messagebox.showerror(title="Error", message="Failed to load model")
 
     def _show_result(self, result):
         self.progress.stop()
@@ -432,6 +481,24 @@ Report Path:{result['report_path']}
         }
         text, color = state_text.get(state, ("Unknown", "gray"))
         self.status_label.config(text=text, foreground=color)
+
+        # 根据状态启用/禁用按钮
+        if state == State.AGENT_READY:
+            # Ready后启用Model View按钮
+            self.model_browse_btn.config(state=tk.NORMAL)
+        elif state == State.STARTING:
+            # Starting时禁用所有按钮
+            self.model_browse_btn.config(state=tk.DISABLED)
+            self.result_browse_btn.config(state=tk.DISABLED)
+            self.load_btn.config(state=tk.DISABLED)
+            self.run_btn.config(state=tk.DISABLED)
+        elif state in (State.FAILED, State.EXITED, State.IDLE):
+            # 失败或退出时禁用所有按钮
+            self.model_browse_btn.config(state=tk.DISABLED)
+            self.result_browse_btn.config(state=tk.DISABLED)
+            self.load_btn.config(state=tk.DISABLED)
+            self.run_btn.config(state=tk.DISABLED)
+            self._model_loaded = False
 
     def _on_close(self):
         self.orchestrator.shutdown()
