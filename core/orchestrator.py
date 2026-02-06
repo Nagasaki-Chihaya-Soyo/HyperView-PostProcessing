@@ -170,39 +170,6 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
                 }
             }
 
-            # 获取ResultCtrlHandle和ContourCtrlHandle来启用应力云图
-            if { [catch {
-                model1 GetResultCtrlHandle resultCtrl
-                resultCtrl GetContourCtrlHandle contourCtrl
-
-                # 设置数据类型为应力(Stress) von Mises
-                if { [catch {
-                    contourCtrl SetDataType "Stress"
-                    contourCtrl SetDataComponent "vonMises"
-                } setErr] } {
-                    puts "SetDataType/Component warning: $setErr"
-                }
-
-                # 启用云图显示
-                if { [catch {
-                    contourCtrl SetEnableState true
-                } enableErr] } {
-                    puts "SetEnableState warning: $enableErr"
-                }
-
-                # 应用更改
-                if { [catch {
-                    resultCtrl Apply
-                } applyErr] } {
-                    puts "Apply warning: $applyErr"
-                }
-
-                contourCtrl ReleaseHandle
-                resultCtrl ReleaseHandle
-            } resultErr] } {
-                puts "Result/Contour ctrl warning: $resultErr"
-            }
-
             model1 ReleaseHandle
         }
 
@@ -386,20 +353,6 @@ proc process_job {job_file} {
                                     model1 AddResult $result_path
                                 } resultErr] } {
                                     puts "Warning: Could not load result file: $resultErr"
-                                }
-
-                                # 启用云图显示
-                                if { [catch {
-                                    model1 GetResultCtrlHandle resultCtrl
-                                    resultCtrl GetContourCtrlHandle contourCtrl
-                                    catch { contourCtrl SetDataType "Stress" }
-                                    catch { contourCtrl SetDataComponent "vonMises" }
-                                    catch { contourCtrl SetEnableState true }
-                                    catch { resultCtrl Apply }
-                                    contourCtrl ReleaseHandle
-                                    resultCtrl ReleaseHandle
-                                } contourErr] } {
-                                    puts "Contour setup warning: $contourErr"
                                 }
 
                                 model1 ReleaseHandle
