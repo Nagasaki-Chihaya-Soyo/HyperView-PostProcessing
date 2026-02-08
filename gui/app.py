@@ -127,32 +127,7 @@ class Application(tk.Tk):
             self.result_entry.insert(0, path)
 
     def _run_analysis(self):
-        model_path = self.model_entry.get().strip()
-        result_path = self.result_entry.get().strip()
-
-        # 验证输入
-        if not model_path and result_path:
-            # 只有结果文件，没有模型文件
-            messagebox.showinfo(title="Info", message="Please select a model file first.\nResult file requires a model file to be loaded.")
-            self.result_entry.delete(0, tk.END)
-            return
-
-        if not model_path:
-            messagebox.showwarning(title="WARNING!", message="You Need to Select model files")
-            return
-        if self.orchestrator.state != State.AGENT_READY:
-            messagebox.showwarning(title="WARNING!", message="Unable to Start HyperView")
-            return
-
-        # 根据选项决定是否最小化主窗口
-        should_minimize = self.auto_minimize_var.get()
-        if should_minimize:
-            self.iconify()
-        # 弹出分析对话框
-        dialog = AnalysisDialog(self, self.orchestrator, model_path, result_path)
-        # 对话框关闭后恢复主窗口
-        if should_minimize:
-            self.deiconify()
+        pass
 
     def _start_progress(self):
         """启动进度条动画"""
@@ -176,30 +151,10 @@ class Application(tk.Tk):
         self.progress['value'] = 100 if success else 0
 
     def _load_model(self):
-        model_path = self.model_entry.get().strip()
-        result_path = self.result_entry.get().strip()
-        if not model_path:
-            messagebox.showwarning(title="WARNING!", message="Please select a model file first.")
-            return
-        if self.orchestrator.state != State.AGENT_READY:
-            messagebox.showwarning(title="WARNING!", message="HyperView is not ready.")
-            return
-        self.load_btn.config(state=tk.DISABLED)
-        self._start_progress()
-
-        def load():
-            success = self.orchestrator.load_model(model_path, result_path)
-            self.after(0, lambda: self._on_model_loaded(success))
-        threading.Thread(target=load, daemon=True).start()
+        pass
 
     def _on_model_loaded(self, success: bool):
-        self._stop_progress(success)
-        self.load_btn.config(state=tk.NORMAL)
-        if success:
-            self.run_btn.config(state=tk.NORMAL)
-            messagebox.showinfo(title="Success", message="Model loaded successfully.")
-        else:
-            messagebox.showerror(title="Error", message="Failed to load model. Check the log for details.")
+        pass
 
     def _show_result(self, result):
         self.progress.stop()
