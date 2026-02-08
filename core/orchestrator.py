@@ -97,6 +97,22 @@ proc escape_json_string {str} {
     return $str
 }
 
+proc cleanup_handles {} {
+    # 清理可能存在的旧句柄，防止重复定义错误
+    catch { legendH ReleaseHandle }
+    catch { selSet ReleaseHandle }
+    catch { my_post ReleaseHandle }
+    catch { model1 ReleaseHandle }
+    catch { contourCtrl ReleaseHandle }
+    catch { resultCtrl ReleaseHandle }
+    catch { qc ReleaseHandle }
+    catch { win1 ReleaseHandle }
+    catch { page1 ReleaseHandle }
+    catch { proj ReleaseHandle }
+    catch { sess ReleaseHandle }
+    catch { hwi CloseStack }
+}
+
 proc write_result {job_id result_json} {
     global OUTBOX_DIR
     set result_file [file join $OUTBOX_DIR "job_${job_id}.result.json"]
@@ -112,6 +128,9 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
     set MAX_VALUE 0.0
     set MAX_ID 0
     set image_path ""
+
+    # 清理可能存在的旧句柄
+    cleanup_handles
 
     if { [catch {
         hwi OpenStack
@@ -149,39 +168,6 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
                 } else {
                     puts "Note: Result file type '$ext' is not directly supported."
                 }
-            }
-
-            # 获取ResultCtrlHandle和ContourCtrlHandle来启用应力云图
-            if { [catch {
-                model1 GetResultCtrlHandle resultCtrl
-                resultCtrl GetContourCtrlHandle contourCtrl
-
-                # 设置数据类型为应力(Stress) von Mises
-                if { [catch {
-                    contourCtrl SetDataType "Stress"
-                    contourCtrl SetDataComponent "vonMises"
-                } setErr] } {
-                    puts "SetDataType/Component warning: $setErr"
-                }
-
-                # 启用云图显示
-                if { [catch {
-                    contourCtrl SetEnableState true
-                } enableErr] } {
-                    puts "SetEnableState warning: $enableErr"
-                }
-
-                # 应用更改
-                if { [catch {
-                    resultCtrl Apply
-                } applyErr] } {
-                    puts "Apply warning: $applyErr"
-                }
-
-                contourCtrl ReleaseHandle
-                resultCtrl ReleaseHandle
-            } resultErr] } {
-                puts "Result/Contour ctrl warning: $resultErr"
             }
 
             model1 ReleaseHandle
@@ -223,94 +209,15 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 }
 
 proc cmd_display_contour {model_path result_path} {
+    puts "=== Display Contour V3 (HWC) ==="
+
     if { [catch {
-        hwi OpenStack
-        hwi GetSessionHandle sess
-        sess GetProjectHandle proj
-        set pageId [proj GetActivePage]
-        proj GetPageHandle page1 $pageId
-        set winId [page1 GetActiveWindow]
-        page1 GetWindowHandle win1 $winId
-        win1 SetClientType animation
-        win1 GetClientHandle my_post
-
-        # 检查是否已有模型加载，如果没有才加载
-        set modelCount [my_post GetNumberOfModels]
-        if {$modelCount == 0} {
-            my_post AddModel $model_path
-            my_post Draw
-            set modelCount [my_post GetNumberOfModels]
-        }
-
-        # 获取模型句柄并设置云图显示
-        if {$modelCount > 0} {
-            my_post GetModelHandle model1 1
-
-            # 如果有结果文件，检查文件类型并加载
-            if {$result_path ne ""} {
-                set ext [string tolower [file extension $result_path]]
-                if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
-                    puts "Loading result file for contour: $result_path"
-                    if { [catch {
-                        model1 AddResult $result_path
-                    } addResultErr] } {
-                        puts "Warning: Could not load result file: $addResultErr"
-                    }
-                } else {
-                    puts "Note: Result file type '$ext' is not directly supported."
-                }
-            }
-
-            # 获取ResultCtrlHandle和ContourCtrlHandle来启用云图
-            if { [catch {
-                model1 GetResultCtrlHandle resultCtrl
-                resultCtrl GetContourCtrlHandle contourCtrl
-
-                # 尝试设置数据类型为应力(Stress)并启用云图
-                # 常见的数据类型: Stress, Displacement, Strain等
-                if { [catch {
-                    contourCtrl SetDataType "Stress"
-                    contourCtrl SetDataComponent "vonMises"
-                } setErr] } {
-                    puts "SetDataType/Component warning: $setErr"
-                    # 如果设置失败，尝试使用默认数据类型
-                }
-
-                # 启用云图显示
-                if { [catch {
-                    contourCtrl SetEnableState true
-                } enableErr] } {
-                    puts "SetEnableState warning: $enableErr"
-                }
-
-                # 应用更改
-                if { [catch {
-                    resultCtrl Apply
-                } applyErr] } {
-                    puts "Apply warning: $applyErr"
-                }
-
-                contourCtrl ReleaseHandle
-                resultCtrl ReleaseHandle
-            } resultErr] } {
-                puts "Result/Contour ctrl warning: $resultErr"
-            }
-
-            model1 ReleaseHandle
-        }
-
-        # 刷新显示
-        my_post Draw
-
-        my_post ReleaseHandle
-        win1 ReleaseHandle
-        page1 ReleaseHandle
-        proj ReleaseHandle
-        sess ReleaseHandle
-        hwi CloseStack
+        # 使用HWC指令显示云图
+        puts "Plotting contour using HWC command..."
+        hwc result scalar plot "Current Contour"
+        puts "Contour plotted successfully"
     } err] } {
         puts "cmd_display_contour error: $err"
-        catch { hwi CloseStack }
         return 0
     }
 
@@ -416,6 +323,8 @@ proc process_job {job_file} {
                 puts "Executing load_model command"
                 puts "Model path: $model_path"
                 puts "Result path: $result_path"
+                # 清理可能存在的旧句柄
+                cleanup_handles
                 if { [catch {
                     hwi OpenStack
                     hwi GetSessionHandle sess
@@ -444,20 +353,6 @@ proc process_job {job_file} {
                                     model1 AddResult $result_path
                                 } resultErr] } {
                                     puts "Warning: Could not load result file: $resultErr"
-                                }
-
-                                # 启用云图显示
-                                if { [catch {
-                                    model1 GetResultCtrlHandle resultCtrl
-                                    resultCtrl GetContourCtrlHandle contourCtrl
-                                    catch { contourCtrl SetDataType "Stress" }
-                                    catch { contourCtrl SetDataComponent "vonMises" }
-                                    catch { contourCtrl SetEnableState true }
-                                    catch { resultCtrl Apply }
-                                    contourCtrl ReleaseHandle
-                                    resultCtrl ReleaseHandle
-                                } contourErr] } {
-                                    puts "Contour setup warning: $contourErr"
                                 }
 
                                 model1 ReleaseHandle
