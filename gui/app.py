@@ -51,20 +51,22 @@ class Application(tk.Tk):
         ttk.Label(file_frame, text="Model Files:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.model_entry = ttk.Entry(file_frame, width=60)
         self.model_entry.grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(file_frame, text="View...", command=self._browse_model).grid(row=0, column=2, pady=5)
+        self.model_view_btn = ttk.Button(file_frame, text="View...", command=self._browse_model, state=tk.DISABLED)
+        self.model_view_btn.grid(row=0, column=2, pady=5)
 
         ttk.Label(file_frame, text="Result Files:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.result_entry = ttk.Entry(file_frame, width=60)
         self.result_entry.grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(file_frame, text="View...", command=self._browse_result).grid(row=1, column=2, pady=5)
+        self.result_view_btn = ttk.Button(file_frame, text="View...", command=self._browse_result, state=tk.DISABLED)
+        self.result_view_btn.grid(row=1, column=2, pady=5)
 
         btn_frame = ttk.Frame(tab)
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        self.load_btn = ttk.Button(btn_frame, text="Load Model", padding=10, command=self._load_model)
+        self.load_btn = ttk.Button(btn_frame, text="Load Model", padding=10, command=self._load_model, state=tk.DISABLED)
         self.load_btn.pack(side=tk.LEFT, padx=10)
 
-        self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis)
+        self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis, state=tk.DISABLED)
         self.run_btn.pack(side=tk.LEFT, padx=20)
 
         self.progress = ttk.Progressbar(btn_frame, mode='determinate', length=200, maximum=100)
@@ -102,6 +104,14 @@ class Application(tk.Tk):
         if path:
             self.model_entry.delete(0, tk.END)
             self.model_entry.insert(0, path)
+            # Sequential unlock: enable Result View and Load Model after model path is set
+            self.result_view_btn.config(state=tk.NORMAL)
+            self.load_btn.config(state=tk.NORMAL)
+            # Default result path to match model path
+            self.result_entry.delete(0, tk.END)
+            self.result_entry.insert(0, path)
+            # Reset Analysing button since model changed, needs reload
+            self.run_btn.config(state=tk.DISABLED)
 
     def _browse_result(self):
         filetypes = [
@@ -117,32 +127,7 @@ class Application(tk.Tk):
             self.result_entry.insert(0, path)
 
     def _run_analysis(self):
-        model_path = self.model_entry.get().strip()
-        result_path = self.result_entry.get().strip()
-
-        # 验证输入
-        if not model_path and result_path:
-            # 只有结果文件，没有模型文件
-            messagebox.showinfo(title="Info", message="Please select a model file first.\nResult file requires a model file to be loaded.")
-            self.result_entry.delete(0, tk.END)
-            return
-
-        if not model_path:
-            messagebox.showwarning(title="WARNING!", message="You Need to Select model files")
-            return
-        if self.orchestrator.state != State.AGENT_READY:
-            messagebox.showwarning(title="WARNING!", message="Unable to Start HyperView")
-            return
-
-        # 根据选项决定是否最小化主窗口
-        should_minimize = self.auto_minimize_var.get()
-        if should_minimize:
-            self.iconify()
-        # 弹出分析对话框
-        dialog = AnalysisDialog(self, self.orchestrator, model_path, result_path)
-        # 对话框关闭后恢复主窗口
-        if should_minimize:
-            self.deiconify()
+        pass
 
     def _start_progress(self):
         """启动进度条动画"""
@@ -166,11 +151,9 @@ class Application(tk.Tk):
         self.progress['value'] = 100 if success else 0
 
     def _load_model(self):
-        """加载模型 - 待实现"""
         pass
 
     def _on_model_loaded(self, success: bool):
-        """模型加载完成回调 - 待实现"""
         pass
 
     def _show_result(self, result):
@@ -432,6 +415,16 @@ Report Path:{result['report_path']}
         }
         text, color = state_text.get(state, ("Unknown", "gray"))
         self.status_label.config(text=text, foreground=color)
+
+        # Sequential unlock: enable Model View button when HyperView is ready
+        if state == State.AGENT_READY:
+            self.model_view_btn.config(state=tk.NORMAL)
+        elif state in (State.IDLE, State.FAILED, State.EXITED):
+            # Reset all buttons to disabled when HyperView is not connected
+            self.model_view_btn.config(state=tk.DISABLED)
+            self.result_view_btn.config(state=tk.DISABLED)
+            self.load_btn.config(state=tk.DISABLED)
+            self.run_btn.config(state=tk.DISABLED)
 
     def _on_close(self):
         self.orchestrator.shutdown()
