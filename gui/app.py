@@ -584,22 +584,37 @@ class ContourOptionDialog(tk.Toplevel):
 
     TYPES = [
         "Element Stresses (2D & 3D)",
+        "Element Strains (2D & 3D)",
+        "Element Strains (2D & 3D) (Gauss)",
         "Displacement",
-        "Velocity",
-        "Acceleration",
-        "Element Forces",
-        "SPC Forces",
-        "Strain",
+        "Plastic Strains (2D & 3D)",
+        "Plastic Strains (2D & 3D) (Gauss)",
     ]
 
     COMPONENTS = {
-        "Element Stresses (2D & 3D)": ["vonMises", "XX", "YY", "ZZ", "XY", "YZ", "XZ", "MaxShear", "P1", "P2", "P3"],
-        "Displacement": ["Mag", "X", "Y", "Z", "RX", "RY", "RZ"],
-        "Velocity": ["Mag", "X", "Y", "Z", "RX", "RY", "RZ"],
-        "Acceleration": ["Mag", "X", "Y", "Z", "RX", "RY", "RZ"],
-        "Element Forces": ["Mag", "X", "Y", "Z"],
-        "SPC Forces": ["Mag", "X", "Y", "Z", "RX", "RY", "RZ"],
-        "Strain": ["vonMises", "XX", "YY", "ZZ", "XY", "YZ", "XZ", "MaxShear", "P1", "P2", "P3"],
+        "Element Stresses (2D & 3D)": [
+            "vonMises", "SignedVonMises", "Tresca", "Triaxiality",
+            "Lode Param xi", "Lode Param theta",
+            "P1 (major)", "P2 (mid)", "P3 (minor)",
+            "Extreme Principal", "Max Abs Principal", "MaxShear",
+            "Intensity", "Pressure",
+            "XX", "YY", "ZZ", "XY", "YZ", "ZX",
+        ],
+        "Element Strains (2D & 3D)": [
+            "vonMises",
+            "P1 (major)", "P2 (mid)", "P3 (minor)",
+            "Extreme Principal", "Max Abs Principal", "MaxShear",
+            "XX", "YY", "ZZ", "XY", "YZ", "ZX",
+        ],
+        "Element Strains (2D & 3D) (Gauss)": [
+            "vonMises",
+            "P1 (major)", "P2 (mid)", "P3 (minor)",
+            "Extreme Principal", "Max Abs Principal", "MaxShear",
+            "XX", "YY", "ZZ", "XY", "YZ", "ZX",
+        ],
+        "Displacement": ["Mag", "X", "Y", "Z"],
+        "Plastic Strains (2D & 3D)": ["Equivalent Plastic Strain"],
+        "Plastic Strains (2D & 3D) (Gauss)": ["Equivalent Plastic Strain"],
     }
 
     def __init__(self, parent):
