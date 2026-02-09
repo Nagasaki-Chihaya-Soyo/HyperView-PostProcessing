@@ -134,7 +134,6 @@ class Application(tk.Tk):
             return
         if self.auto_minimize_var.get():
             self.iconify()
-        threading.Thread(target=self.orchestrator.setup_view, daemon=True).start()
         AnalysisDialog(self, self.orchestrator, model_path, result_path)
         self.deiconify()
 
@@ -596,6 +595,7 @@ class AnalysisDialog(tk.Toplevel):
         self.result = None
 
         self._create_ui()
+        self._init_setup_view()
         # 等待窗口关闭
         self.wait_window()
 
@@ -665,9 +665,31 @@ class AnalysisDialog(tk.Toplevel):
         # 按钮区域
         btn_frame = ttk.Frame(bottom_frame, padding=10)
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        ttk.Button(btn_frame, text="Close", command=self.destroy, width=15).pack(side=tk.RIGHT, padx=5)
-        self.run_btn = ttk.Button(btn_frame, text="Run", command=self._run_selected, width=15)
+        self.close_btn = ttk.Button(btn_frame, text="Close", command=self.destroy, width=15, state=tk.DISABLED)
+        self.close_btn.pack(side=tk.RIGHT, padx=5)
+        self.run_btn = ttk.Button(btn_frame, text="Run", command=self._run_selected, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
+
+    def _init_setup_view(self):
+        """启动 setup_view，完成后解锁 Run/Close 按钮"""
+        self._set_status("Initializing view...")
+        self._start_progress()
+
+        def run():
+            success = self.orchestrator.setup_view()
+            self.after(0, lambda: self._on_setup_view_done(success))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_setup_view_done(self, success):
+        self._stop_progress(success)
+        if success:
+            self._set_status("Ready")
+            self.run_btn.config(state=tk.NORMAL)
+            self.close_btn.config(state=tk.NORMAL)
+        else:
+            self._set_status("View setup failed")
+            self.close_btn.config(state=tk.NORMAL)
 
     def _set_status(self, msg):
         self.status_var.set(msg)
