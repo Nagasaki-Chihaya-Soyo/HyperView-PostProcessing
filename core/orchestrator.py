@@ -326,7 +326,6 @@ proc process_job {job_file} {
                 if { [catch {
                     hwc view orientation iso
                     hwc animate frame last
-                    file mkdir "C:/Temp/HyperView_Report"
                     hwc report create presentation Report layouttemplate="C:/Temp/HyperView_Report"
                     hwc report create presentation "Report"
                 } err] } {
