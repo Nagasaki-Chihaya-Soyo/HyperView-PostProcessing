@@ -338,6 +338,11 @@ proc process_job {job_file} {
                 puts "setup_view completed successfully"
                 write_result $job_id {{"success":true}}
             }
+            "quit" {
+                puts "Executing quit command"
+                write_result $job_id {{"success":true}}
+                hwc exit
+            }
             "load_model" {
                 puts "Executing load_model command"
                 puts "Model path: $model_path"
@@ -524,5 +529,11 @@ after 4000 listen
 
     def shutdown(self):
         self._log("closing now")
+        if self.state == State.AGENT_READY:
+            try:
+                self.bridge.send_job(cmd="quit", params={})
+                self._log("HyperView quit command sent")
+            except Exception:
+                pass
         self.hv_process.terminate()
         self._set_state(State.EXITED)
