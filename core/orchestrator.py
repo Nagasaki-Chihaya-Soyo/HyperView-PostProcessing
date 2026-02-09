@@ -362,6 +362,51 @@ proc process_job {job_file} {
                 puts "apply_contour completed successfully"
                 write_result $job_id {{"success":true}}
             }
+            "report_run" {
+                puts "Executing report_run command"
+                if { [catch {
+                    hwc report Report Run
+                } err] } {
+                    puts "report_run error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "report_run completed successfully"
+                write_result $job_id {{"success":true}}
+            }
+            "report_export" {
+                puts "Executing report_export command"
+                puts "output_dir=$output_dir"
+                if { [catch {
+                    # 读取计数文件确定编号
+                    set counter_file [file join $output_dir report_counter.txt]
+                    set num 1
+                    if {[file exists $counter_file]} {
+                        set cf [open $counter_file r]
+                        set num_str [string trim [read $cf]]
+                        close $cf
+                        if {$num_str ne ""} {
+                            set num [expr {int($num_str) + 1}]
+                        }
+                    }
+                    file mkdir $output_dir
+                    set export_path [file join $output_dir "Report${num}.pptx"]
+                    puts "Exporting report to: $export_path"
+                    hwc report export file=$export_path
+                    # 更新计数文件
+                    set cf [open $counter_file w]
+                    puts $cf $num
+                    close $cf
+                    puts "report_export completed: $export_path"
+                } err] } {
+                    puts "report_export error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
             "display_contour" {
                 puts "Executing display_contour command"
                 set res [cmd_display_contour $model_path $result_path]
@@ -571,6 +616,36 @@ after 4000 listen
             return None
         finally:
             self._set_state(State.AGENT_READY)
+
+    def report_run(self) -> bool:
+        """执行 hwc report Report Run"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._log("Running report...")
+        result = self.bridge.send_job(cmd="report_run", params={})
+        if result.get('success', False):
+            self._log("Report run completed")
+            return True
+        else:
+            self._log(f"Report run failed: {result.get('error', 'Unknown')}")
+            return False
+
+    def report_export(self, output_dir: str = "C:/Temp/HyperView_Report") -> bool:
+        """导出 report 为递增编号的 pptx"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._log(f"Exporting report to: {output_dir}")
+        result = self.bridge.send_job(cmd="report_export", params={
+            "output_dir": output_dir.replace('\\', '/')
+        })
+        if result.get('success', False):
+            self._log("Report exported successfully")
+            return True
+        else:
+            self._log(f"Report export failed: {result.get('error', 'Unknown')}")
+            return False
 
     def setup_view(self) -> bool:
         """执行 view orientation iso 和 animate frame last"""

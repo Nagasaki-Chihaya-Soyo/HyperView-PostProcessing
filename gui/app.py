@@ -858,10 +858,16 @@ class AnalysisDialog(tk.Toplevel):
     def _activate_next_task(self):
         """解锁下一个待执行项的 Option 按钮"""
         if self._current_task_idx >= len(self._pending_tasks):
-            # 全部完成
-            self._set_status("All tasks completed!")
-            self.run_btn.config(state=tk.NORMAL)
-            self.close_btn.config(state=tk.NORMAL)
+            # 全部完成，导出 report
+            self._set_status("Exporting report...")
+
+            def export():
+                self.orchestrator.report_export()
+                self.after(0, lambda: self._set_status("All tasks completed! Report exported."))
+                self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
+                self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
+
+            threading.Thread(target=export, daemon=True).start()
             return
 
         task = self._pending_tasks[self._current_task_idx]
@@ -890,14 +896,24 @@ class AnalysisDialog(tk.Toplevel):
                         cfg['type'], cfg['component'], label)
                 else:
                     result = self.orchestrator.display_contour(self.model_path, self.result_path)
+                # 每个勾选项完成后执行 report Run
+                if result and result.get('success'):
+                    self.after(0, lambda: self._set_status("Running report..."))
+                    self.orchestrator.report_run()
                 self.after(0, lambda r=result: self._on_task_done(r, "contour"))
             elif task == "stress_peak":
                 self.after(0, lambda: self._set_status("Running stress peak analysis..."))
                 result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+                if result and result.get('success'):
+                    self.after(0, lambda: self._set_status("Running report..."))
+                    self.orchestrator.report_run()
                 self.after(0, lambda r=result: self._on_task_done(r, "stress_peak"))
             elif task == "compare":
                 self.after(0, lambda: self._set_status("Comparing with material standards..."))
                 result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+                if result and result.get('success'):
+                    self.after(0, lambda: self._set_status("Running report..."))
+                    self.orchestrator.report_run()
                 self.after(0, lambda r=result: self._on_task_done(r, "compare"))
 
         threading.Thread(target=run, daemon=True).start()
