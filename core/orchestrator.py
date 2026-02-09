@@ -228,7 +228,7 @@ proc cmd_display_contour {model_path result_path} {
 }
 
 proc process_job {job_file} {
-    global MAX_VALUE MAX_ID
+    global MAX_VALUE MAX_ID REPORT_DIR
     set f [open $job_file r]
     set content [read $f]
     close $f
