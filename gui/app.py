@@ -582,7 +582,7 @@ class AnalysisDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator, model_path, result_path=""):
         super().__init__(parent)
         self.title("Analysis Options")
-        self.geometry("500x400")
+        self.geometry("550x500")
         self.resizable(width=False, height=False)
         # 不使用 transient 和 grab_set，让窗口独立运行
 
