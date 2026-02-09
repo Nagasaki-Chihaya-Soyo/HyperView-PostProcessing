@@ -127,13 +127,7 @@ class Application(tk.Tk):
             self.result_entry.insert(0, path)
 
     def _run_analysis(self):
-        model_path = self.model_entry.get().strip()
-        result_path = self.result_entry.get().strip()
-        if not model_path:
-            messagebox.showwarning(title="WARNING", message="Select a model file first")
-            return
-        threading.Thread(target=self.orchestrator.setup_view, daemon=True).start()
-        AnalysisDialog(self, self.orchestrator, model_path, result_path)
+        pass
 
     def _start_progress(self):
         """启动进度条动画"""
@@ -157,27 +151,10 @@ class Application(tk.Tk):
         self.progress['value'] = 100 if success else 0
 
     def _load_model(self):
-        model_path = self.model_entry.get().strip()
-        result_path = self.result_entry.get().strip()
-        if not model_path:
-            messagebox.showwarning(title="WARNING", message="Select a model file first")
-            return
-        self.load_btn.config(state=tk.DISABLED)
-        self._start_progress()
-
-        def load():
-            success = self.orchestrator.load_model(model_path, result_path)
-            self.after(0, lambda: self._on_model_loaded(success))
-
-        threading.Thread(target=load, daemon=True).start()
+        pass
 
     def _on_model_loaded(self, success: bool):
-        self._stop_progress(success)
-        self.load_btn.config(state=tk.NORMAL)
-        if success:
-            self.run_btn.config(state=tk.NORMAL)
-        else:
-            messagebox.showerror(title="ERROR", message="Failed to load model. Check log for details.")
+        pass
 
     def _show_result(self, result):
         self.progress.stop()
