@@ -132,8 +132,11 @@ class Application(tk.Tk):
         if not model_path:
             messagebox.showwarning(title="WARNING", message="Select a model file first")
             return
+        if self.auto_minimize_var.get():
+            self.iconify()
         threading.Thread(target=self.orchestrator.setup_view, daemon=True).start()
         AnalysisDialog(self, self.orchestrator, model_path, result_path)
+        self.deiconify()
 
     def _start_progress(self):
         """启动进度条动画"""
