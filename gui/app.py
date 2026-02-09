@@ -151,10 +151,27 @@ class Application(tk.Tk):
         self.progress['value'] = 100 if success else 0
 
     def _load_model(self):
-        pass
+        model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+        if not model_path:
+            messagebox.showwarning(title="WARNING", message="Select a model file first")
+            return
+        self.load_btn.config(state=tk.DISABLED)
+        self._start_progress()
+
+        def load():
+            success = self.orchestrator.load_model(model_path, result_path)
+            self.after(0, lambda: self._on_model_loaded(success))
+
+        threading.Thread(target=load, daemon=True).start()
 
     def _on_model_loaded(self, success: bool):
-        pass
+        self._stop_progress(success)
+        self.load_btn.config(state=tk.NORMAL)
+        if success:
+            self.run_btn.config(state=tk.NORMAL)
+        else:
+            messagebox.showerror(title="ERROR", message="Failed to load model. Check log for details.")
 
     def _show_result(self, result):
         self.progress.stop()

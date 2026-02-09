@@ -339,58 +339,16 @@ proc process_job {job_file} {
                 puts "Executing load_model command"
                 puts "Model path: $model_path"
                 puts "Result path: $result_path"
-                # 清理可能存在的旧句柄
-                cleanup_handles
                 if { [catch {
-                    hwi OpenStack
-                    hwi GetSessionHandle sess
-                    sess GetProjectHandle proj
-                    set pageId [proj GetActivePage]
-                    proj GetPageHandle page1 $pageId
-                    set winId [page1 GetActiveWindow]
-                    page1 GetWindowHandle win1 $winId
-                    win1 SetClientType animation
-                    win1 GetClientHandle my_post
-
-                    # 加载模型文件
-                    my_post AddModel $model_path
-                    my_post Draw
-
-                    # 如果有结果文件，检查文件类型
+                    hwc open animation model $model_path
                     if {$result_path ne ""} {
-                        set ext [string tolower [file extension $result_path]]
-                        # .h3d文件已包含结果，.op2/.pch/.rst等是支持的结果文件
-                        if {$ext eq ".h3d" || $ext eq ".op2" || $ext eq ".pch" || $ext eq ".rst" || $ext eq ".d3plot"} {
-                            puts "Loading result file: $result_path"
-                            set modelCount [my_post GetNumberOfModels]
-                            if {$modelCount > 0} {
-                                my_post GetModelHandle model1 1
-                                if { [catch {
-                                    model1 AddResult $result_path
-                                } resultErr] } {
-                                    puts "Warning: Could not load result file: $resultErr"
-                                }
-
-                                model1 ReleaseHandle
-                            }
-                            my_post Draw
-                        } else {
-                            puts "Note: Result file type '$ext' is not directly supported. Model file should contain results."
-                        }
+                        hwc open animation result $result_path
                     }
-
-                    my_post ReleaseHandle
-                    win1 ReleaseHandle
-                    page1 ReleaseHandle
-                    proj ReleaseHandle
-                    sess ReleaseHandle
-                    hwi CloseStack
+                    hwc result animation load all
                 } err] } {
                     puts "load_model error: $err"
-                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
-                    set err_json [format {{"success":false,"error":"%s"}} $escaped_err]
-                    write_result $job_id $err_json
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
                 puts "load_model completed successfully"
