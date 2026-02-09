@@ -621,18 +621,27 @@ class AnalysisDialog(tk.Toplevel):
         self.chk_stress_peak = tk.BooleanVar(value=False)
         self.chk_compare = tk.BooleanVar(value=False)
 
-        ttk.Checkbutton(opt_frame, text="Display Stress Contour",
-                        variable=self.chk_contour).pack(anchor=tk.W, pady=4)
+        row1 = ttk.Frame(opt_frame)
+        row1.pack(fill=tk.X, pady=4)
+        ttk.Checkbutton(row1, text="Display Stress Contour",
+                        variable=self.chk_contour).pack(side=tk.LEFT)
+        ttk.Button(row1, text="Option", width=8, state=tk.DISABLED).pack(side=tk.RIGHT)
         ttk.Label(opt_frame, text="    Display Von Mises stress contour on the model",
                   foreground='gray').pack(anchor=tk.W)
 
-        ttk.Checkbutton(opt_frame, text="Stress Peak Analysis",
-                        variable=self.chk_stress_peak).pack(anchor=tk.W, pady=4)
+        row2 = ttk.Frame(opt_frame)
+        row2.pack(fill=tk.X, pady=4)
+        ttk.Checkbutton(row2, text="Stress Peak Analysis",
+                        variable=self.chk_stress_peak).pack(side=tk.LEFT)
+        ttk.Button(row2, text="Option", width=8, state=tk.DISABLED).pack(side=tk.RIGHT)
         ttk.Label(opt_frame, text="    Find maximum Von Mises stress location and value",
                   foreground='gray').pack(anchor=tk.W)
 
-        ttk.Checkbutton(opt_frame, text="Compare with Material Standards",
-                        variable=self.chk_compare).pack(anchor=tk.W, pady=4)
+        row3 = ttk.Frame(opt_frame)
+        row3.pack(fill=tk.X, pady=4)
+        ttk.Checkbutton(row3, text="Compare with Material Standards",
+                        variable=self.chk_compare).pack(side=tk.LEFT)
+        ttk.Button(row3, text="Option", width=8, state=tk.DISABLED).pack(side=tk.RIGHT)
         ttk.Label(opt_frame, text="    Compare peak stress with allowable values from database",
                   foreground='gray').pack(anchor=tk.W)
 
