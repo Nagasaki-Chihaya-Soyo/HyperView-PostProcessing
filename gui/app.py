@@ -127,7 +127,13 @@ class Application(tk.Tk):
             self.result_entry.insert(0, path)
 
     def _run_analysis(self):
-        pass
+        model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+        if not model_path:
+            messagebox.showwarning(title="WARNING", message="Select a model file first")
+            return
+        threading.Thread(target=self.orchestrator.setup_view, daemon=True).start()
+        AnalysisDialog(self, self.orchestrator, model_path, result_path)
 
     def _start_progress(self):
         """启动进度条动画"""
@@ -598,7 +604,7 @@ class AnalysisDialog(tk.Toplevel):
         # 标题
         title_frame = ttk.Frame(main_frame, padding=10)
         title_frame.pack(fill=tk.X)
-        ttk.Label(title_frame, text="Select Analysis Function", font=('Arial', 12, 'bold')).pack()
+        ttk.Label(title_frame, text="Analysis Options", font=('Arial', 12, 'bold')).pack()
 
         # 模型信息
         info_frame = ttk.LabelFrame(main_frame, text="Model Information", padding=10)
@@ -607,36 +613,30 @@ class AnalysisDialog(tk.Toplevel):
         if self.result_path:
             ttk.Label(info_frame, text=f"Result: {os.path.basename(self.result_path)}", wraplength=450).pack(anchor=tk.W)
 
-        # 功能按钮区域
-        func_frame = ttk.LabelFrame(main_frame, text="Analysis Functions", padding=10)
-        func_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Checkbox 选项区域
+        opt_frame = ttk.LabelFrame(main_frame, text="Select Analysis Items", padding=10)
+        opt_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # 显示云图按钮
-        contour_btn = ttk.Button(func_frame, text="Display Stress Contour",
-                                command=self._display_contour, width=40)
-        contour_btn.pack(pady=8)
-        ttk.Label(func_frame, text="Display Von Mises stress contour on the model",
-                  foreground='gray').pack()
+        self.chk_contour = tk.BooleanVar(value=True)
+        self.chk_stress_peak = tk.BooleanVar(value=False)
+        self.chk_compare = tk.BooleanVar(value=False)
 
-        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=8)
+        ttk.Checkbutton(opt_frame, text="Display Stress Contour",
+                        variable=self.chk_contour).pack(anchor=tk.W, pady=4)
+        ttk.Label(opt_frame, text="    Display Von Mises stress contour on the model",
+                  foreground='gray').pack(anchor=tk.W)
 
-        # 应力峰值分析按钮
-        stress_btn = ttk.Button(func_frame, text="Stress Peak Analysis",
-                                command=self._analyze_stress_peak, width=40)
-        stress_btn.pack(pady=8)
-        ttk.Label(func_frame, text="Find maximum Von Mises stress location and value",
-                  foreground='gray').pack()
+        ttk.Checkbutton(opt_frame, text="Stress Peak Analysis",
+                        variable=self.chk_stress_peak).pack(anchor=tk.W, pady=4)
+        ttk.Label(opt_frame, text="    Find maximum Von Mises stress location and value",
+                  foreground='gray').pack(anchor=tk.W)
 
-        ttk.Separator(func_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=8)
+        ttk.Checkbutton(opt_frame, text="Compare with Material Standards",
+                        variable=self.chk_compare).pack(anchor=tk.W, pady=4)
+        ttk.Label(opt_frame, text="    Compare peak stress with allowable values from database",
+                  foreground='gray').pack(anchor=tk.W)
 
-        # 材料对比按钮
-        compare_btn = ttk.Button(func_frame, text="Compare with Material Standards",
-                                 command=self._compare_material, width=40)
-        compare_btn.pack(pady=8)
-        ttk.Label(func_frame, text="Compare peak stress with allowable values from database",
-                  foreground='gray').pack()
-
-        # 底部区域 (从下往上: 状态栏 -> 进度条 -> 关闭按钮)
+        # 底部区域 (从下往上: 状态栏 -> 进度条 -> 按钮)
         bottom_frame = ttk.Frame(self)
         bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
@@ -650,10 +650,12 @@ class AnalysisDialog(tk.Toplevel):
         self.progress.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
         self._progress_running = False
 
-        # 关闭按钮
+        # 按钮区域
         btn_frame = ttk.Frame(bottom_frame, padding=10)
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
         ttk.Button(btn_frame, text="Close", command=self.destroy, width=15).pack(side=tk.RIGHT, padx=5)
+        self.run_btn = ttk.Button(btn_frame, text="Run", command=self._run_selected, width=15)
+        self.run_btn.pack(side=tk.RIGHT, padx=5)
 
     def _set_status(self, msg):
         self.status_var.set(msg)
@@ -685,36 +687,39 @@ class AnalysisDialog(tk.Toplevel):
         else:
             self.progress['value'] = 0
 
-    def _display_contour(self):
-        """显示云图"""
-        self._set_status("Displaying stress contour...")
+    def _run_selected(self):
+        """执行勾选的分析项目"""
+        tasks = []
+        if self.chk_contour.get():
+            tasks.append("contour")
+        if self.chk_stress_peak.get():
+            tasks.append("stress_peak")
+        if self.chk_compare.get():
+            tasks.append("compare")
+
+        if not tasks:
+            messagebox.showwarning(title="WARNING", message="Please select at least one analysis item")
+            return
+
+        self.run_btn.config(state=tk.DISABLED)
+        self._set_status("Running analysis...")
         self._start_progress()
 
         def run():
-            result = self.orchestrator.display_contour(self.model_path, self.result_path)
-            self.after(0, lambda: self._on_analysis_complete(result, "contour"))
-
-        threading.Thread(target=run, daemon=True).start()
-
-    def _analyze_stress_peak(self):
-        """分析应力峰值"""
-        self._set_status("Running stress peak analysis...")
-        self._start_progress()
-
-        def run():
-            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            self.after(0, lambda: self._on_analysis_complete(result, "stress_peak"))
-
-        threading.Thread(target=run, daemon=True).start()
-
-    def _compare_material(self):
-        """与材料标准对比"""
-        self._set_status("Comparing with material standards...")
-        self._start_progress()
-
-        def run():
-            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            self.after(0, lambda: self._on_analysis_complete(result, "compare"))
+            for task in tasks:
+                if task == "contour":
+                    self.after(0, lambda: self._set_status("Displaying stress contour..."))
+                    result = self.orchestrator.display_contour(self.model_path, self.result_path)
+                    self.after(0, lambda r=result: self._on_analysis_complete(r, "contour"))
+                elif task == "stress_peak":
+                    self.after(0, lambda: self._set_status("Running stress peak analysis..."))
+                    result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+                    self.after(0, lambda r=result: self._on_analysis_complete(r, "stress_peak"))
+                elif task == "compare":
+                    self.after(0, lambda: self._set_status("Comparing with material standards..."))
+                    result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+                    self.after(0, lambda r=result: self._on_analysis_complete(r, "compare"))
+            self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=run, daemon=True).start()
 
