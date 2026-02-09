@@ -127,7 +127,12 @@ class Application(tk.Tk):
             self.result_entry.insert(0, path)
 
     def _run_analysis(self):
-        pass
+        model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+        if not model_path:
+            messagebox.showwarning(title="WARNING", message="Select a model file first")
+            return
+        AnalysisDialog(self, self.orchestrator, model_path, result_path)
 
     def _start_progress(self):
         """启动进度条动画"""
@@ -151,10 +156,27 @@ class Application(tk.Tk):
         self.progress['value'] = 100 if success else 0
 
     def _load_model(self):
-        pass
+        model_path = self.model_entry.get().strip()
+        result_path = self.result_entry.get().strip()
+        if not model_path:
+            messagebox.showwarning(title="WARNING", message="Select a model file first")
+            return
+        self.load_btn.config(state=tk.DISABLED)
+        self._start_progress()
+
+        def load():
+            success = self.orchestrator.load_model(model_path, result_path)
+            self.after(0, lambda: self._on_model_loaded(success))
+
+        threading.Thread(target=load, daemon=True).start()
 
     def _on_model_loaded(self, success: bool):
-        pass
+        self._stop_progress(success)
+        self.load_btn.config(state=tk.NORMAL)
+        if success:
+            self.run_btn.config(state=tk.NORMAL)
+        else:
+            messagebox.showerror(title="ERROR", message="Failed to load model. Check log for details.")
 
     def _show_result(self, result):
         self.progress.stop()
@@ -680,12 +702,26 @@ class AnalysisDialog(tk.Toplevel):
         threading.Thread(target=run, daemon=True).start()
 
     def _analyze_stress_peak(self):
-        """分析应力峰值 - 待实现"""
-        pass
+        """分析应力峰值"""
+        self._set_status("Running stress peak analysis...")
+        self._start_progress()
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_analysis_complete(result, "stress_peak"))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _compare_material(self):
-        """与材料标准对比 - 待实现"""
-        pass
+        """与材料标准对比"""
+        self._set_status("Comparing with material standards...")
+        self._start_progress()
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_analysis_complete(result, "compare"))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _on_analysis_complete(self, result, analysis_type):
         """分析完成回调"""
