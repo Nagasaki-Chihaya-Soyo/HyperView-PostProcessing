@@ -291,6 +291,28 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "result_type": "value"
+    set result_type ""
+    set idx [string first {"result_type"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 13}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set result_type [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    # 解析 "result_component": "value"
+    set result_component ""
+    set idx [string first {"result_component"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 18}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set result_component [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -312,6 +334,21 @@ proc process_job {job_file} {
             }
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
+            }
+            "apply_contour" {
+                puts "Executing apply_contour command"
+                puts "result_type=$result_type result_component=$result_component"
+                if { [catch {
+                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
+                    hwc result scalar plot "Current Contour"
+                } err] } {
+                    puts "apply_contour error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "apply_contour completed successfully"
+                write_result $job_id {{"success":true}}
             }
             "display_contour" {
                 puts "Executing display_contour command"
@@ -493,6 +530,29 @@ after 4000 listen
             }
         except Exception as e:
             self._log(f"Display contour error: {str(e)}")
+            return None
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def apply_contour(self, result_type: str, component: str) -> Optional[Dict[str, Any]]:
+        """按用户选择的 type/component 显示云图"""
+        self._log(f"apply_contour: type={result_type}, component={component}")
+        if self.state != State.AGENT_READY:
+            self._log("HyperView NOT Ready, Start First")
+            return None
+        self._set_state(State.RUNNING)
+        try:
+            result = self.bridge.send_job(cmd="apply_contour", params={
+                "result_type": result_type,
+                "result_component": component
+            })
+            if not result.get('success', False):
+                self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
+                return None
+            self._log("Contour applied successfully")
+            return {'success': True}
+        except Exception as e:
+            self._log(f"apply_contour error: {str(e)}")
             return None
         finally:
             self._set_state(State.AGENT_READY)
