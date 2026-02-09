@@ -72,6 +72,7 @@ package require Tk
 set READY_FILE "''' + ready_file + '''"
 set INBOX_DIR "''' + inbox_dir + '''"
 set OUTBOX_DIR "''' + outbox_dir + '''"
+set REPORT_DIR "C:/Temp/HyperView_Report"
 set MAX_VALUE 0.0
 set MAX_ID 0
 proc write_ready {} {
@@ -326,8 +327,8 @@ proc process_job {job_file} {
                 if { [catch {
                     hwc view orientation iso
                     hwc animate frame last
-                    hwc report create presentation Report layouttemplate=C:/Temp/HyperView_Report
-                    hwc report create presentation Report
+                    hwc report create presentation Report layouttemplate=$REPORT_DIR
+                    hwc report create presentation "Report"
                 } err] } {
                     puts "setup_view error: $err"
                     set escaped_err [escape_json_string $err]
