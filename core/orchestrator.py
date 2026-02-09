@@ -213,6 +213,8 @@ proc cmd_display_contour {model_path result_path} {
 
     if { [catch {
         # 使用HWC指令显示云图
+        puts "Setting contour type to Element Stresses vonMises..."
+        hwc result scalar edit "Current Contour" type="Element Stresses (2D & 3D)" component=vonMises
         puts "Plotting contour using HWC command..."
         hwc result scalar plot "Current Contour"
         puts "Contour plotted successfully"
