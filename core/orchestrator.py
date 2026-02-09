@@ -321,6 +321,20 @@ proc process_job {job_file} {
                     write_result $job_id {{"success":false,"error":"Failed to display contour"}}
                 }
             }
+            "setup_view" {
+                puts "Executing setup_view command"
+                if { [catch {
+                    hwc view orientation iso
+                    hwc animate frame last
+                } err] } {
+                    puts "setup_view error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "setup_view completed successfully"
+                write_result $job_id {{"success":true}}
+            }
             "load_model" {
                 puts "Executing load_model command"
                 puts "Model path: $model_path"
@@ -516,6 +530,20 @@ after 4000 listen
             return None
         finally:
             self._set_state(State.AGENT_READY)
+
+    def setup_view(self) -> bool:
+        """执行 view orientation iso 和 animate frame last"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._log("Setting up view: iso orientation, last frame")
+        result = self.bridge.send_job(cmd="setup_view", params={})
+        if result.get('success', False):
+            self._log("View setup completed")
+            return True
+        else:
+            self._log(f"View setup failed: {result.get('error', 'Unknown')}")
+            return False
 
     def load_model(self, model_path: str, result_path: str = "") -> bool:
         if self.state != State.AGENT_READY:

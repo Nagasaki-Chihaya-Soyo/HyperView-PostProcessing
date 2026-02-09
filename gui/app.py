@@ -132,6 +132,7 @@ class Application(tk.Tk):
         if not model_path:
             messagebox.showwarning(title="WARNING", message="Select a model file first")
             return
+        threading.Thread(target=self.orchestrator.setup_view, daemon=True).start()
         AnalysisDialog(self, self.orchestrator, model_path, result_path)
 
     def _start_progress(self):
