@@ -582,14 +582,18 @@ class MappingDialog(tk.Toplevel):
 class ContourOptionDialog(tk.Toplevel):
     """云图参数设置对话框"""
 
-    TYPES = [
-        "Element Stresses (2D & 3D)",
-        "Element Strains (2D & 3D)",
-        "Element Strains (2D & 3D) (Gauss)",
-        "Displacement",
-        "Plastic Strains (2D & 3D)",
-        "Plastic Strains (2D & 3D) (Gauss)",
-    ]
+    CATEGORIES = {
+        "Stress & Displacement": [
+            "Element Stresses (2D & 3D)",
+            "Displacement",
+        ],
+        "Plastic Strain": [
+            "Plastic Strains (2D & 3D)",
+            "Plastic Strains (2D & 3D) (Gauss)",
+            "Element Strains (2D & 3D)",
+            "Element Strains (2D & 3D) (Gauss)",
+        ],
+    }
 
     COMPONENTS = {
         "Element Stresses (2D & 3D)": [
@@ -600,6 +604,9 @@ class ContourOptionDialog(tk.Toplevel):
             "Intensity", "Pressure",
             "XX", "YY", "ZZ", "XY", "YZ", "ZX",
         ],
+        "Displacement": ["Mag", "X", "Y", "Z"],
+        "Plastic Strains (2D & 3D)": ["Equivalent Plastic Strain"],
+        "Plastic Strains (2D & 3D) (Gauss)": ["Equivalent Plastic Strain"],
         "Element Strains (2D & 3D)": [
             "vonMises",
             "P1 (major)", "P2 (mid)", "P3 (minor)",
@@ -612,15 +619,12 @@ class ContourOptionDialog(tk.Toplevel):
             "Extreme Principal", "Max Abs Principal", "MaxShear",
             "XX", "YY", "ZZ", "XY", "YZ", "ZX",
         ],
-        "Displacement": ["Mag", "X", "Y", "Z"],
-        "Plastic Strains (2D & 3D)": ["Equivalent Plastic Strain"],
-        "Plastic Strains (2D & 3D) (Gauss)": ["Equivalent Plastic Strain"],
     }
 
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Contour Settings")
-        self.geometry("400x200")
+        self.geometry("450x250")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -633,31 +637,51 @@ class ContourOptionDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="Result Type:").grid(row=0, column=0, sticky=tk.W, pady=8)
-        self.type_var = tk.StringVar(value=self.TYPES[0])
-        self.type_cb = ttk.Combobox(frame, textvariable=self.type_var, values=self.TYPES, width=35)
-        self.type_cb.grid(row=0, column=1, pady=8, padx=5)
+        ttk.Label(frame, text="Category:").grid(row=0, column=0, sticky=tk.W, pady=8)
+        cats = list(self.CATEGORIES.keys())
+        self.cat_var = tk.StringVar(value=cats[0])
+        self.cat_cb = ttk.Combobox(frame, textvariable=self.cat_var, values=cats, width=35, state="readonly")
+        self.cat_cb.grid(row=0, column=1, pady=8, padx=5)
+        self.cat_cb.bind("<<ComboboxSelected>>", self._on_cat_changed)
+
+        ttk.Label(frame, text="Data Type:").grid(row=1, column=0, sticky=tk.W, pady=8)
+        self.type_var = tk.StringVar()
+        self.type_cb = ttk.Combobox(frame, textvariable=self.type_var, width=35, state="readonly")
+        self.type_cb.grid(row=1, column=1, pady=8, padx=5)
         self.type_cb.bind("<<ComboboxSelected>>", self._on_type_changed)
 
-        ttk.Label(frame, text="Component:").grid(row=1, column=0, sticky=tk.W, pady=8)
-        self.comp_var = tk.StringVar(value="vonMises")
-        self.comp_cb = ttk.Combobox(frame, textvariable=self.comp_var, width=35)
-        self.comp_cb.grid(row=1, column=1, pady=8, padx=5)
-        self._update_components()
+        ttk.Label(frame, text="Component:").grid(row=2, column=0, sticky=tk.W, pady=8)
+        self.comp_var = tk.StringVar()
+        self.comp_cb = ttk.Combobox(frame, textvariable=self.comp_var, width=35, state="readonly")
+        self.comp_cb.grid(row=2, column=1, pady=8, padx=5)
+
+        self._update_types()
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=2, column=0, columnspan=2, pady=15)
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=15)
         ttk.Button(btn_frame, text="Confirm", command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
+
+    def _on_cat_changed(self, event=None):
+        self._update_types()
 
     def _on_type_changed(self, event=None):
         self._update_components()
 
+    def _update_types(self):
+        cat = self.cat_var.get()
+        types = self.CATEGORIES.get(cat, [])
+        self.type_cb['values'] = types
+        if types:
+            self.type_var.set(types[0])
+        self._update_components()
+
     def _update_components(self):
         t = self.type_var.get()
-        comps = self.COMPONENTS.get(t, ["Mag", "X", "Y", "Z"])
+        comps = self.COMPONENTS.get(t, [])
         self.comp_cb['values'] = comps
-        self.comp_var.set(comps[0])
+        if comps:
+            self.comp_var.set(comps[0])
 
     def _on_confirm(self):
         self.result = {
