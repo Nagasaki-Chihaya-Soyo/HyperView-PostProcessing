@@ -313,6 +313,17 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "label": "value"
+    set label ""
+    set idx [string first {"label"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 7}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set label [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -337,10 +348,11 @@ proc process_job {job_file} {
             }
             "apply_contour" {
                 puts "Executing apply_contour command"
-                puts "result_type=$result_type result_component=$result_component"
+                puts "result_type=$result_type result_component=$result_component label=$label"
                 if { [catch {
                     hwc result scalar edit "Current Contour" type=$result_type component=$result_component
                     hwc result scalar plot "Current Contour"
+                    hwc report Report add slide "One Image with Caption" label=$label
                 } err] } {
                     puts "apply_contour error: $err"
                     set escaped_err [escape_json_string $err]
@@ -534,9 +546,11 @@ after 4000 listen
         finally:
             self._set_state(State.AGENT_READY)
 
-    def apply_contour(self, result_type: str, component: str) -> Optional[Dict[str, Any]]:
-        """按用户选择的 type/component 显示云图"""
-        self._log(f"apply_contour: type={result_type}, component={component}")
+    def apply_contour(self, result_type: str, component: str, label: str = "") -> Optional[Dict[str, Any]]:
+        """按用户选择的 type/component 显示云图并添加 report slide"""
+        if not label:
+            label = f"{result_type} - {component}"
+        self._log(f"apply_contour: type={result_type}, component={component}, label={label}")
         if self.state != State.AGENT_READY:
             self._log("HyperView NOT Ready, Start First")
             return None
@@ -544,7 +558,8 @@ after 4000 listen
         try:
             result = self.bridge.send_job(cmd="apply_contour", params={
                 "result_type": result_type,
-                "result_component": component
+                "result_component": component,
+                "label": label
             })
             if not result.get('success', False):
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")

@@ -884,8 +884,10 @@ class AnalysisDialog(tk.Toplevel):
             if task == "contour":
                 self.after(0, lambda: self._set_status("Displaying stress contour..."))
                 if self.contour_config:
+                    cfg = self.contour_config
+                    label = f"{cfg['type']} - {cfg['component']}"
                     result = self.orchestrator.apply_contour(
-                        self.contour_config['type'], self.contour_config['component'])
+                        cfg['type'], cfg['component'], label)
                 else:
                     result = self.orchestrator.display_contour(self.model_path, self.result_path)
                 self.after(0, lambda r=result: self._on_task_done(r, "contour"))
