@@ -377,7 +377,7 @@ proc process_job {job_file} {
                 if { [catch {
                     hwc report Report add slide $slide_name label=$slide_name
                     hwc report Report edit items slide position $slide_name label=$slide_label
-                    hwc report Report Run
+                    hwc report Report run
                 } err2] } {
                     puts "report slide/run error: $err2"
                 } else {
@@ -400,7 +400,7 @@ proc process_job {job_file} {
                 }
                 puts "Contour applied and slide added. Now executing report Report Run..."
                 if { [catch {
-                    hwc report Report Run
+                    hwc report Report run
                 } err2] } {
                     puts "report Run error: $err2"
                 } else {
@@ -411,7 +411,7 @@ proc process_job {job_file} {
             "report_run" {
                 puts "Executing report_run command"
                 if { [catch {
-                    hwc report Report Run
+                    hwc report Report run
                 } err] } {
                     puts "report_run error: $err"
                     set escaped_err [escape_json_string $err]
