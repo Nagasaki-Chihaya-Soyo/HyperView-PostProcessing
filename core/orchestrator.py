@@ -398,7 +398,7 @@ proc process_job {job_file} {
                     file mkdir $output_dir
                     set export_path [file join $output_dir "Report${num}.pptx"]
                     puts "Exporting report to: $export_path"
-                    hwc report export file=$export_path
+                    hwc report export file="$export_path"
                     # 更新计数文件
                     set cf [open $counter_file w]
                     puts $cf $num
