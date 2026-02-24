@@ -797,7 +797,7 @@ class AnalysisDialog(tk.Toplevel):
     # ── 按钮处理 (TODO) ──
 
     def _on_create_report(self):
-        """Create Report: 创建 Word 报告文档"""
+        """Create Report: 创建 Word 报告文档，完成后根据勾选项解锁对应 Option"""
         self.create_report_btn.config(state=tk.DISABLED)
         self.status_var.set("Creating report...")
 
@@ -806,10 +806,19 @@ class AnalysisDialog(tk.Toplevel):
         def do_create():
             self._setup_thread.join()
             self.orchestrator.create_report(template_path)
-            self.after(0, lambda: self.status_var.set("Report created."))
-            self.after(0, lambda: self.create_report_btn.config(state=tk.NORMAL))
+            self.after(0, self._unlock_options)
 
         threading.Thread(target=do_create, daemon=True).start()
+
+    def _unlock_options(self):
+        """根据勾选的 items 解锁对应的 Option 按钮"""
+        if self.chk_contour.get():
+            self.opt_btn_contour.config(state=tk.NORMAL)
+        if self.chk_stress_peak.get():
+            self.opt_btn_stress.config(state=tk.NORMAL)
+        if self.chk_compare.get():
+            self.opt_btn_compare.config(state=tk.NORMAL)
+        self.status_var.set("Report created. Click Option to configure.")
 
     def _on_run(self):
         """Run: TODO"""
