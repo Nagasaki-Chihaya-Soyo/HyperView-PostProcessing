@@ -869,36 +869,34 @@ class AnalysisDialog(tk.Toplevel):
         })
 
     def _run_stress_peak(self):
-        """执行 Stress Peak 分析 + report Run"""
+        """执行 Stress Peak 分析"""
         self.opt_btn_stress.config(state=tk.DISABLED)
         self._set_status("Running stress peak analysis...")
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
             if result and result.get('success'):
-                self.orchestrator.report_run()
                 self.after(0, lambda: self._completed_results.append({
                     'type': 'stress_peak', 'success': True, 'result': result
                 }))
             self.after(0, lambda: self.opt_btn_stress.config(state=tk.NORMAL))
-            self.after(0, lambda: self._set_status("Stress peak done. Continue or Run to export."))
+            self.after(0, lambda: self._set_status("Stress peak done. Continue or Export."))
 
         threading.Thread(target=run, daemon=True).start()
 
     def _run_compare(self):
-        """执行 Material Compare 分析 + report Run"""
+        """执行 Material Compare 分析"""
         self.opt_btn_compare.config(state=tk.DISABLED)
         self._set_status("Comparing with material standards...")
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
             if result and result.get('success'):
-                self.orchestrator.report_run()
                 self.after(0, lambda: self._completed_results.append({
                     'type': 'compare', 'success': True, 'result': result
                 }))
             self.after(0, lambda: self.opt_btn_compare.config(state=tk.NORMAL))
-            self.after(0, lambda: self._set_status("Compare done. Continue or Run to export."))
+            self.after(0, lambda: self._set_status("Compare done. Continue or Export."))
 
         threading.Thread(target=run, daemon=True).start()
 
