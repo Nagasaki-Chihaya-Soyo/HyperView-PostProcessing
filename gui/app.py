@@ -696,11 +696,9 @@ class ContourOptionDialog(tk.Toplevel):
 
         def run():
             try:
-                print(f"[ContourOptionDialog] Executing apply_contour: {label}")
+                print(f"[ContourOptionDialog] Executing apply_contour + report Run: {label}")
                 self.orchestrator.apply_contour(result_type, component, label)
-                print("[ContourOptionDialog] apply_contour done, now calling report_run")
-                self.orchestrator.report_run()
-                print("[ContourOptionDialog] report_run done")
+                print("[ContourOptionDialog] apply_contour + report Run done")
             except Exception as e:
                 print(f"[ContourOptionDialog] ERROR in thread: {e}")
             if self.on_execute:
