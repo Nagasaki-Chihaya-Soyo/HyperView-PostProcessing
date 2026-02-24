@@ -75,7 +75,6 @@ set OUTBOX_DIR "''' + outbox_dir + '''"
 set REPORT_DIR "C:/Temp/HyperView_Report"
 set MAX_VALUE 0.0
 set MAX_ID 0
-set SLIDE_NUM 0
 proc write_ready {} {
     global READY_FILE
     if { [catch {
@@ -229,7 +228,7 @@ proc cmd_display_contour {model_path result_path} {
 }
 
 proc process_job {job_file} {
-    global MAX_VALUE MAX_ID REPORT_DIR SLIDE_NUM
+    global MAX_VALUE MAX_ID REPORT_DIR
     set f [open $job_file r]
     set content [read $f]
     close $f
@@ -325,17 +324,6 @@ proc process_job {job_file} {
         }
     }
 
-    # 解析 "template_path": "value"
-    set template_path ""
-    set idx [string first {"template_path"} $content]
-    if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 15}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
-        if {$start >= 0 && $end > $start} {
-            set template_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
-        }
-    }
-
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -358,31 +346,6 @@ proc process_job {job_file} {
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
-            "plot_contour" {
-                puts "Executing plot_contour command"
-                puts "result_type=$result_type result_component=$result_component"
-                if { [catch {
-                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
-                    hwc result scalar plot "Current Contour"
-                } err] } {
-                    puts "plot_contour error: $err"
-                    set escaped_err [escape_json_string $err]
-                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
-                    return
-                }
-                set slide_label "$result_type $result_component"
-                puts "Adding slide, label=$slide_label"
-                if { [catch {
-                    hwc report Report add slide "One Image with Caption" label="One Image with Caption"
-                    hwc report Report edit items slide position "One Image with Caption" label=$slide_label
-                    hwc report Report run
-                } err2] } {
-                    puts "report slide/run error: $err2"
-                } else {
-                    puts "report add slide + edit + Run completed"
-                }
-                write_result $job_id {{"success":true}}
-            }
             "apply_contour" {
                 puts "Executing apply_contour command"
                 puts "result_type=$result_type result_component=$result_component label=$label"
@@ -398,7 +361,7 @@ proc process_job {job_file} {
                 }
                 puts "Contour applied and slide added. Now executing report Report Run..."
                 if { [catch {
-                    hwc report Report run
+                    hwc report Report Run
                 } err2] } {
                     puts "report Run error: $err2"
                 } else {
@@ -409,7 +372,7 @@ proc process_job {job_file} {
             "report_run" {
                 puts "Executing report_run command"
                 if { [catch {
-                    hwc report Report run
+                    hwc report Report Run
                 } err] } {
                     puts "report_run error: $err"
                     set escaped_err [escape_json_string $err]
@@ -476,9 +439,8 @@ proc process_job {job_file} {
             }
             "create_report" {
                 puts "Executing create_report command"
-                puts "template_path=$template_path"
                 if { [catch {
-                    hwc report create presentation Report layouttemplate=$template_path
+                    hwc report create presentation Report layouttemplate=$REPORT_DIR
                     hwc report create presentation "Report"
                 } err] } {
                     puts "create_report error: $err"
@@ -648,29 +610,6 @@ after 4000 listen
         finally:
             self._set_state(State.AGENT_READY)
 
-    def plot_contour(self, result_type: str, component: str) -> Optional[Dict[str, Any]]:
-        """执行 result scalar edit + plot + report Report Run"""
-        self._log(f"plot_contour: type={result_type}, component={component}")
-        if self.state != State.AGENT_READY:
-            self._log("HyperView NOT Ready, Start First")
-            return None
-        self._set_state(State.RUNNING)
-        try:
-            result = self.bridge.send_job(cmd="plot_contour", params={
-                "result_type": result_type,
-                "result_component": component,
-            })
-            if not result.get('success', False):
-                self._log(f"plot_contour failed: {result.get('error', 'Unknown')}")
-                return None
-            self._log("plot_contour completed successfully")
-            return {'success': True}
-        except Exception as e:
-            self._log(f"plot_contour error: {str(e)}")
-            return None
-        finally:
-            self._set_state(State.AGENT_READY)
-
     def apply_contour(self, result_type: str, component: str, label: str = "") -> Optional[Dict[str, Any]]:
         """按用户选择的 type/component 显示云图并添加 report slide"""
         if not label:
@@ -731,15 +670,13 @@ after 4000 listen
             self._log(f"Report export failed: {result.get('error', 'Unknown')}")
             return False
 
-    def create_report(self, template_path: str = "") -> bool:
-        """执行 hwc report create document Report layouttemplate=..."""
+    def create_report(self) -> bool:
+        """执行 hwc report create presentation 两条指令"""
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
-        self._log(f"Creating report document, template={template_path}")
-        result = self.bridge.send_job(cmd="create_report", params={
-            "template_path": template_path.replace('\\', '/')
-        })
+        self._log("Creating report presentation...")
+        result = self.bridge.send_job(cmd="create_report", params={})
         if result.get('success', False):
             self._log("Report created successfully")
             return True

@@ -620,7 +620,7 @@ class ContourOptionDialog(tk.Toplevel):
         ],
     }
 
-    def __init__(self, parent, orchestrator=None):
+    def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour Settings")
         self.geometry("450x250")
@@ -629,6 +629,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.grab_set()
 
         self.orchestrator = orchestrator
+        self.on_execute = on_execute
         self.result = None
         self._create_ui()
         self.wait_window()
@@ -684,25 +685,40 @@ class ContourOptionDialog(tk.Toplevel):
         if comps:
             self.comp_var.set(comps[0])
 
-    def _on_apply(self):
-        """Apply: result scalar edit + plot + report Report Run"""
+    def _execute_contour(self, close_after=False):
+        """执行 apply_contour + report Run"""
         if not self.orchestrator:
             return
         result_type = self.type_var.get()
         component = self.comp_var.get()
+        label = f"{result_type} - {component}"
+        config = {'type': result_type, 'component': component}
 
         def run():
-            self.orchestrator.plot_contour(result_type, component)
+            try:
+                print(f"[ContourOptionDialog] Executing apply_contour + report Run: {label}")
+                self.orchestrator.apply_contour(result_type, component, label)
+                print("[ContourOptionDialog] apply_contour + report Run done")
+            except Exception as e:
+                print(f"[ContourOptionDialog] ERROR in thread: {e}")
+            if self.on_execute:
+                self.on_execute(config)
+            if close_after:
+                self.after(0, self.destroy)
 
         threading.Thread(target=run, daemon=True).start()
 
+    def _on_apply(self):
+        """执行指令但不退出对话框"""
+        self._execute_contour(close_after=False)
+
     def _on_confirm(self):
-        """Confirm: TODO"""
+        """执行指令后退出对话框"""
         self.result = {
             'type': self.type_var.get(),
             'component': self.comp_var.get()
         }
-        self.destroy()
+        self._execute_contour(close_after=True)
 
 
 class AnalysisDialog(tk.Toplevel):
@@ -713,17 +729,20 @@ class AnalysisDialog(tk.Toplevel):
         self.title("Analysis Options")
         self.geometry("550x500")
         self.resizable(width=False, height=False)
+        # 不使用 transient 和 grab_set，让窗口独立运行
 
         self.parent = parent
         self.orchestrator = orchestrator
         self.model_path = model_path
         self.result_path = result_path
+        self.result = None
 
         # 启动 setup_view 线程
         self._setup_thread = threading.Thread(target=self.orchestrator.setup_view, daemon=True)
         self._setup_thread.start()
 
         self._create_ui()
+        # 等待窗口关闭
         self.wait_window()
 
     def _create_ui(self):
@@ -751,11 +770,6 @@ class AnalysisDialog(tk.Toplevel):
         self.chk_stress_peak = tk.BooleanVar(value=False)
         self.chk_compare = tk.BooleanVar(value=False)
 
-        # 监听勾选变化，实时控制 Option 按钮
-        self.chk_contour.trace_add('write', lambda *_: self._sync_option_buttons())
-        self.chk_stress_peak.trace_add('write', lambda *_: self._sync_option_buttons())
-        self.chk_compare.trace_add('write', lambda *_: self._sync_option_buttons())
-
         row1 = ttk.Frame(opt_frame)
         row1.pack(fill=tk.X, pady=4)
         ttk.Checkbutton(row1, text="Plot Contour",
@@ -770,7 +784,8 @@ class AnalysisDialog(tk.Toplevel):
         row2.pack(fill=tk.X, pady=4)
         ttk.Checkbutton(row2, text="Stress Peak Analysis",
                         variable=self.chk_stress_peak).pack(side=tk.LEFT)
-        self.opt_btn_stress = ttk.Button(row2, text="Option", width=8, state=tk.DISABLED)
+        self.opt_btn_stress = ttk.Button(row2, text="Option", width=8, state=tk.DISABLED,
+                                          command=self._run_stress_peak)
         self.opt_btn_stress.pack(side=tk.RIGHT)
         ttk.Label(opt_frame, text="    Find maximum Von Mises stress location and value",
                   foreground='gray').pack(anchor=tk.W)
@@ -779,17 +794,21 @@ class AnalysisDialog(tk.Toplevel):
         row3.pack(fill=tk.X, pady=4)
         ttk.Checkbutton(row3, text="Compare with Material Standards",
                         variable=self.chk_compare).pack(side=tk.LEFT)
-        self.opt_btn_compare = ttk.Button(row3, text="Option", width=8, state=tk.DISABLED)
+        self.opt_btn_compare = ttk.Button(row3, text="Option", width=8, state=tk.DISABLED,
+                                           command=self._run_compare)
         self.opt_btn_compare.pack(side=tk.RIGHT)
         ttk.Label(opt_frame, text="    Compare peak stress with allowable values from database",
                   foreground='gray').pack(anchor=tk.W)
 
-        # 底部区域
+        # 结果追踪
+        self._completed_results = []
+
+        # 底部区域 (从下往上: 状态栏 -> 进度条 -> 按钮)
         bottom_frame = ttk.Frame(self)
         bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
         # 状态栏
-        self.status_var = tk.StringVar(value="Ready")
+        self.status_var = tk.StringVar(value="Step 1: Click Create Report")
         status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W, padding=5)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
@@ -800,46 +819,156 @@ class AnalysisDialog(tk.Toplevel):
         # 按钮区域
         btn_frame = ttk.Frame(bottom_frame, padding=10)
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        self.close_btn = ttk.Button(btn_frame, text="Close", command=self.destroy, width=15)
+        self.close_btn = ttk.Button(btn_frame, text="Close", command=self.destroy, width=15, state=tk.DISABLED)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
-        self.run_btn = ttk.Button(btn_frame, text="Run", width=15, command=self._on_run)
+        self.run_btn = ttk.Button(btn_frame, text="Run", command=self._export_report, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
-        self.create_report_btn = ttk.Button(btn_frame, text="Create Report", width=15, command=self._on_create_report)
+        self.create_report_btn = ttk.Button(btn_frame, text="Create Report", command=self._create_report, width=15)
         self.create_report_btn.pack(side=tk.RIGHT, padx=5)
 
-        # 初始化 Option 按钮状态
-        self._sync_option_buttons()
+    # ── Step 1: Create Report ──
 
-    # ── 按钮处理 ──
-
-    def _on_create_report(self):
-        """Create Report: 创建 Word 报告文档"""
+    def _create_report(self):
+        """Step 1: 创建报告模板，完成后解锁 Option 和 Run"""
         self.create_report_btn.config(state=tk.DISABLED)
-        self.status_var.set("Creating report...")
-
-        template_path = self.orchestrator.config.get('report', {}).get('ppt_template', '')
+        self.run_btn.config(state=tk.DISABLED)
+        self.close_btn.config(state=tk.DISABLED)
+        self._set_status("Step 1: Creating report...")
 
         def do_create():
             self._setup_thread.join()
-            self.orchestrator.create_report(template_path)
-            self.after(0, lambda: self.status_var.set("Report created."))
-            self.after(0, lambda: self.create_report_btn.config(state=tk.NORMAL))
+            self.orchestrator.create_report()
+            self.after(0, lambda: self._set_status("Report created. Waiting for HyperView..."))
+            self.after(0, lambda: self.after(20000, self._unlock_after_create))
 
         threading.Thread(target=do_create, daemon=True).start()
 
-    def _sync_option_buttons(self):
-        """勾选实时控制 Option 按钮：勾选则亮起，取消则变灰"""
-        self.opt_btn_contour.config(state=tk.NORMAL if self.chk_contour.get() else tk.DISABLED)
-        self.opt_btn_stress.config(state=tk.NORMAL if self.chk_stress_peak.get() else tk.DISABLED)
-        self.opt_btn_compare.config(state=tk.NORMAL if self.chk_compare.get() else tk.DISABLED)
+    def _unlock_after_create(self):
+        """Create Report 完成后解锁 Option 按钮和 Run/Close"""
+        self.run_btn.config(state=tk.NORMAL)
+        self.close_btn.config(state=tk.NORMAL)
+        if self.chk_contour.get():
+            self.opt_btn_contour.config(state=tk.NORMAL)
+        if self.chk_stress_peak.get():
+            self.opt_btn_stress.config(state=tk.NORMAL)
+        if self.chk_compare.get():
+            self.opt_btn_compare.config(state=tk.NORMAL)
+        self._set_status("Step 2: Click Option to configure, then Step 3: Run to export PPT")
 
-    def _on_run(self):
-        """Run: TODO"""
-        pass
+    # ── Step 2: 自由配置分析项 ──
 
     def _open_contour_option(self):
-        """打开云图参数设置对话框"""
-        ContourOptionDialog(self, orchestrator=self.orchestrator)
+        """打开云图参数设置对话框，Apply/Confirm 都会执行 hwc 指令"""
+        ContourOptionDialog(self, orchestrator=self.orchestrator,
+                            on_execute=self._on_contour_executed)
+
+    def _on_contour_executed(self, config):
+        """每次 Apply/Confirm 执行后的回调"""
+        self._completed_results.append({
+            'type': 'contour', 'success': True, 'config': config
+        })
+
+    def _run_stress_peak(self):
+        """执行 Stress Peak 分析 + report Run"""
+        self.opt_btn_stress.config(state=tk.DISABLED)
+        self._set_status("Running stress peak analysis...")
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            if result and result.get('success'):
+                self.orchestrator.report_run()
+                self.after(0, lambda: self._completed_results.append({
+                    'type': 'stress_peak', 'success': True, 'result': result
+                }))
+            self.after(0, lambda: self.opt_btn_stress.config(state=tk.NORMAL))
+            self.after(0, lambda: self._set_status("Stress peak done. Continue or Run to export."))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _run_compare(self):
+        """执行 Material Compare 分析 + report Run"""
+        self.opt_btn_compare.config(state=tk.DISABLED)
+        self._set_status("Comparing with material standards...")
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            if result and result.get('success'):
+                self.orchestrator.report_run()
+                self.after(0, lambda: self._completed_results.append({
+                    'type': 'compare', 'success': True, 'result': result
+                }))
+            self.after(0, lambda: self.opt_btn_compare.config(state=tk.NORMAL))
+            self.after(0, lambda: self._set_status("Compare done. Continue or Run to export."))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    # ── Step 3: 导出 PPT ──
+
+    def _export_report(self):
+        """Step 3: 导出最终 PPT"""
+        self.run_btn.config(state=tk.DISABLED)
+        self.close_btn.config(state=tk.DISABLED)
+        self._set_status("Step 3: Exporting report...")
+
+        def export():
+            self.orchestrator.report_export()
+            self.after(0, lambda: self._set_status("All done! Report exported."))
+            self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
+            self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
+            self.after(0, self._update_parent_results)
+
+        threading.Thread(target=export, daemon=True).start()
+
+    # ── 工具方法 ──
+
+    def _set_status(self, msg):
+        self.status_var.set(msg)
+        self.update()
+
+    def _update_parent_results(self):
+        """将分析摘要写入主窗口的 Analysing Result 区域"""
+        if not hasattr(self.parent, 'result_text'):
+            return
+
+        lines = ["=== Analysis Summary ===\n"]
+        report_path = None
+
+        for r in self._completed_results:
+            if not r['success']:
+                lines.append(f"  [{r['type']}]  FAILED\n")
+                continue
+
+            if r['type'] == 'contour':
+                cfg = r.get('config')
+                if cfg:
+                    lines.append(f"  [Plot Contour]  {cfg['type']} - {cfg['component']}\n")
+
+            elif r['type'] == 'stress_peak':
+                a = r['result']['analysis']
+                lines.append(f"  [Stress Peak]  {a.peak_value:.4f} MPa  (Entity {a.peak_entity_id})\n")
+                if not report_path:
+                    report_path = r['result'].get('report_path')
+
+            elif r['type'] == 'compare':
+                a = r['result']['analysis']
+                status = "PASSED" if a.passed else "FAILED"
+                allowable = f"{a.allowable:.2f}" if a.allowable else "N/A"
+                lines.append(f"  [Material Compare]  {status}  "
+                             f"Peak={a.peak_value:.4f}  Allowable={allowable} MPa\n")
+                if not report_path:
+                    report_path = r['result'].get('report_path')
+
+        lines.append(f"\nModel: {os.path.basename(self.model_path)}")
+        lines.append("\nPPT Report exported to C:/Temp/HyperView_Report")
+
+        self.parent.result_text.config(state=tk.NORMAL)
+        self.parent.result_text.delete(1.0, tk.END)
+        self.parent.result_text.insert(tk.END, "".join(lines))
+        self.parent.result_text.config(state=tk.DISABLED)
+
+        if report_path:
+            self.parent.current_report_path = report_path
+            self.parent.report_btn.config(state=tk.NORMAL)
 
 
 def main():

@@ -7,9 +7,6 @@
         "startup_timeout": 120,
         "job_timeout": 300
     },
-    "report": {
-        "ppt_template": "C:/Temp/HyperView_Report/pptTemplate.pptx"
-    },
     "workdir": {
         "inbox": "workdir/inbox",
         "outbox": "workdir/outbox",
