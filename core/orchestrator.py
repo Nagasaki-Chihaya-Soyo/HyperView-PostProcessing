@@ -363,14 +363,19 @@ proc process_job {job_file} {
                 if { [catch {
                     hwc result scalar edit "Current Contour" type=$result_type component=$result_component
                     hwc result scalar plot "Current Contour"
-                    hwc report Report Run
                 } err] } {
                     puts "plot_contour error: $err"
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "plot_contour completed successfully"
+                if { [catch {
+                    hwc report Report Run
+                } err2] } {
+                    puts "report Run error: $err2"
+                } else {
+                    puts "report Report Run completed"
+                }
                 write_result $job_id {{"success":true}}
             }
             "apply_contour" {
