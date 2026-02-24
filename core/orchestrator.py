@@ -359,7 +359,12 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "apply_contour completed successfully"
+                puts "apply_contour completed, now report run..."
+                if { [catch {
+                    hwc report Report run
+                } err2] } {
+                    puts "report run error: $err2"
+                }
                 write_result $job_id {{"success":true}}
             }
             "report_run" {
