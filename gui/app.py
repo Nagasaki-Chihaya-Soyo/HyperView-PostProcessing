@@ -685,15 +685,14 @@ class ContourOptionDialog(tk.Toplevel):
             self.comp_var.set(comps[0])
 
     def _on_apply(self):
-        """Apply: 根据选择执行 result scalar edit + plot"""
+        """Apply: result scalar edit + plot + report Report Run"""
         if not self.orchestrator:
             return
         result_type = self.type_var.get()
         component = self.comp_var.get()
-        label = f"{result_type} - {component}"
 
         def run():
-            self.orchestrator.apply_contour(result_type, component, label)
+            self.orchestrator.plot_contour(result_type, component)
 
         threading.Thread(target=run, daemon=True).start()
 

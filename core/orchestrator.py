@@ -357,6 +357,22 @@ proc process_job {job_file} {
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
+            "plot_contour" {
+                puts "Executing plot_contour command"
+                puts "result_type=$result_type result_component=$result_component"
+                if { [catch {
+                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
+                    hwc result scalar plot "Current Contour"
+                    hwc report Report Run
+                } err] } {
+                    puts "plot_contour error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "plot_contour completed successfully"
+                write_result $job_id {{"success":true}}
+            }
             "apply_contour" {
                 puts "Executing apply_contour command"
                 puts "result_type=$result_type result_component=$result_component label=$label"
@@ -618,6 +634,29 @@ after 4000 listen
             }
         except Exception as e:
             self._log(f"Display contour error: {str(e)}")
+            return None
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def plot_contour(self, result_type: str, component: str) -> Optional[Dict[str, Any]]:
+        """执行 result scalar edit + plot + report Report Run"""
+        self._log(f"plot_contour: type={result_type}, component={component}")
+        if self.state != State.AGENT_READY:
+            self._log("HyperView NOT Ready, Start First")
+            return None
+        self._set_state(State.RUNNING)
+        try:
+            result = self.bridge.send_job(cmd="plot_contour", params={
+                "result_type": result_type,
+                "result_component": component,
+            })
+            if not result.get('success', False):
+                self._log(f"plot_contour failed: {result.get('error', 'Unknown')}")
+                return None
+            self._log("plot_contour completed successfully")
+            return {'success': True}
+        except Exception as e:
+            self._log(f"plot_contour error: {str(e)}")
             return None
         finally:
             self._set_state(State.AGENT_READY)
