@@ -371,7 +371,7 @@ proc process_job {job_file} {
                     return
                 }
                 incr SLIDE_NUM
-                set slide_name "One Image with Caption $SLIDE_NUM"
+                set slide_name "One Image with Caption"
                 set slide_label "$result_type $result_component"
                 puts "Adding slide: $slide_name label=$slide_label"
                 if { [catch {
