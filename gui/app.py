@@ -703,24 +703,12 @@ class ContourOptionDialog(tk.Toplevel):
         self._execute_contour()
 
     def _on_confirm(self):
-        """执行指令后退出对话框，等待执行完成再关闭"""
+        """设置结果并关闭对话框，执行由 AnalysisDialog._execute_current_task 处理"""
         self.result = {
             'type': self.type_var.get(),
             'component': self.comp_var.get()
         }
-        if not self.orchestrator:
-            self.destroy()
-            return
-        result_type = self.type_var.get()
-        component = self.comp_var.get()
-        label = f"{result_type} - {component}"
-
-        def run():
-            self.orchestrator.apply_contour(result_type, component, label)
-            self.orchestrator.report_run()
-            self.after(0, self.destroy)
-
-        threading.Thread(target=run, daemon=True).start()
+        self.destroy()
 
 
 class AnalysisDialog(tk.Toplevel):
@@ -887,9 +875,7 @@ class AnalysisDialog(tk.Toplevel):
         if dlg.result:
             self.contour_config = dlg.result
             self.opt_btn_contour.config(state=tk.DISABLED)
-            # 指令已在子界面中执行完毕，直接进入下一个任务
-            self._current_task_idx += 1
-            self._activate_next_task()
+            self._execute_current_task()
 
     def _run_selected(self):
         """按从上到下顺序，依次解锁 Option 让用户设置后执行"""
@@ -945,7 +931,13 @@ class AnalysisDialog(tk.Toplevel):
         def run():
             if task == "contour":
                 self.after(0, lambda: self._set_status("Plotting contour..."))
-                result = self.orchestrator.display_contour(self.model_path, self.result_path)
+                if self.contour_config:
+                    cfg = self.contour_config
+                    label = f"{cfg['type']} - {cfg['component']}"
+                    result = self.orchestrator.apply_contour(
+                        cfg['type'], cfg['component'], label)
+                else:
+                    result = self.orchestrator.display_contour(self.model_path, self.result_path)
                 if result and result.get('success'):
                     self.after(0, lambda: self._set_status("Running report..."))
                     self.orchestrator.report_run()
