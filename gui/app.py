@@ -686,7 +686,7 @@ class ContourOptionDialog(tk.Toplevel):
             self.comp_var.set(comps[0])
 
     def _execute_contour(self, close_after=False):
-        """执行 apply_contour + report Run"""
+        """执行 apply_contour + report Run + CaptureImage"""
         if not self.orchestrator:
             return
         result_type = self.type_var.get()
@@ -696,9 +696,12 @@ class ContourOptionDialog(tk.Toplevel):
 
         def run():
             try:
-                print(f"[ContourOptionDialog] Executing apply_contour + report Run: {label}")
-                self.orchestrator.apply_contour(result_type, component, label)
-                print("[ContourOptionDialog] apply_contour + report Run done")
+                print(f"[ContourOptionDialog] Executing apply_contour: {label}")
+                result = self.orchestrator.apply_contour(result_type, component, label)
+                if result and result.get('image_path'):
+                    config['image_path'] = result['image_path']
+                    config['label'] = result.get('label', label)
+                print("[ContourOptionDialog] apply_contour done")
             except Exception as e:
                 print(f"[ContourOptionDialog] ERROR in thread: {e}")
             if self.on_execute:
@@ -802,6 +805,8 @@ class AnalysisDialog(tk.Toplevel):
 
         # 结果追踪
         self._completed_results = []
+        # 已捕获的 slide 图像 (用于 Python 侧 PPTX 生成)
+        self._captured_slides = []
 
         # 底部区域 (从下往上: 状态栏 -> 进度条 -> 按钮)
         bottom_frame = ttk.Frame(self)
@@ -867,6 +872,12 @@ class AnalysisDialog(tk.Toplevel):
         self._completed_results.append({
             'type': 'contour', 'success': True, 'config': config
         })
+        # 收集已捕获的 slide 图像
+        if config.get('image_path'):
+            self._captured_slides.append({
+                'image_path': config['image_path'],
+                'label': config.get('label', f"{config['type']} - {config['component']}")
+            })
 
     def _run_stress_peak(self):
         """执行 Stress Peak 分析"""
@@ -903,14 +914,21 @@ class AnalysisDialog(tk.Toplevel):
     # ── Step 3: 导出 PPT ──
 
     def _export_report(self):
-        """导出 PPT"""
+        """导出 PPT (使用 Python 侧 PPTX 生成，避免 hwc report export 重新 run 覆盖画面)"""
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
         self._set_status("Exporting report...")
 
         def export():
-            self.orchestrator.report_export()
-            self.after(0, lambda: self._set_status("All done! Report exported."))
+            if self._captured_slides:
+                success = self.orchestrator.export_pptx_from_images(self._captured_slides)
+            else:
+                # 没有捕获的图像时回退到 HyperView 导出
+                success = self.orchestrator.report_export()
+            if success:
+                self.after(0, lambda: self._set_status("All done! Report exported."))
+            else:
+                self.after(0, lambda: self._set_status("Export failed. Check log for details."))
             self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
             self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
             self.after(0, self._update_parent_results)

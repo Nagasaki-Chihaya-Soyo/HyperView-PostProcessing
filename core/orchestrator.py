@@ -8,6 +8,7 @@ from .hv_bridge import HVBridge, ReadySignal
 from .db_store import DBStore
 from .analysis import Analyzer
 from .report_html import HTMLReporter
+from .pptx_builder import build_pptx
 from .logging_util import log_info, log_error, setup_logger
 
 
@@ -359,8 +360,41 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "apply_contour completed, slide added for $label"
-                write_result $job_id {{"success":true}}
+                puts "apply_contour completed, now report run position=$label..."
+                if { [catch {
+                    hwc report Report run position=$label
+                } err2] } {
+                    puts "report run error: $err2"
+                }
+                # Capture image for Python-side PPTX generation (avoids hwc report export re-run)
+                set img_path ""
+                if { [catch {
+                    set img_dir [file join $REPORT_DIR "slides"]
+                    file mkdir $img_dir
+                    set safe_label [string map {" " "_" "/" "_" "\\" "_" ":" "_" "(" "_" ")" "_" "&" "_"} $label]
+                    set img_path [file join $img_dir "${safe_label}.png"]
+                    cleanup_handles
+                    hwi OpenStack
+                    hwi GetSessionHandle sess
+                    sess GetProjectHandle proj
+                    set pageId [proj GetActivePage]
+                    proj GetPageHandle page1 $pageId
+                    set winId [page1 GetActiveWindow]
+                    page1 GetWindowHandle win1 $winId
+                    win1 CaptureImage $img_path 0 0 1920 1080
+                    win1 ReleaseHandle
+                    page1 ReleaseHandle
+                    proj ReleaseHandle
+                    sess ReleaseHandle
+                    hwi CloseStack
+                    puts "Image captured: $img_path"
+                } img_err] } {
+                    puts "Image capture warning: $img_err"
+                    catch { hwi CloseStack }
+                }
+                set escaped_img [escape_json_string $img_path]
+                set escaped_label [escape_json_string $label]
+                write_result $job_id [format {{"success":true,"image_path":"%s","label":"%s"}} $escaped_img $escaped_label]
             }
             "report_run" {
                 puts "Executing report_run command"
@@ -621,8 +655,9 @@ after 4000 listen
             if not result.get('success', False):
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
                 return None
-            self._log("Contour applied successfully")
-            return {'success': True}
+            image_path = result.get('image_path', '')
+            self._log(f"Contour applied successfully, image: {image_path}")
+            return {'success': True, 'image_path': image_path, 'label': label}
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
             return None
@@ -646,6 +681,32 @@ after 4000 listen
                 return False
         finally:
             self._set_state(State.AGENT_READY)
+
+    def export_pptx_from_images(self, slides: list, output_dir: str = "C:/Temp/HyperView_Report") -> bool:
+        """从已捕获的 slide 图像构建 PPTX，避免 hwc report export 重新 run 导致覆盖"""
+        try:
+            counter_file = os.path.join(output_dir, 'report_counter.txt')
+            num = 1
+            if os.path.exists(counter_file):
+                with open(counter_file, 'r') as f:
+                    num_str = f.read().strip()
+                    if num_str:
+                        num = int(num_str) + 1
+            os.makedirs(output_dir, exist_ok=True)
+            export_path = os.path.join(output_dir, f'Report{num}.pptx')
+            self._log(f"Building PPTX from {len(slides)} captured images: {export_path}")
+            result_path = build_pptx(slides, export_path)
+            if result_path:
+                with open(counter_file, 'w') as f:
+                    f.write(str(num))
+                self._log(f"PPTX exported: {export_path}")
+                return True
+            else:
+                self._log("PPTX export failed: no slides")
+                return False
+        except Exception as e:
+            self._log(f"PPTX export error: {str(e)}")
+            return False
 
     def report_export(self, output_dir: str = "C:/Temp/HyperView_Report") -> bool:
         """导出 report 为递增编号的 pptx"""
