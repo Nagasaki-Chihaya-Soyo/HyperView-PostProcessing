@@ -621,7 +621,7 @@ class ContourOptionDialog(tk.Toplevel):
         ],
     }
 
-    def __init__(self, parent):
+    def __init__(self, parent, orchestrator=None):
         super().__init__(parent)
         self.title("Contour Settings")
         self.geometry("450x250")
@@ -629,6 +629,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
 
+        self.orchestrator = orchestrator
         self.result = None
         self._create_ui()
         self.wait_window()
@@ -660,6 +661,7 @@ class ContourOptionDialog(tk.Toplevel):
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=15)
         ttk.Button(btn_frame, text="Confirm", command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
 
     def _on_cat_changed(self, event=None):
@@ -683,11 +685,31 @@ class ContourOptionDialog(tk.Toplevel):
         if comps:
             self.comp_var.set(comps[0])
 
+    def _execute_contour(self):
+        """执行 apply_contour + report Run"""
+        if not self.orchestrator:
+            return
+        result_type = self.type_var.get()
+        component = self.comp_var.get()
+        label = f"{result_type} - {component}"
+
+        def run():
+            self.orchestrator.apply_contour(result_type, component, label)
+            self.orchestrator.report_run()
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_apply(self):
+        """执行指令但不退出对话框"""
+        self._execute_contour()
+
     def _on_confirm(self):
+        """执行指令后退出对话框"""
         self.result = {
             'type': self.type_var.get(),
             'component': self.comp_var.get()
         }
+        self._execute_contour()
         self.destroy()
 
 
@@ -708,8 +730,6 @@ class AnalysisDialog(tk.Toplevel):
         self.result = None
 
         self._create_ui()
-        # 10秒后解锁 Run/Close 按钮
-        self.after(10000, self._unlock_buttons)
         # 等待窗口关闭
         self.wait_window()
 
@@ -792,10 +812,28 @@ class AnalysisDialog(tk.Toplevel):
         self.close_btn.pack(side=tk.RIGHT, padx=5)
         self.run_btn = ttk.Button(btn_frame, text="Run", command=self._run_selected, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
+        self.create_report_btn = ttk.Button(btn_frame, text="Create Report", command=self._create_report, width=15)
+        self.create_report_btn.pack(side=tk.RIGHT, padx=5)
 
-    def _unlock_buttons(self):
+    def _create_report(self):
+        """点击 Create Report: 锁定自身 + Run + Close，执行 hwc 指令，20秒后解锁 Run + Close"""
+        self.create_report_btn.config(state=tk.DISABLED)
+        self.run_btn.config(state=tk.DISABLED)
+        self.close_btn.config(state=tk.DISABLED)
+        self._set_status("Creating report...")
+
+        def do_create():
+            self.orchestrator.create_report()
+            self.after(0, lambda: self._set_status("Report created. Waiting for HyperView..."))
+            self.after(0, lambda: self.after(20000, self._unlock_after_create))
+
+        threading.Thread(target=do_create, daemon=True).start()
+
+    def _unlock_after_create(self):
+        """Create Report 完成 20 秒后解锁 Run 和 Close"""
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
+        self._set_status("Ready")
 
     def _set_status(self, msg):
         self.status_var.set(msg)
@@ -829,11 +867,13 @@ class AnalysisDialog(tk.Toplevel):
 
     def _open_contour_option(self):
         """打开云图参数设置对话框"""
-        dlg = ContourOptionDialog(self)
+        dlg = ContourOptionDialog(self, orchestrator=self.orchestrator)
         if dlg.result:
             self.contour_config = dlg.result
             self.opt_btn_contour.config(state=tk.DISABLED)
-            self._execute_current_task()
+            # 指令已在子界面中执行完毕，直接进入下一个任务
+            self._current_task_idx += 1
+            self._activate_next_task()
 
     def _run_selected(self):
         """按从上到下顺序，依次解锁 Option 让用户设置后执行"""
@@ -889,14 +929,7 @@ class AnalysisDialog(tk.Toplevel):
         def run():
             if task == "contour":
                 self.after(0, lambda: self._set_status("Displaying stress contour..."))
-                if self.contour_config:
-                    cfg = self.contour_config
-                    label = f"{cfg['type']} - {cfg['component']}"
-                    result = self.orchestrator.apply_contour(
-                        cfg['type'], cfg['component'], label)
-                else:
-                    result = self.orchestrator.display_contour(self.model_path, self.result_path)
-                # 每个勾选项完成后执行 report Run
+                result = self.orchestrator.display_contour(self.model_path, self.result_path)
                 if result and result.get('success'):
                     self.after(0, lambda: self._set_status("Running report..."))
                     self.orchestrator.report_run()

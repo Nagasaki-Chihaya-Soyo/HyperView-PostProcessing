@@ -421,8 +421,6 @@ proc process_job {job_file} {
                 if { [catch {
                     hwc view orientation iso
                     hwc animate frame last
-                    hwc report create presentation Report layouttemplate=$REPORT_DIR
-                    hwc report create presentation "Report"
                 } err] } {
                     puts "setup_view error: $err"
                     set escaped_err [escape_json_string $err]
@@ -430,6 +428,20 @@ proc process_job {job_file} {
                     return
                 }
                 puts "setup_view completed successfully"
+                write_result $job_id {{"success":true}}
+            }
+            "create_report" {
+                puts "Executing create_report command"
+                if { [catch {
+                    hwc report create presentation Report layouttemplate=$REPORT_DIR
+                    hwc report create presentation "Report"
+                } err] } {
+                    puts "create_report error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "create_report completed successfully"
                 write_result $job_id {{"success":true}}
             }
             "quit" {
@@ -645,6 +657,20 @@ after 4000 listen
             return True
         else:
             self._log(f"Report export failed: {result.get('error', 'Unknown')}")
+            return False
+
+    def create_report(self) -> bool:
+        """执行 hwc report create presentation 两条指令"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._log("Creating report presentation...")
+        result = self.bridge.send_job(cmd="create_report", params={})
+        if result.get('success', False):
+            self._log("Report created successfully")
+            return True
+        else:
+            self._log(f"Report creation failed: {result.get('error', 'Unknown')}")
             return False
 
     def setup_view(self) -> bool:
