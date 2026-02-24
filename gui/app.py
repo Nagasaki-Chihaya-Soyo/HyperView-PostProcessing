@@ -809,7 +809,7 @@ class AnalysisDialog(tk.Toplevel):
         self.create_report_btn.config(state=tk.DISABLED)
         self.status_var.set("Creating report...")
 
-        template_path = self.orchestrator.config.get('report', {}).get('word_template', '')
+        template_path = self.orchestrator.config.get('report', {}).get('ppt_template', '')
 
         def do_create():
             self._setup_thread.join()

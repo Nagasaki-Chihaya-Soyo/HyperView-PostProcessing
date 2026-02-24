@@ -452,8 +452,8 @@ proc process_job {job_file} {
                 puts "Executing create_report command"
                 puts "template_path=$template_path"
                 if { [catch {
-                    hwc report create document Report layouttemplate=$template_path
-                    hwc report create document "Report"
+                    hwc report create presentation Report layouttemplate=$template_path
+                    hwc report create presentation "Report"
                 } err] } {
                     puts "create_report error: $err"
                     set escaped_err [escape_json_string $err]

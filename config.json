@@ -8,7 +8,7 @@
         "job_timeout": 300
     },
     "report": {
-        "word_template": "C:/Temp/HyperView_Report/wordTemplate.docx"
+        "ppt_template": "C:/Temp/HyperView_Report/pptTemplate.pptx"
     },
     "workdir": {
         "inbox": "workdir/inbox",
