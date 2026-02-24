@@ -743,6 +743,11 @@ class AnalysisDialog(tk.Toplevel):
         self.chk_stress_peak = tk.BooleanVar(value=False)
         self.chk_compare = tk.BooleanVar(value=False)
 
+        # 监听勾选变化，实时控制 Option 按钮
+        self.chk_contour.trace_add('write', lambda *_: self._sync_option_buttons())
+        self.chk_stress_peak.trace_add('write', lambda *_: self._sync_option_buttons())
+        self.chk_compare.trace_add('write', lambda *_: self._sync_option_buttons())
+
         row1 = ttk.Frame(opt_frame)
         row1.pack(fill=tk.X, pady=4)
         ttk.Checkbutton(row1, text="Plot Contour",
@@ -794,10 +799,13 @@ class AnalysisDialog(tk.Toplevel):
         self.create_report_btn = ttk.Button(btn_frame, text="Create Report", width=15, command=self._on_create_report)
         self.create_report_btn.pack(side=tk.RIGHT, padx=5)
 
-    # ── 按钮处理 (TODO) ──
+        # 初始化 Option 按钮状态
+        self._sync_option_buttons()
+
+    # ── 按钮处理 ──
 
     def _on_create_report(self):
-        """Create Report: 创建 Word 报告文档，完成后根据勾选项解锁对应 Option"""
+        """Create Report: 创建 Word 报告文档"""
         self.create_report_btn.config(state=tk.DISABLED)
         self.status_var.set("Creating report...")
 
@@ -806,19 +814,16 @@ class AnalysisDialog(tk.Toplevel):
         def do_create():
             self._setup_thread.join()
             self.orchestrator.create_report(template_path)
-            self.after(0, self._unlock_options)
+            self.after(0, lambda: self.status_var.set("Report created."))
+            self.after(0, lambda: self.create_report_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=do_create, daemon=True).start()
 
-    def _unlock_options(self):
-        """根据勾选的 items 解锁对应的 Option 按钮"""
-        if self.chk_contour.get():
-            self.opt_btn_contour.config(state=tk.NORMAL)
-        if self.chk_stress_peak.get():
-            self.opt_btn_stress.config(state=tk.NORMAL)
-        if self.chk_compare.get():
-            self.opt_btn_compare.config(state=tk.NORMAL)
-        self.status_var.set("Report created. Click Option to configure.")
+    def _sync_option_buttons(self):
+        """勾选实时控制 Option 按钮：勾选则亮起，取消则变灰"""
+        self.opt_btn_contour.config(state=tk.NORMAL if self.chk_contour.get() else tk.DISABLED)
+        self.opt_btn_stress.config(state=tk.NORMAL if self.chk_stress_peak.get() else tk.DISABLED)
+        self.opt_btn_compare.config(state=tk.NORMAL if self.chk_compare.get() else tk.DISABLED)
 
     def _on_run(self):
         """Run: TODO"""
