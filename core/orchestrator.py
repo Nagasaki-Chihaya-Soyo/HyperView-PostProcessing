@@ -370,13 +370,11 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                incr SLIDE_NUM
-                set slide_name "One Image with Caption"
                 set slide_label "$result_type $result_component"
-                puts "Adding slide: $slide_name label=$slide_label"
+                puts "Adding slide, label=$slide_label"
                 if { [catch {
-                    hwc report Report add slide $slide_name label=$slide_name
-                    hwc report Report edit items slide position $slide_name label=$slide_label
+                    hwc report Report add slide "One Image with Caption" label="One Image with Caption"
+                    hwc report Report edit items slide position "One Image with Caption" label=$slide_label
                     hwc report Report run
                 } err2] } {
                     puts "report slide/run error: $err2"
