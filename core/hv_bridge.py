@@ -47,12 +47,20 @@ class HVBridge:
                 with open(result_file, 'r', encoding='utf-8') as f:
                     result = json.load(f)
                 log_info(f"收到结果:job_{job_id}")
+                try:
+                    os.remove(result_file)
+                except OSError:
+                    pass
                 return result
             if os.path.exists(error_file):
                 time.sleep(0.1)
                 with open(error_file, 'r', encoding='utf-8') as f:
                     error = json.load(f)
                 log_error(f"任务失败:{error.get('error', 'Unknown error')}")
+                try:
+                    os.remove(error_file)
+                except OSError:
+                    pass
                 return {'success': False, 'error': error.get('error', 'Unknown error')}
 
             time.sleep(0.2)

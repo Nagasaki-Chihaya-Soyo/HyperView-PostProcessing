@@ -657,16 +657,20 @@ after 4000 listen
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
-        self._log(f"Exporting report to: {output_dir}")
-        result = self.bridge.send_job(cmd="report_export", params={
-            "output_dir": output_dir.replace('\\', '/')
-        })
-        if result.get('success', False):
-            self._log("Report exported successfully")
-            return True
-        else:
-            self._log(f"Report export failed: {result.get('error', 'Unknown')}")
-            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Exporting report to: {output_dir}")
+            result = self.bridge.send_job(cmd="report_export", params={
+                "output_dir": output_dir.replace('\\', '/')
+            })
+            if result.get('success', False):
+                self._log("Report exported successfully")
+                return True
+            else:
+                self._log(f"Report export failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def create_report(self) -> bool:
         """执行 hwc report create presentation 两条指令"""
