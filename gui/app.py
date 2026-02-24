@@ -134,7 +134,6 @@ class Application(tk.Tk):
             return
         if self.auto_minimize_var.get():
             self.iconify()
-        threading.Thread(target=self.orchestrator.setup_view, daemon=True).start()
         AnalysisDialog(self, self.orchestrator, model_path, result_path)
         self.deiconify()
 
@@ -704,13 +703,24 @@ class ContourOptionDialog(tk.Toplevel):
         self._execute_contour()
 
     def _on_confirm(self):
-        """执行指令后退出对话框"""
+        """执行指令后退出对话框，等待执行完成再关闭"""
         self.result = {
             'type': self.type_var.get(),
             'component': self.comp_var.get()
         }
-        self._execute_contour()
-        self.destroy()
+        if not self.orchestrator:
+            self.destroy()
+            return
+        result_type = self.type_var.get()
+        component = self.comp_var.get()
+        label = f"{result_type} - {component}"
+
+        def run():
+            self.orchestrator.apply_contour(result_type, component, label)
+            self.orchestrator.report_run()
+            self.after(0, self.destroy)
+
+        threading.Thread(target=run, daemon=True).start()
 
 
 class AnalysisDialog(tk.Toplevel):
@@ -728,6 +738,10 @@ class AnalysisDialog(tk.Toplevel):
         self.model_path = model_path
         self.result_path = result_path
         self.result = None
+
+        # 启动 setup_view 线程
+        self._setup_thread = threading.Thread(target=self.orchestrator.setup_view, daemon=True)
+        self._setup_thread.start()
 
         self._create_ui()
         # 等待窗口关闭
@@ -760,12 +774,12 @@ class AnalysisDialog(tk.Toplevel):
 
         row1 = ttk.Frame(opt_frame)
         row1.pack(fill=tk.X, pady=4)
-        ttk.Checkbutton(row1, text="Display Stress Contour",
+        ttk.Checkbutton(row1, text="Plot Contour",
                         variable=self.chk_contour).pack(side=tk.LEFT)
         self.opt_btn_contour = ttk.Button(row1, text="Option", width=8, state=tk.DISABLED,
                                           command=self._open_contour_option)
         self.opt_btn_contour.pack(side=tk.RIGHT)
-        ttk.Label(opt_frame, text="    Display Von Mises stress contour on the model",
+        ttk.Label(opt_frame, text="    Plot contour on the model",
                   foreground='gray').pack(anchor=tk.W)
 
         row2 = ttk.Frame(opt_frame)
@@ -823,6 +837,8 @@ class AnalysisDialog(tk.Toplevel):
         self._set_status("Creating report...")
 
         def do_create():
+            # 等待 setup_view 完成
+            self._setup_thread.join()
             self.orchestrator.create_report()
             self.after(0, lambda: self._set_status("Report created. Waiting for HyperView..."))
             self.after(0, lambda: self.after(20000, self._unlock_after_create))
@@ -912,7 +928,7 @@ class AnalysisDialog(tk.Toplevel):
 
         task = self._pending_tasks[self._current_task_idx]
         if task == "contour":
-            self._set_status("Configure Display Stress Contour, then click Option...")
+            self._set_status("Configure Plot Contour, then click Option...")
             self.opt_btn_contour.config(state=tk.NORMAL)
         elif task == "stress_peak":
             # 暂无 Option，直接执行
@@ -928,7 +944,7 @@ class AnalysisDialog(tk.Toplevel):
 
         def run():
             if task == "contour":
-                self.after(0, lambda: self._set_status("Displaying stress contour..."))
+                self.after(0, lambda: self._set_status("Plotting contour..."))
                 result = self.orchestrator.display_contour(self.model_path, self.result_path)
                 if result and result.get('success'):
                     self.after(0, lambda: self._set_status("Running report..."))
@@ -972,8 +988,8 @@ class AnalysisDialog(tk.Toplevel):
 
         # 根据分析类型显示不同的结果
         if analysis_type == "contour":
-            self._set_status("Contour displayed successfully!")
-            messagebox.showinfo(title="Display Contour", message="Stress contour has been displayed on the model.\n\nYou can now view the contour in HyperView.")
+            self._set_status("Contour plotted successfully!")
+            messagebox.showinfo(title="Plot Contour", message="Contour has been plotted on the model.\n\nYou can now view it in HyperView.")
 
         elif analysis_type == "stress_peak":
             analysis = result['analysis']
