@@ -911,6 +911,7 @@ class AnalysisDialog(tk.Toplevel):
         self._set_status("Step 3: Exporting report...")
 
         def export():
+            self.orchestrator.report_run()
             self.orchestrator.report_export()
             self.after(0, lambda: self._set_status("All done! Report exported."))
             self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
