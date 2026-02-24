@@ -324,6 +324,17 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "template_path": "value"
+    set template_path ""
+    set idx [string first {"template_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 15}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set template_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -439,9 +450,9 @@ proc process_job {job_file} {
             }
             "create_report" {
                 puts "Executing create_report command"
+                puts "template_path=$template_path"
                 if { [catch {
-                    hwc report create presentation Report layouttemplate=$REPORT_DIR
-                    hwc report create presentation "Report"
+                    hwc report create document Report layouttemplate=$template_path
                 } err] } {
                     puts "create_report error: $err"
                     set escaped_err [escape_json_string $err]
@@ -670,13 +681,15 @@ after 4000 listen
             self._log(f"Report export failed: {result.get('error', 'Unknown')}")
             return False
 
-    def create_report(self) -> bool:
-        """执行 hwc report create presentation 两条指令"""
+    def create_report(self, template_path: str = "") -> bool:
+        """执行 hwc report create document Report layouttemplate=..."""
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
-        self._log("Creating report presentation...")
-        result = self.bridge.send_job(cmd="create_report", params={})
+        self._log(f"Creating report document, template={template_path}")
+        result = self.bridge.send_job(cmd="create_report", params={
+            "template_path": template_path.replace('\\', '/')
+        })
         if result.get('success', False):
             self._log("Report created successfully")
             return True

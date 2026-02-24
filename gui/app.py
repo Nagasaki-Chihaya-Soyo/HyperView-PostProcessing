@@ -797,8 +797,19 @@ class AnalysisDialog(tk.Toplevel):
     # ── 按钮处理 (TODO) ──
 
     def _on_create_report(self):
-        """Create Report: TODO"""
-        pass
+        """Create Report: 创建 Word 报告文档"""
+        self.create_report_btn.config(state=tk.DISABLED)
+        self.status_var.set("Creating report...")
+
+        template_path = self.orchestrator.config.get('report', {}).get('word_template', '')
+
+        def do_create():
+            self._setup_thread.join()
+            self.orchestrator.create_report(template_path)
+            self.after(0, lambda: self.status_var.set("Report created."))
+            self.after(0, lambda: self.create_report_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=do_create, daemon=True).start()
 
     def _on_run(self):
         """Run: TODO"""

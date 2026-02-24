@@ -7,6 +7,9 @@
         "startup_timeout": 120,
         "job_timeout": 300
     },
+    "report": {
+        "word_template": "C:/Temp/HyperView_Report/wordTemplate.docx"
+    },
     "workdir": {
         "inbox": "workdir/inbox",
         "outbox": "workdir/outbox",
