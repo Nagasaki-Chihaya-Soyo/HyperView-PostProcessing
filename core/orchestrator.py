@@ -75,6 +75,7 @@ set OUTBOX_DIR "''' + outbox_dir + '''"
 set REPORT_DIR "C:/Temp/HyperView_Report"
 set MAX_VALUE 0.0
 set MAX_ID 0
+set SLIDE_NUM 0
 proc write_ready {} {
     global READY_FILE
     if { [catch {
@@ -228,7 +229,7 @@ proc cmd_display_contour {model_path result_path} {
 }
 
 proc process_job {job_file} {
-    global MAX_VALUE MAX_ID REPORT_DIR
+    global MAX_VALUE MAX_ID REPORT_DIR SLIDE_NUM
     set f [open $job_file r]
     set content [read $f]
     close $f
@@ -369,12 +370,18 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
+                incr SLIDE_NUM
+                set slide_name "One Image with Caption $SLIDE_NUM"
+                set slide_label "$result_type $result_component"
+                puts "Adding slide: $slide_name label=$slide_label"
                 if { [catch {
+                    hwc report Report add slide $slide_name label=$slide_name
+                    hwc report Report edit items slide position $slide_name label=$slide_label
                     hwc report Report Run
                 } err2] } {
-                    puts "report Run error: $err2"
+                    puts "report slide/run error: $err2"
                 } else {
-                    puts "report Report Run completed"
+                    puts "report add slide + edit + Run completed"
                 }
                 write_result $job_id {{"success":true}}
             }
