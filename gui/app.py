@@ -685,8 +685,17 @@ class ContourOptionDialog(tk.Toplevel):
             self.comp_var.set(comps[0])
 
     def _on_apply(self):
-        """Apply: TODO"""
-        pass
+        """Apply: 根据选择执行 result scalar edit + plot"""
+        if not self.orchestrator:
+            return
+        result_type = self.type_var.get()
+        component = self.comp_var.get()
+        label = f"{result_type} - {component}"
+
+        def run():
+            self.orchestrator.apply_contour(result_type, component, label)
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _on_confirm(self):
         """Confirm: TODO"""
