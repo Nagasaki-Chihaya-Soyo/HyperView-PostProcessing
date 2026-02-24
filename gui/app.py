@@ -792,6 +792,7 @@ class AnalysisDialog(tk.Toplevel):
         self.contour_config = None
         self._pending_tasks = []
         self._current_task_idx = 0
+        self._completed_results = []
 
         # 底部区域 (从下往上: 状态栏 -> 进度条 -> 按钮)
         bottom_frame = ttk.Frame(self)
@@ -908,6 +909,7 @@ class AnalysisDialog(tk.Toplevel):
                 self.after(0, lambda: self._set_status("All tasks completed! Report exported."))
                 self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
                 self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
+                self.after(0, self._update_parent_results)
 
             threading.Thread(target=export, daemon=True).start()
             return
@@ -970,48 +972,79 @@ class AnalysisDialog(tk.Toplevel):
         if result is None:
             self._stop_progress(success=False)
             self._set_status("Analysis failed!")
+            self._completed_results.append({'type': analysis_type, 'success': False})
             messagebox.showerror(title="Error", message="Analysis failed. Check the log for details.")
             return
 
         self._stop_progress(success=True)
-
         self._set_status("Analysis complete!")
         self.result = result
 
-        # 根据分析类型显示不同的结果
         if analysis_type == "contour":
+            self._completed_results.append({
+                'type': 'contour', 'success': True,
+                'config': self.contour_config
+            })
             self._set_status("Contour plotted successfully!")
-            messagebox.showinfo(title="Plot Contour", message="Contour has been plotted on the model.\n\nYou can now view it in HyperView.")
 
         elif analysis_type == "stress_peak":
-            analysis = result['analysis']
-            msg = f"""Stress Peak Analysis Result:
-
-Peak Value: {analysis.peak_value:.4f} MPa
-Entity ID: {analysis.peak_entity_id}
-Location: {analysis.peak_coords}
-
-{analysis.message}"""
-            messagebox.showinfo(title="Stress Peak Analysis", message=msg)
+            self._completed_results.append({
+                'type': 'stress_peak', 'success': True,
+                'result': result
+            })
 
         elif analysis_type == "compare":
-            analysis = result['analysis']
-            status = "PASSED" if analysis.passed else "FAILED"
-            msg = f"""Material Comparison Result:
+            self._completed_results.append({
+                'type': 'compare', 'success': True,
+                'result': result
+            })
 
-Status: {status}
-Peak Value: {analysis.peak_value:.4f} MPa
-Part No: {analysis.part_no or 'Not Found'}
-Allowable: {analysis.allowable:.2f if analysis.allowable else 'N/A'} MPa
-Margin: {analysis.margin:.2f if analysis.margin else 'N/A'} MPa
-Ratio: {analysis.ratio:.2% if analysis.ratio else 'N/A'}
+    def _update_parent_results(self):
+        """将分析摘要写入主窗口的 Analysing Result 区域"""
+        if not hasattr(self.parent, 'result_text'):
+            return
 
-Report: {result['report_path']}"""
-            messagebox.showinfo(title="Material Comparison", message=msg)
+        lines = ["=== Analysis Summary ===\n"]
+        report_path = None
 
-        # 通知父窗口更新 (只对有analysis结果的类型)
-        if analysis_type in ("stress_peak", "compare") and hasattr(self.parent, '_show_result'):
-            self.parent._show_result(result)
+        for r in self._completed_results:
+            if not r['success']:
+                lines.append(f"  [{r['type']}]  FAILED\n")
+                continue
+
+            if r['type'] == 'contour':
+                cfg = r.get('config')
+                if cfg:
+                    lines.append(f"  [Plot Contour]  {cfg['type']} - {cfg['component']}\n")
+                else:
+                    lines.append("  [Plot Contour]  Default vonMises\n")
+
+            elif r['type'] == 'stress_peak':
+                a = r['result']['analysis']
+                lines.append(f"  [Stress Peak]  {a.peak_value:.4f} MPa  (Entity {a.peak_entity_id})\n")
+                if not report_path:
+                    report_path = r['result'].get('report_path')
+
+            elif r['type'] == 'compare':
+                a = r['result']['analysis']
+                status = "PASSED" if a.passed else "FAILED"
+                allowable = f"{a.allowable:.2f}" if a.allowable else "N/A"
+                lines.append(f"  [Material Compare]  {status}  "
+                             f"Peak={a.peak_value:.4f}  Allowable={allowable} MPa\n")
+                if not report_path:
+                    report_path = r['result'].get('report_path')
+
+        lines.append(f"\nModel: {os.path.basename(self.model_path)}")
+        lines.append("\nPPT Report exported to C:/Temp/HyperView_Report")
+
+        self.parent.result_text.config(state=tk.NORMAL)
+        self.parent.result_text.delete(1.0, tk.END)
+        self.parent.result_text.insert(tk.END, "".join(lines))
+        self.parent.result_text.config(state=tk.DISABLED)
+
+        if report_path:
+            self.parent.current_report_path = report_path
+            self.parent.report_btn.config(state=tk.NORMAL)
 
 
 def main():
