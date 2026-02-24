@@ -620,7 +620,7 @@ class ContourOptionDialog(tk.Toplevel):
         ],
     }
 
-    def __init__(self, parent, orchestrator=None):
+    def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour Settings")
         self.geometry("450x250")
@@ -629,6 +629,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.grab_set()
 
         self.orchestrator = orchestrator
+        self.on_execute = on_execute
         self.result = None
         self._create_ui()
         self.wait_window()
@@ -684,31 +685,36 @@ class ContourOptionDialog(tk.Toplevel):
         if comps:
             self.comp_var.set(comps[0])
 
-    def _execute_contour(self):
+    def _execute_contour(self, close_after=False):
         """执行 apply_contour + report Run"""
         if not self.orchestrator:
             return
         result_type = self.type_var.get()
         component = self.comp_var.get()
         label = f"{result_type} - {component}"
+        config = {'type': result_type, 'component': component}
 
         def run():
             self.orchestrator.apply_contour(result_type, component, label)
             self.orchestrator.report_run()
+            if self.on_execute:
+                self.on_execute(config)
+            if close_after:
+                self.after(0, self.destroy)
 
         threading.Thread(target=run, daemon=True).start()
 
     def _on_apply(self):
         """执行指令但不退出对话框"""
-        self._execute_contour()
+        self._execute_contour(close_after=False)
 
     def _on_confirm(self):
-        """设置结果并关闭对话框，执行由 AnalysisDialog._execute_current_task 处理"""
+        """执行指令后退出对话框"""
         self.result = {
             'type': self.type_var.get(),
             'component': self.comp_var.get()
         }
-        self.destroy()
+        self._execute_contour(close_after=True)
 
 
 class AnalysisDialog(tk.Toplevel):
@@ -774,7 +780,8 @@ class AnalysisDialog(tk.Toplevel):
         row2.pack(fill=tk.X, pady=4)
         ttk.Checkbutton(row2, text="Stress Peak Analysis",
                         variable=self.chk_stress_peak).pack(side=tk.LEFT)
-        self.opt_btn_stress = ttk.Button(row2, text="Option", width=8, state=tk.DISABLED)
+        self.opt_btn_stress = ttk.Button(row2, text="Option", width=8, state=tk.DISABLED,
+                                          command=self._run_stress_peak)
         self.opt_btn_stress.pack(side=tk.RIGHT)
         ttk.Label(opt_frame, text="    Find maximum Von Mises stress location and value",
                   foreground='gray').pack(anchor=tk.W)
@@ -783,15 +790,13 @@ class AnalysisDialog(tk.Toplevel):
         row3.pack(fill=tk.X, pady=4)
         ttk.Checkbutton(row3, text="Compare with Material Standards",
                         variable=self.chk_compare).pack(side=tk.LEFT)
-        self.opt_btn_compare = ttk.Button(row3, text="Option", width=8, state=tk.DISABLED)
+        self.opt_btn_compare = ttk.Button(row3, text="Option", width=8, state=tk.DISABLED,
+                                           command=self._run_compare)
         self.opt_btn_compare.pack(side=tk.RIGHT)
         ttk.Label(opt_frame, text="    Compare peak stress with allowable values from database",
                   foreground='gray').pack(anchor=tk.W)
 
-        # 各项的 contour 配置（由 Option 对话框设置）
-        self.contour_config = None
-        self._pending_tasks = []
-        self._current_task_idx = 0
+        # 结果追踪
         self._completed_results = []
 
         # 底部区域 (从下往上: 状态栏 -> 进度条 -> 按钮)
@@ -799,34 +804,34 @@ class AnalysisDialog(tk.Toplevel):
         bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
         # 状态栏
-        self.status_var = tk.StringVar(value="Ready")
+        self.status_var = tk.StringVar(value="Step 1: Click Create Report")
         status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W, padding=5)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # 进度条 (确定模式，显示百分比)
+        # 进度条
         self.progress = ttk.Progressbar(bottom_frame, mode='determinate', length=480, maximum=100)
         self.progress.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
-        self._progress_running = False
 
         # 按钮区域
         btn_frame = ttk.Frame(bottom_frame, padding=10)
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.close_btn = ttk.Button(btn_frame, text="Close", command=self.destroy, width=15, state=tk.DISABLED)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
-        self.run_btn = ttk.Button(btn_frame, text="Run", command=self._run_selected, width=15, state=tk.DISABLED)
+        self.run_btn = ttk.Button(btn_frame, text="Run", command=self._export_report, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
         self.create_report_btn = ttk.Button(btn_frame, text="Create Report", command=self._create_report, width=15)
         self.create_report_btn.pack(side=tk.RIGHT, padx=5)
 
+    # ── Step 1: Create Report ──
+
     def _create_report(self):
-        """点击 Create Report: 锁定自身 + Run + Close，执行 hwc 指令，20秒后解锁 Run + Close"""
+        """Step 1: 创建报告模板，完成后解锁 Option 和 Run"""
         self.create_report_btn.config(state=tk.DISABLED)
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
-        self._set_status("Creating report...")
+        self._set_status("Step 1: Creating report...")
 
         def do_create():
-            # 等待 setup_view 完成
             self._setup_thread.join()
             self.orchestrator.create_report()
             self.after(0, lambda: self._set_status("Report created. Waiting for HyperView..."))
@@ -835,169 +840,86 @@ class AnalysisDialog(tk.Toplevel):
         threading.Thread(target=do_create, daemon=True).start()
 
     def _unlock_after_create(self):
-        """Create Report 完成 20 秒后解锁 Run 和 Close"""
+        """Create Report 完成后解锁 Option 按钮和 Run/Close"""
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
-        self._set_status("Ready")
+        if self.chk_contour.get():
+            self.opt_btn_contour.config(state=tk.NORMAL)
+        if self.chk_stress_peak.get():
+            self.opt_btn_stress.config(state=tk.NORMAL)
+        if self.chk_compare.get():
+            self.opt_btn_compare.config(state=tk.NORMAL)
+        self._set_status("Step 2: Click Option to configure, then Step 3: Run to export PPT")
+
+    # ── Step 2: 自由配置分析项 ──
+
+    def _open_contour_option(self):
+        """打开云图参数设置对话框，Apply/Confirm 都会执行 hwc 指令"""
+        ContourOptionDialog(self, orchestrator=self.orchestrator,
+                            on_execute=self._on_contour_executed)
+
+    def _on_contour_executed(self, config):
+        """每次 Apply/Confirm 执行后的回调"""
+        self._completed_results.append({
+            'type': 'contour', 'success': True, 'config': config
+        })
+
+    def _run_stress_peak(self):
+        """执行 Stress Peak 分析 + report Run"""
+        self.opt_btn_stress.config(state=tk.DISABLED)
+        self._set_status("Running stress peak analysis...")
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            if result and result.get('success'):
+                self.orchestrator.report_run()
+                self.after(0, lambda: self._completed_results.append({
+                    'type': 'stress_peak', 'success': True, 'result': result
+                }))
+            self.after(0, lambda: self.opt_btn_stress.config(state=tk.NORMAL))
+            self.after(0, lambda: self._set_status("Stress peak done. Continue or Run to export."))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _run_compare(self):
+        """执行 Material Compare 分析 + report Run"""
+        self.opt_btn_compare.config(state=tk.DISABLED)
+        self._set_status("Comparing with material standards...")
+
+        def run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            if result and result.get('success'):
+                self.orchestrator.report_run()
+                self.after(0, lambda: self._completed_results.append({
+                    'type': 'compare', 'success': True, 'result': result
+                }))
+            self.after(0, lambda: self.opt_btn_compare.config(state=tk.NORMAL))
+            self.after(0, lambda: self._set_status("Compare done. Continue or Run to export."))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    # ── Step 3: 导出 PPT ──
+
+    def _export_report(self):
+        """Step 3: 导出最终 PPT"""
+        self.run_btn.config(state=tk.DISABLED)
+        self.close_btn.config(state=tk.DISABLED)
+        self._set_status("Step 3: Exporting report...")
+
+        def export():
+            self.orchestrator.report_export()
+            self.after(0, lambda: self._set_status("All done! Report exported."))
+            self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
+            self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
+            self.after(0, self._update_parent_results)
+
+        threading.Thread(target=export, daemon=True).start()
+
+    # ── 工具方法 ──
 
     def _set_status(self, msg):
         self.status_var.set(msg)
         self.update()
-
-    def _start_progress(self):
-        """启动进度条动画"""
-        self.progress['value'] = 0
-        self._progress_running = True
-        self._update_progress()
-
-    def _update_progress(self):
-        """更新进度条（模拟进度）"""
-        if not self._progress_running:
-            return
-        current = self.progress['value']
-        # 逐渐增加到90%，留10%给完成时
-        if current < 90:
-            # 开始快，后面慢
-            increment = max(1, (90 - current) / 20)
-            self.progress['value'] = min(90, current + increment)
-            self.after(200, self._update_progress)
-
-    def _stop_progress(self, success=True):
-        """停止进度条"""
-        self._progress_running = False
-        if success:
-            self.progress['value'] = 100
-        else:
-            self.progress['value'] = 0
-
-    def _open_contour_option(self):
-        """打开云图参数设置对话框"""
-        dlg = ContourOptionDialog(self, orchestrator=self.orchestrator)
-        if dlg.result:
-            self.contour_config = dlg.result
-            self.opt_btn_contour.config(state=tk.DISABLED)
-            self._execute_current_task()
-
-    def _run_selected(self):
-        """按从上到下顺序，依次解锁 Option 让用户设置后执行"""
-        tasks = []
-        if self.chk_contour.get():
-            tasks.append("contour")
-        if self.chk_stress_peak.get():
-            tasks.append("stress_peak")
-        if self.chk_compare.get():
-            tasks.append("compare")
-
-        if not tasks:
-            messagebox.showwarning(title="WARNING", message="Please select at least one analysis item")
-            return
-
-        self.run_btn.config(state=tk.DISABLED)
-        self.close_btn.config(state=tk.DISABLED)
-        self._pending_tasks = tasks
-        self._current_task_idx = 0
-        self._activate_next_task()
-
-    def _activate_next_task(self):
-        """解锁下一个待执行项的 Option 按钮"""
-        if self._current_task_idx >= len(self._pending_tasks):
-            # 全部完成，导出 report
-            self._set_status("Exporting report...")
-
-            def export():
-                self.orchestrator.report_export()
-                self.after(0, lambda: self._set_status("All tasks completed! Report exported."))
-                self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
-                self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
-                self.after(0, self._update_parent_results)
-
-            threading.Thread(target=export, daemon=True).start()
-            return
-
-        task = self._pending_tasks[self._current_task_idx]
-        if task == "contour":
-            self._set_status("Configure Plot Contour, then click Option...")
-            self.opt_btn_contour.config(state=tk.NORMAL)
-        elif task == "stress_peak":
-            # 暂无 Option，直接执行
-            self._execute_current_task()
-        elif task == "compare":
-            # 暂无 Option，直接执行
-            self._execute_current_task()
-
-    def _execute_current_task(self):
-        """执行当前任务"""
-        task = self._pending_tasks[self._current_task_idx]
-        self._start_progress()
-
-        def run():
-            if task == "contour":
-                self.after(0, lambda: self._set_status("Plotting contour..."))
-                if self.contour_config:
-                    cfg = self.contour_config
-                    label = f"{cfg['type']} - {cfg['component']}"
-                    result = self.orchestrator.apply_contour(
-                        cfg['type'], cfg['component'], label)
-                else:
-                    result = self.orchestrator.display_contour(self.model_path, self.result_path)
-                if result and result.get('success'):
-                    self.after(0, lambda: self._set_status("Running report..."))
-                    self.orchestrator.report_run()
-                self.after(0, lambda r=result: self._on_task_done(r, "contour"))
-            elif task == "stress_peak":
-                self.after(0, lambda: self._set_status("Running stress peak analysis..."))
-                result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-                if result and result.get('success'):
-                    self.after(0, lambda: self._set_status("Running report..."))
-                    self.orchestrator.report_run()
-                self.after(0, lambda r=result: self._on_task_done(r, "stress_peak"))
-            elif task == "compare":
-                self.after(0, lambda: self._set_status("Comparing with material standards..."))
-                result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-                if result and result.get('success'):
-                    self.after(0, lambda: self._set_status("Running report..."))
-                    self.orchestrator.report_run()
-                self.after(0, lambda r=result: self._on_task_done(r, "compare"))
-
-        threading.Thread(target=run, daemon=True).start()
-
-    def _on_task_done(self, result, analysis_type):
-        """单个任务完成，显示结果后继续下一个"""
-        self._on_analysis_complete(result, analysis_type)
-        self._current_task_idx += 1
-        self._activate_next_task()
-
-    def _on_analysis_complete(self, result, analysis_type):
-        """分析完成回调"""
-        if result is None:
-            self._stop_progress(success=False)
-            self._set_status("Analysis failed!")
-            self._completed_results.append({'type': analysis_type, 'success': False})
-            messagebox.showerror(title="Error", message="Analysis failed. Check the log for details.")
-            return
-
-        self._stop_progress(success=True)
-        self._set_status("Analysis complete!")
-        self.result = result
-
-        if analysis_type == "contour":
-            self._completed_results.append({
-                'type': 'contour', 'success': True,
-                'config': self.contour_config
-            })
-            self._set_status("Contour plotted successfully!")
-
-        elif analysis_type == "stress_peak":
-            self._completed_results.append({
-                'type': 'stress_peak', 'success': True,
-                'result': result
-            })
-
-        elif analysis_type == "compare":
-            self._completed_results.append({
-                'type': 'compare', 'success': True,
-                'result': result
-            })
 
     def _update_parent_results(self):
         """将分析摘要写入主窗口的 Analysing Result 区域"""
@@ -1016,8 +938,6 @@ class AnalysisDialog(tk.Toplevel):
                 cfg = r.get('config')
                 if cfg:
                     lines.append(f"  [Plot Contour]  {cfg['type']} - {cfg['component']}\n")
-                else:
-                    lines.append("  [Plot Contour]  Default vonMises\n")
 
             elif r['type'] == 'stress_peak':
                 a = r['result']['analysis']
