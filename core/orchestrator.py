@@ -350,9 +350,9 @@ proc process_job {job_file} {
                 puts "Executing apply_contour command"
                 puts "result_type=$result_type result_component=$result_component label=$label"
                 if { [catch {
-                    hwc result scalar edit "Current Contour" "type=\\"$result_type\\"" "component=\\"$result_component\\""
+                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
                     hwc result scalar plot "Current Contour"
-                    hwc report Report add slide "One Image with Caption" "label=\\"$label\\""
+                    hwc report Report add slide "One Image with Caption" label=$label
                 } err] } {
                     puts "apply_contour error: $err"
                     set escaped_err [escape_json_string $err]
@@ -361,7 +361,7 @@ proc process_job {job_file} {
                 }
                 puts "apply_contour completed, now report run position=$label..."
                 if { [catch {
-                    hwc report Report run "position=\\"$label\\""
+                    hwc report Report run position=$label
                 } err2] } {
                     puts "report run error: $err2"
                 }
@@ -398,7 +398,7 @@ proc process_job {job_file} {
                     file mkdir $output_dir
                     set export_path [file join $output_dir "Report${num}.pptx"]
                     puts "Exporting report to: $export_path"
-                    hwc report export file="$export_path"
+                    hwc report export file=$export_path
                     # 更新计数文件
                     set cf [open $counter_file w]
                     puts $cf $num
