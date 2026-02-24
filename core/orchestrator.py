@@ -632,16 +632,20 @@ after 4000 listen
     def report_run(self) -> bool:
         """执行 hwc report Report Run"""
         if self.state != State.AGENT_READY:
-            self._log("HyperView is not ready")
+            self._log(f"report_run: HyperView is not ready (state={self.state})")
             return False
-        self._log("Running report...")
-        result = self.bridge.send_job(cmd="report_run", params={})
-        if result.get('success', False):
-            self._log("Report run completed")
-            return True
-        else:
-            self._log(f"Report run failed: {result.get('error', 'Unknown')}")
-            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log("Running report...")
+            result = self.bridge.send_job(cmd="report_run", params={})
+            if result.get('success', False):
+                self._log("Report run completed")
+                return True
+            else:
+                self._log(f"Report run failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def report_export(self, output_dir: str = "C:/Temp/HyperView_Report") -> bool:
         """导出 report 为递增编号的 pptx"""
