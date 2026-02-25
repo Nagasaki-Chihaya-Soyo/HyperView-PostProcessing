@@ -766,14 +766,19 @@ class AnalysisDialog(tk.Toplevel):
         opt_frame = ttk.LabelFrame(main_frame, text="Select Analysis Items", padding=10)
         opt_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        self.chk_contour = tk.BooleanVar(value=True)
+        self.chk_contour = tk.BooleanVar(value=False)
         self.chk_stress_peak = tk.BooleanVar(value=False)
         self.chk_compare = tk.BooleanVar(value=False)
+        # Track whether Create Report has completed (checkboxes locked before that)
+        self._report_created = False
 
         row1 = ttk.Frame(opt_frame)
         row1.pack(fill=tk.X, pady=4)
-        ttk.Checkbutton(row1, text="Plot Contour",
-                        variable=self.chk_contour).pack(side=tk.LEFT)
+        self.chk_btn_contour = ttk.Checkbutton(
+            row1, text="Plot Contour",
+            variable=self.chk_contour, state=tk.DISABLED,
+            command=self._on_checkbox_toggled)
+        self.chk_btn_contour.pack(side=tk.LEFT)
         self.opt_btn_contour = ttk.Button(row1, text="Option", width=8, state=tk.DISABLED,
                                           command=self._open_contour_option)
         self.opt_btn_contour.pack(side=tk.RIGHT)
@@ -782,8 +787,11 @@ class AnalysisDialog(tk.Toplevel):
 
         row2 = ttk.Frame(opt_frame)
         row2.pack(fill=tk.X, pady=4)
-        ttk.Checkbutton(row2, text="Stress Peak Analysis",
-                        variable=self.chk_stress_peak).pack(side=tk.LEFT)
+        self.chk_btn_stress = ttk.Checkbutton(
+            row2, text="Stress Peak Analysis",
+            variable=self.chk_stress_peak, state=tk.DISABLED,
+            command=self._on_checkbox_toggled)
+        self.chk_btn_stress.pack(side=tk.LEFT)
         self.opt_btn_stress = ttk.Button(row2, text="Option", width=8, state=tk.DISABLED,
                                           command=self._run_stress_peak)
         self.opt_btn_stress.pack(side=tk.RIGHT)
@@ -792,8 +800,11 @@ class AnalysisDialog(tk.Toplevel):
 
         row3 = ttk.Frame(opt_frame)
         row3.pack(fill=tk.X, pady=4)
-        ttk.Checkbutton(row3, text="Compare with Material Standards",
-                        variable=self.chk_compare).pack(side=tk.LEFT)
+        self.chk_btn_compare = ttk.Checkbutton(
+            row3, text="Compare with Material Standards",
+            variable=self.chk_compare, state=tk.DISABLED,
+            command=self._on_checkbox_toggled)
+        self.chk_btn_compare.pack(side=tk.LEFT)
         self.opt_btn_compare = ttk.Button(row3, text="Option", width=8, state=tk.DISABLED,
                                            command=self._run_compare)
         self.opt_btn_compare.pack(side=tk.RIGHT)
@@ -844,16 +855,27 @@ class AnalysisDialog(tk.Toplevel):
         threading.Thread(target=do_create, daemon=True).start()
 
     def _unlock_after_create(self):
-        """Create Report 完成后解锁 Option 按钮和 Run/Close"""
+        """Create Report 完成后解锁 Checkbox 和 Run/Close"""
+        self._report_created = True
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
-        if self.chk_contour.get():
-            self.opt_btn_contour.config(state=tk.NORMAL)
-        if self.chk_stress_peak.get():
-            self.opt_btn_stress.config(state=tk.NORMAL)
-        if self.chk_compare.get():
-            self.opt_btn_compare.config(state=tk.NORMAL)
-        self._set_status("Step 2: Click Option to configure, then Step 3: Run to export PPT")
+        # Enable checkboxes so user can tick them
+        self.chk_btn_contour.config(state=tk.NORMAL)
+        self.chk_btn_stress.config(state=tk.NORMAL)
+        self.chk_btn_compare.config(state=tk.NORMAL)
+        # Option buttons stay disabled until their checkbox is ticked
+        self._set_status("Step 2: Tick items and click Option to configure, then Step 3: Export PPT")
+
+    def _on_checkbox_toggled(self):
+        """Checkbox 状态变化时，同步更新对应 Option 按钮的启用/禁用"""
+        if not self._report_created:
+            return
+        self.opt_btn_contour.config(
+            state=tk.NORMAL if self.chk_contour.get() else tk.DISABLED)
+        self.opt_btn_stress.config(
+            state=tk.NORMAL if self.chk_stress_peak.get() else tk.DISABLED)
+        self.opt_btn_compare.config(
+            state=tk.NORMAL if self.chk_compare.get() else tk.DISABLED)
 
     # ── Step 2: 自由配置分析项 ──
 
