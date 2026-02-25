@@ -725,13 +725,19 @@ class ToggleSwitch(tk.Canvas):
     """自定义滑动开关控件：绿色=开，灰色=关"""
 
     def __init__(self, parent, width=50, height=24, command=None, **kwargs):
+        # Match parent background so canvas blends in
+        try:
+            bg = parent.winfo_toplevel().cget("bg")
+        except Exception:
+            bg = "#f0f0f0"
         super().__init__(parent, width=width, height=height,
-                         highlightthickness=0, bd=0, **kwargs)
+                         highlightthickness=0, bd=0, bg=bg, **kwargs)
         self._w = width
         self._h = height
         self._on = False
         self._enabled = True
         self._command = command
+        self._bg = bg
         self._draw()
         self.bind("<Button-1>", self._on_click)
 
@@ -790,7 +796,7 @@ class HotspotOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None):
         super().__init__(parent)
         self.title("Hotspot Analysis")
-        self.geometry("420x280")
+        self.geometry("440x360")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -800,50 +806,60 @@ class HotspotOptionDialog(tk.Toplevel):
         self._create_ui()
 
     def _create_ui(self):
-        frame = ttk.Frame(self, padding=15)
-        frame.pack(fill=tk.BOTH, expand=True)
+        # Use grid for the main layout to guarantee space allocation
+        self.columnconfigure(0, weight=1)
+        row = 0
 
         # ── Toggle switches ──
-        toggle_frame = ttk.LabelFrame(frame, text="Display Mode", padding=10)
-        toggle_frame.pack(fill=tk.X, pady=(0, 10))
+        toggle_frame = ttk.LabelFrame(self, text="Display Mode", padding=10)
+        toggle_frame.grid(row=row, column=0, sticky="ew", padx=15, pady=(15, 5))
+        toggle_frame.columnconfigure(0, weight=1)
 
-        row_zoom = ttk.Frame(toggle_frame)
-        row_zoom.pack(fill=tk.X, pady=4)
-        ttk.Label(row_zoom, text="Local Entity Zoom").pack(side=tk.LEFT)
-        self.toggle_zoom = ToggleSwitch(row_zoom, command=self._on_toggle_zoom)
-        self.toggle_zoom.pack(side=tk.RIGHT, padx=5)
+        ttk.Label(toggle_frame, text="Local Entity Zoom").grid(
+            row=0, column=0, sticky=tk.W, pady=4)
+        self.toggle_zoom = ToggleSwitch(toggle_frame, command=self._on_toggle_zoom)
+        self.toggle_zoom.grid(row=0, column=1, sticky=tk.E, padx=5, pady=4)
 
-        row_trans = ttk.Frame(toggle_frame)
-        row_trans.pack(fill=tk.X, pady=4)
-        ttk.Label(row_trans, text="Local Transparency").pack(side=tk.LEFT)
-        self.toggle_trans = ToggleSwitch(row_trans, command=self._on_toggle_trans)
-        self.toggle_trans.pack(side=tk.RIGHT, padx=5)
+        ttk.Label(toggle_frame, text="Local Transparency").grid(
+            row=1, column=0, sticky=tk.W, pady=4)
+        self.toggle_trans = ToggleSwitch(toggle_frame, command=self._on_toggle_trans)
+        self.toggle_trans.grid(row=1, column=1, sticky=tk.E, padx=5, pady=4)
+
+        row += 1
+
+        # ── Separator ──
+        ttk.Separator(self, orient="horizontal").grid(
+            row=row, column=0, sticky="ew", padx=15, pady=8)
+        row += 1
 
         # ── Find Hotspot button ──
-        find_frame = ttk.Frame(frame)
-        find_frame.pack(fill=tk.X, pady=10)
-        self.find_btn = ttk.Button(find_frame, text="Find Hotspot",
-                                   command=self._on_find_hotspot, width=20)
-        self.find_btn.pack()
+        self.find_btn = ttk.Button(self, text="Find Hotspot",
+                                   command=self._on_find_hotspot, width=24)
+        self.find_btn.grid(row=row, column=0, pady=10)
+        row += 1
 
         # ── Previous / Next navigation ──
-        nav_frame = ttk.Frame(frame)
-        nav_frame.pack(fill=tk.X, pady=5)
+        nav_frame = ttk.Frame(self)
+        nav_frame.grid(row=row, column=0, sticky="ew", padx=15, pady=5)
+        nav_frame.columnconfigure(0, weight=1)
+        nav_frame.columnconfigure(1, weight=1)
         self.prev_btn = ttk.Button(nav_frame, text="<  Previous Hotspot",
                                    command=self._on_prev, width=20, state=tk.DISABLED)
-        self.prev_btn.pack(side=tk.LEFT, padx=10)
+        self.prev_btn.grid(row=0, column=0, padx=5)
         self.next_btn = ttk.Button(nav_frame, text="Next Hotspot  >",
                                    command=self._on_next, width=20, state=tk.DISABLED)
-        self.next_btn.pack(side=tk.RIGHT, padx=10)
+        self.next_btn.grid(row=0, column=1, padx=5)
+        row += 1
 
         # ── Status ──
         self.status_var = tk.StringVar(value="Click Find Hotspot to start")
-        ttk.Label(frame, textvariable=self.status_var, foreground="gray").pack(
-            anchor=tk.W, pady=(10, 0))
+        ttk.Label(self, textvariable=self.status_var, foreground="gray").grid(
+            row=row, column=0, sticky=tk.W, padx=20, pady=(10, 0))
+        row += 1
 
         # ── Close ──
-        ttk.Button(frame, text="Close", command=self.destroy, width=12).pack(
-            side=tk.BOTTOM, pady=(10, 0))
+        ttk.Button(self, text="Close", command=self.destroy, width=12).grid(
+            row=row, column=0, pady=(15, 15))
 
     # ── Toggle mutual exclusion ──
 
