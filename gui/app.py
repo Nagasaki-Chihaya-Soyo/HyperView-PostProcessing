@@ -721,6 +721,214 @@ class ContourOptionDialog(tk.Toplevel):
         self._execute_contour(close_after=True)
 
 
+class ToggleSwitch(tk.Canvas):
+    """自定义滑动开关控件：绿色=开，灰色=关"""
+
+    def __init__(self, parent, width=50, height=24, command=None, **kwargs):
+        super().__init__(parent, width=width, height=height,
+                         highlightthickness=0, bd=0, **kwargs)
+        self._w = width
+        self._h = height
+        self._on = False
+        self._enabled = True
+        self._command = command
+        self._draw()
+        self.bind("<Button-1>", self._on_click)
+
+    def _draw(self):
+        self.delete("all")
+        r = self._h // 2
+        if not self._enabled:
+            bg = "#cccccc"
+            knob = "#aaaaaa"
+        elif self._on:
+            bg = "#4CAF50"
+            knob = "white"
+        else:
+            bg = "#bbbbbb"
+            knob = "white"
+        # track (rounded rectangle)
+        self.create_oval(0, 0, self._h, self._h, fill=bg, outline=bg)
+        self.create_oval(self._w - self._h, 0, self._w, self._h, fill=bg, outline=bg)
+        self.create_rectangle(r, 0, self._w - r, self._h, fill=bg, outline=bg)
+        # knob
+        pad = 3
+        if self._on:
+            cx = self._w - r
+        else:
+            cx = r
+        self.create_oval(cx - r + pad, pad, cx + r - pad, self._h - pad,
+                         fill=knob, outline=knob)
+
+    def get(self) -> bool:
+        return self._on
+
+    def set(self, value: bool):
+        self._on = value
+        self._draw()
+
+    def enable(self):
+        self._enabled = True
+        self._draw()
+
+    def disable(self):
+        self._enabled = False
+        self._draw()
+
+    def _on_click(self, event=None):
+        if not self._enabled:
+            return
+        self._on = not self._on
+        self._draw()
+        if self._command:
+            self._command()
+
+
+class HotspotOptionDialog(tk.Toplevel):
+    """Stress Peak 热点分析选项对话框"""
+
+    def __init__(self, parent, orchestrator=None):
+        super().__init__(parent)
+        self.title("Hotspot Analysis")
+        self.geometry("420x280")
+        self.resizable(width=False, height=False)
+        self.transient(parent)
+        self.grab_set()
+
+        self.orchestrator = orchestrator
+        self._hotspot_counter = 0
+        self._create_ui()
+
+    def _create_ui(self):
+        frame = ttk.Frame(self, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # ── Toggle switches ──
+        toggle_frame = ttk.LabelFrame(frame, text="Display Mode", padding=10)
+        toggle_frame.pack(fill=tk.X, pady=(0, 10))
+
+        row_zoom = ttk.Frame(toggle_frame)
+        row_zoom.pack(fill=tk.X, pady=4)
+        ttk.Label(row_zoom, text="Local Entity Zoom").pack(side=tk.LEFT)
+        self.toggle_zoom = ToggleSwitch(row_zoom, command=self._on_toggle_zoom)
+        self.toggle_zoom.pack(side=tk.RIGHT, padx=5)
+
+        row_trans = ttk.Frame(toggle_frame)
+        row_trans.pack(fill=tk.X, pady=4)
+        ttk.Label(row_trans, text="Local Transparency").pack(side=tk.LEFT)
+        self.toggle_trans = ToggleSwitch(row_trans, command=self._on_toggle_trans)
+        self.toggle_trans.pack(side=tk.RIGHT, padx=5)
+
+        # ── Find Hotspot button ──
+        find_frame = ttk.Frame(frame)
+        find_frame.pack(fill=tk.X, pady=10)
+        self.find_btn = ttk.Button(find_frame, text="Find Hotspot",
+                                   command=self._on_find_hotspot, width=20)
+        self.find_btn.pack()
+
+        # ── Previous / Next navigation ──
+        nav_frame = ttk.Frame(frame)
+        nav_frame.pack(fill=tk.X, pady=5)
+        self.prev_btn = ttk.Button(nav_frame, text="<  Previous Hotspot",
+                                   command=self._on_prev, width=20, state=tk.DISABLED)
+        self.prev_btn.pack(side=tk.LEFT, padx=10)
+        self.next_btn = ttk.Button(nav_frame, text="Next Hotspot  >",
+                                   command=self._on_next, width=20, state=tk.DISABLED)
+        self.next_btn.pack(side=tk.RIGHT, padx=10)
+
+        # ── Status ──
+        self.status_var = tk.StringVar(value="Click Find Hotspot to start")
+        ttk.Label(frame, textvariable=self.status_var, foreground="gray").pack(
+            anchor=tk.W, pady=(10, 0))
+
+        # ── Close ──
+        ttk.Button(frame, text="Close", command=self.destroy, width=12).pack(
+            side=tk.BOTTOM, pady=(10, 0))
+
+    # ── Toggle mutual exclusion ──
+
+    def _on_toggle_zoom(self):
+        if self.toggle_zoom.get():
+            # Turn off transparency
+            self.toggle_trans.set(False)
+            self._apply_viewmode("entityzoom")
+        else:
+            self._apply_viewmode("")
+
+    def _on_toggle_trans(self):
+        if self.toggle_trans.get():
+            # Turn off entity zoom
+            self.toggle_zoom.set(False)
+            self._apply_viewmode("transparency")
+        else:
+            self._apply_viewmode("")
+
+    def _apply_viewmode(self, mode: str):
+        if not mode or not self.orchestrator:
+            return
+
+        def run():
+            self.orchestrator.hotspot_viewmode(mode)
+        threading.Thread(target=run, daemon=True).start()
+
+    def _get_active_viewmode(self) -> str:
+        """Return active viewmode string or empty"""
+        if self.toggle_zoom.get():
+            return "entityzoom"
+        if self.toggle_trans.get():
+            return "transparency"
+        return ""
+
+    # ── Find Hotspot ──
+
+    def _on_find_hotspot(self):
+        if not self.orchestrator:
+            return
+        self._hotspot_counter += 1
+        name = f"hotspot{self._hotspot_counter}"
+        viewmode = self._get_active_viewmode()
+        self.find_btn.config(state=tk.DISABLED)
+        self.status_var.set(f"Finding {name}...")
+
+        def run():
+            ok = self.orchestrator.hotspot_find(name, viewmode)
+            def done():
+                self.find_btn.config(state=tk.NORMAL)
+                self.prev_btn.config(state=tk.NORMAL)
+                self.next_btn.config(state=tk.NORMAL)
+                if ok:
+                    self.status_var.set(f"{name} found. Use navigation or find more.")
+                else:
+                    self.status_var.set(f"{name} failed. Try again.")
+            self.after(0, done)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    # ── Navigation ──
+
+    def _on_prev(self):
+        if not self.orchestrator:
+            return
+        self.prev_btn.config(state=tk.DISABLED)
+
+        def run():
+            self.orchestrator.hotspot_navigate("previous")
+            self.after(0, lambda: self.prev_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_next(self):
+        if not self.orchestrator:
+            return
+        self.next_btn.config(state=tk.DISABLED)
+
+        def run():
+            self.orchestrator.hotspot_navigate("next")
+            self.after(0, lambda: self.next_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=run, daemon=True).start()
+
+
 class AnalysisDialog(tk.Toplevel):
     """分析功能对话框"""
 
@@ -891,21 +1099,8 @@ class AnalysisDialog(tk.Toplevel):
         })
 
     def _run_stress_peak(self):
-        """执行 Stress Peak 分析 + report Run"""
-        self.opt_btn_stress.config(state=tk.DISABLED)
-        self._set_status("Running stress peak analysis...")
-
-        def run():
-            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            if result and result.get('success'):
-                self.orchestrator.report_run()
-                self.after(0, lambda: self._completed_results.append({
-                    'type': 'stress_peak', 'success': True, 'result': result
-                }))
-            self.after(0, lambda: self.opt_btn_stress.config(state=tk.NORMAL))
-            self.after(0, lambda: self._set_status("Stress peak done. Continue or Run to export."))
-
-        threading.Thread(target=run, daemon=True).start()
+        """打开 Hotspot 分析对话框"""
+        HotspotOptionDialog(self, orchestrator=self.orchestrator)
 
     def _run_compare(self):
         """执行 Material Compare 分析 + report Run"""
