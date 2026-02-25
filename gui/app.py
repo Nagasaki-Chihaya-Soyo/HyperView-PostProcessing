@@ -959,7 +959,7 @@ class AnalysisDialog(tk.Toplevel):
                     report_path = r['result'].get('report_path')
 
         lines.append(f"\nModel: {os.path.basename(self.model_path)}")
-        lines.append("\nPPT Report exported to C:/Temp/HyperView_Report")
+        lines.append("\nPPT Report exported via HyperView")
 
         self.parent.result_text.config(state=tk.NORMAL)
         self.parent.result_text.delete(1.0, tk.END)
