@@ -7,7 +7,7 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.orchestrator import Orchestrator, State
 from core.db_store import DBStore
-from core.pptx_builder import build_pptx
+from core.pptx_builder import merge_pptx
 
 
 class Application(tk.Tk):
@@ -700,7 +700,7 @@ class ContourOptionDialog(tk.Toplevel):
                 print(f"[ContourOptionDialog] Executing apply_contour + report Run: {label}")
                 res = self.orchestrator.apply_contour(result_type, component, label)
                 if res:
-                    config['image_path'] = res.get('image_path', '')
+                    config['pptx_path'] = res.get('pptx_path', '')
                     config['label'] = res.get('label', label)
                 print("[ContourOptionDialog] apply_contour + report Run done")
             except Exception as e:
@@ -868,15 +868,13 @@ class AnalysisDialog(tk.Toplevel):
                             on_execute=self._on_contour_executed)
 
     def _on_contour_executed(self, config):
-        """每次 Apply/Confirm 执行后的回调"""
+        """每次 Apply/Confirm 执行后的回调，记录临时 pptx 路径"""
         self._completed_results.append({
             'type': 'contour', 'success': True, 'config': config
         })
-        if config.get('image_path'):
-            self._captured_slides.append({
-                'image_path': config['image_path'],
-                'label': config.get('label', '')
-            })
+        pptx_path = config.get('pptx_path', '')
+        if pptx_path:
+            self._captured_slides.append(pptx_path)
 
     def _run_stress_peak(self):
         """执行 Stress Peak 分析 + report Run"""
@@ -915,13 +913,13 @@ class AnalysisDialog(tk.Toplevel):
     # ── Step 3: 导出 PPT ──
 
     def _export_report(self):
-        """用 python-pptx 从已截取的图片生成 PPTX，不调用 hwc report export"""
+        """合并所有临时 PPTX 为最终报告，不调用 hwc report export"""
         if not self._captured_slides:
             self._set_status("No slides captured yet. Apply contour first.")
             return
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
-        self._set_status("Exporting report via python-pptx...")
+        self._set_status("Merging slides via python-pptx...")
 
         def export():
             output_dir = "C:/Temp/HyperView_Report"
@@ -934,7 +932,7 @@ class AnalysisDialog(tk.Toplevel):
                         num = int(val) + 1
             os.makedirs(output_dir, exist_ok=True)
             export_path = os.path.join(output_dir, f'Report{num}.pptx')
-            build_pptx(self._captured_slides, export_path)
+            merge_pptx(self._captured_slides, export_path)
             with open(counter_file, 'w') as f:
                 f.write(str(num))
             self.after(0, lambda: self._set_status(f"Done! Exported to {export_path}"))

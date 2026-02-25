@@ -365,34 +365,28 @@ proc process_job {job_file} {
                 } err2] } {
                     puts "report run error: $err2"
                 }
-                # CaptureImage for Python-side PPTX export
-                set img_path ""
+                # Export single-slide report to temp file, then delete the slide
+                set temp_dir [file join $REPORT_DIR "temp_slides"]
+                file mkdir $temp_dir
+                set safe_label [string map {" " "_" "/" "_" "\\\\" "_" ":" "_" "(" "_" ")" "_" "&" "_"} $label]
+                set temp_path [file join $temp_dir "${safe_label}.pptx"]
+                set export_ok 0
                 if { [catch {
-                    set img_dir [file join $REPORT_DIR "slides"]
-                    file mkdir $img_dir
-                    set safe_label [string map {" " "_" "/" "_" "\\\\" "_" ":" "_" "(" "_" ")" "_"} $label]
-                    set img_path [file join $img_dir "${safe_label}.png"]
-                    cleanup_handles
-                    hwi OpenStack
-                    hwi GetSessionHandle sess
-                    sess GetProjectHandle proj
-                    set pageId [proj GetActivePage]
-                    proj GetPageHandle page1 $pageId
-                    set winId [page1 GetActiveWindow]
-                    page1 GetWindowHandle win1 $winId
-                    win1 CaptureImage $img_path 0 0 1920 1080
-                    win1 ReleaseHandle
-                    page1 ReleaseHandle
-                    proj ReleaseHandle
-                    sess ReleaseHandle
-                    hwi CloseStack
-                } img_err] } {
-                    puts "Image capture warning: $img_err"
-                    catch { hwi CloseStack }
+                    hwc report export file=$temp_path
+                    set export_ok 1
+                    puts "Exported temp slide: $temp_path"
+                } export_err] } {
+                    puts "Export warning: $export_err"
                 }
-                set escaped_img [escape_json_string $img_path]
+                if { [catch {
+                    hwc report Report delete position=$label
+                    puts "Deleted slide position=$label"
+                } del_err] } {
+                    puts "Delete slide warning: $del_err"
+                }
+                set escaped_path [escape_json_string $temp_path]
                 set escaped_label [escape_json_string $label]
-                write_result $job_id [format {{"success":true,"image_path":"%s","label":"%s"}} $escaped_img $escaped_label]
+                write_result $job_id [format {{"success":true,"pptx_path":"%s","label":"%s","exported":%s}} $escaped_path $escaped_label [expr {$export_ok ? "true" : "false"}]]
             }
             "report_run" {
                 puts "Executing report_run command"
@@ -653,9 +647,10 @@ after 4000 listen
             if not result.get('success', False):
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
                 return None
-            image_path = result.get('image_path', '')
-            self._log(f"Contour applied successfully, image: {image_path}")
-            return {'success': True, 'image_path': image_path, 'label': label}
+            pptx_path = result.get('pptx_path', '')
+            exported = result.get('exported', False)
+            self._log(f"Contour applied, exported={exported}, path={pptx_path}")
+            return {'success': True, 'pptx_path': pptx_path, 'label': label, 'exported': exported}
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
             return None
