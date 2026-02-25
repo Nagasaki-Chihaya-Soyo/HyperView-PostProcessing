@@ -796,104 +796,38 @@ class HotspotOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None):
         super().__init__(parent)
         self.title("Hotspot Analysis")
-        self.geometry("440x360")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
 
         self.orchestrator = orchestrator
         self._hotspot_counter = 0
-        self._create_ui()
 
-    def _create_ui(self):
-        # Use grid for the main layout to guarantee space allocation
-        self.columnconfigure(0, weight=1)
-        row = 0
-
-        # ── Toggle switches ──
-        toggle_frame = ttk.LabelFrame(self, text="Display Mode", padding=10)
-        toggle_frame.grid(row=row, column=0, sticky="ew", padx=15, pady=(15, 5))
-        toggle_frame.columnconfigure(0, weight=1)
-
-        ttk.Label(toggle_frame, text="Local Entity Zoom").grid(
-            row=0, column=0, sticky=tk.W, pady=4)
-        self.toggle_zoom = ToggleSwitch(toggle_frame, command=self._on_toggle_zoom)
-        self.toggle_zoom.grid(row=0, column=1, sticky=tk.E, padx=5, pady=4)
-
-        ttk.Label(toggle_frame, text="Local Transparency").grid(
-            row=1, column=0, sticky=tk.W, pady=4)
-        self.toggle_trans = ToggleSwitch(toggle_frame, command=self._on_toggle_trans)
-        self.toggle_trans.grid(row=1, column=1, sticky=tk.E, padx=5, pady=4)
-
-        row += 1
-
-        # ── Separator ──
-        ttk.Separator(self, orient="horizontal").grid(
-            row=row, column=0, sticky="ew", padx=15, pady=8)
-        row += 1
-
-        # ── Find Hotspot button ──
+        # ── Find Hotspot ──
         self.find_btn = ttk.Button(self, text="Find Hotspot",
                                    command=self._on_find_hotspot, width=24)
-        self.find_btn.grid(row=row, column=0, pady=10)
-        row += 1
+        self.find_btn.pack(pady=(20, 10))
 
-        # ── Previous / Next navigation ──
-        nav_frame = ttk.Frame(self)
-        nav_frame.grid(row=row, column=0, sticky="ew", padx=15, pady=5)
-        nav_frame.columnconfigure(0, weight=1)
-        nav_frame.columnconfigure(1, weight=1)
-        self.prev_btn = ttk.Button(nav_frame, text="<  Previous Hotspot",
+        # ── Previous / Next ──
+        nav = ttk.Frame(self)
+        nav.pack(pady=5, padx=20, fill=tk.X)
+        self.prev_btn = ttk.Button(nav, text="< Previous Hotspot",
                                    command=self._on_prev, width=20, state=tk.DISABLED)
-        self.prev_btn.grid(row=0, column=0, padx=5)
-        self.next_btn = ttk.Button(nav_frame, text="Next Hotspot  >",
+        self.prev_btn.pack(side=tk.LEFT)
+        self.next_btn = ttk.Button(nav, text="Next Hotspot >",
                                    command=self._on_next, width=20, state=tk.DISABLED)
-        self.next_btn.grid(row=0, column=1, padx=5)
-        row += 1
+        self.next_btn.pack(side=tk.RIGHT)
 
         # ── Status ──
         self.status_var = tk.StringVar(value="Click Find Hotspot to start")
-        ttk.Label(self, textvariable=self.status_var, foreground="gray").grid(
-            row=row, column=0, sticky=tk.W, padx=20, pady=(10, 0))
-        row += 1
+        ttk.Label(self, textvariable=self.status_var, foreground="gray").pack(
+            padx=20, pady=(10, 5), anchor=tk.W)
 
         # ── Close ──
-        ttk.Button(self, text="Close", command=self.destroy, width=12).grid(
-            row=row, column=0, pady=(15, 15))
+        ttk.Button(self, text="Close", command=self.destroy, width=12).pack(pady=(5, 15))
 
-    # ── Toggle mutual exclusion ──
-
-    def _on_toggle_zoom(self):
-        if self.toggle_zoom.get():
-            # Turn off transparency
-            self.toggle_trans.set(False)
-            self._apply_viewmode("entityzoom")
-        else:
-            self._apply_viewmode("")
-
-    def _on_toggle_trans(self):
-        if self.toggle_trans.get():
-            # Turn off entity zoom
-            self.toggle_zoom.set(False)
-            self._apply_viewmode("transparency")
-        else:
-            self._apply_viewmode("")
-
-    def _apply_viewmode(self, mode: str):
-        if not mode or not self.orchestrator:
-            return
-
-        def run():
-            self.orchestrator.hotspot_viewmode(mode)
-        threading.Thread(target=run, daemon=True).start()
-
-    def _get_active_viewmode(self) -> str:
-        """Return active viewmode string or empty"""
-        if self.toggle_zoom.get():
-            return "entityzoom"
-        if self.toggle_trans.get():
-            return "transparency"
-        return ""
+        # 让窗口根据内容自动调整大小
+        self.update_idletasks()
 
     # ── Find Hotspot ──
 
@@ -902,18 +836,17 @@ class HotspotOptionDialog(tk.Toplevel):
             return
         self._hotspot_counter += 1
         name = f"hotspot{self._hotspot_counter}"
-        viewmode = self._get_active_viewmode()
         self.find_btn.config(state=tk.DISABLED)
         self.status_var.set(f"Finding {name}...")
 
         def run():
-            ok = self.orchestrator.hotspot_find(name, viewmode)
+            ok = self.orchestrator.hotspot_find(name)
             def done():
                 self.find_btn.config(state=tk.NORMAL)
                 self.prev_btn.config(state=tk.NORMAL)
                 self.next_btn.config(state=tk.NORMAL)
                 if ok:
-                    self.status_var.set(f"{name} found. Use navigation or find more.")
+                    self.status_var.set(f"{name} found. Navigate or find more.")
                 else:
                     self.status_var.set(f"{name} failed. Try again.")
             self.after(0, done)
