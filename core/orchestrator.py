@@ -365,28 +365,7 @@ proc process_job {job_file} {
                 } err2] } {
                     puts "report run error: $err2"
                 }
-                # Export single-slide report to temp file, then delete the slide
-                set temp_dir [file join $REPORT_DIR "temp_slides"]
-                file mkdir $temp_dir
-                set safe_label [string map {" " "_" "/" "_" "\\\\" "_" ":" "_" "(" "_" ")" "_" "&" "_"} $label]
-                set temp_path [file join $temp_dir "${safe_label}.pptx"]
-                set export_ok 0
-                if { [catch {
-                    hwc report export file=$temp_path
-                    set export_ok 1
-                    puts "Exported temp slide: $temp_path"
-                } export_err] } {
-                    puts "Export warning: $export_err"
-                }
-                if { [catch {
-                    hwc report Report delete position=$label
-                    puts "Deleted slide position=$label"
-                } del_err] } {
-                    puts "Delete slide warning: $del_err"
-                }
-                set escaped_path [escape_json_string $temp_path]
-                set escaped_label [escape_json_string $label]
-                write_result $job_id [format {{"success":true,"pptx_path":"%s","label":"%s","exported":%s}} $escaped_path $escaped_label [expr {$export_ok ? "true" : "false"}]]
+                write_result $job_id {{"success":true}}
             }
             "report_run" {
                 puts "Executing report_run command"
@@ -647,10 +626,8 @@ after 4000 listen
             if not result.get('success', False):
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
                 return None
-            pptx_path = result.get('pptx_path', '')
-            exported = result.get('exported', False)
-            self._log(f"Contour applied, exported={exported}, path={pptx_path}")
-            return {'success': True, 'pptx_path': pptx_path, 'label': label, 'exported': exported}
+            self._log("Contour applied successfully")
+            return {'success': True}
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
             return None
