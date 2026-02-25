@@ -365,7 +365,34 @@ proc process_job {job_file} {
                 } err2] } {
                     puts "report run error: $err2"
                 }
-                write_result $job_id {{"success":true}}
+                # CaptureImage for Python-side PPTX export
+                set img_path ""
+                if { [catch {
+                    set img_dir [file join $REPORT_DIR "slides"]
+                    file mkdir $img_dir
+                    set safe_label [string map {" " "_" "/" "_" "\\\\" "_" ":" "_" "(" "_" ")" "_"} $label]
+                    set img_path [file join $img_dir "${safe_label}.png"]
+                    cleanup_handles
+                    hwi OpenStack
+                    hwi GetSessionHandle sess
+                    sess GetProjectHandle proj
+                    set pageId [proj GetActivePage]
+                    proj GetPageHandle page1 $pageId
+                    set winId [page1 GetActiveWindow]
+                    page1 GetWindowHandle win1 $winId
+                    win1 CaptureImage $img_path 0 0 1920 1080
+                    win1 ReleaseHandle
+                    page1 ReleaseHandle
+                    proj ReleaseHandle
+                    sess ReleaseHandle
+                    hwi CloseStack
+                } img_err] } {
+                    puts "Image capture warning: $img_err"
+                    catch { hwi CloseStack }
+                }
+                set escaped_img [escape_json_string $img_path]
+                set escaped_label [escape_json_string $label]
+                write_result $job_id [format {{"success":true,"image_path":"%s","label":"%s"}} $escaped_img $escaped_label]
             }
             "report_run" {
                 puts "Executing report_run command"
@@ -626,8 +653,9 @@ after 4000 listen
             if not result.get('success', False):
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
                 return None
-            self._log("Contour applied successfully")
-            return {'success': True}
+            image_path = result.get('image_path', '')
+            self._log(f"Contour applied successfully, image: {image_path}")
+            return {'success': True, 'image_path': image_path, 'label': label}
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
             return None

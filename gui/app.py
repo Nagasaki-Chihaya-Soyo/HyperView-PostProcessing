@@ -7,6 +7,7 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.orchestrator import Orchestrator, State
 from core.db_store import DBStore
+from core.pptx_builder import build_pptx
 
 
 class Application(tk.Tk):
@@ -697,7 +698,10 @@ class ContourOptionDialog(tk.Toplevel):
         def run():
             try:
                 print(f"[ContourOptionDialog] Executing apply_contour + report Run: {label}")
-                self.orchestrator.apply_contour(result_type, component, label)
+                res = self.orchestrator.apply_contour(result_type, component, label)
+                if res:
+                    config['image_path'] = res.get('image_path', '')
+                    config['label'] = res.get('label', label)
                 print("[ContourOptionDialog] apply_contour + report Run done")
             except Exception as e:
                 print(f"[ContourOptionDialog] ERROR in thread: {e}")
@@ -802,6 +806,7 @@ class AnalysisDialog(tk.Toplevel):
 
         # 结果追踪
         self._completed_results = []
+        self._captured_slides = []
 
         # 底部区域 (从下往上: 状态栏 -> 进度条 -> 按钮)
         bottom_frame = ttk.Frame(self)
@@ -867,6 +872,11 @@ class AnalysisDialog(tk.Toplevel):
         self._completed_results.append({
             'type': 'contour', 'success': True, 'config': config
         })
+        if config.get('image_path'):
+            self._captured_slides.append({
+                'image_path': config['image_path'],
+                'label': config.get('label', '')
+            })
 
     def _run_stress_peak(self):
         """执行 Stress Peak 分析 + report Run"""
@@ -905,14 +915,29 @@ class AnalysisDialog(tk.Toplevel):
     # ── Step 3: 导出 PPT ──
 
     def _export_report(self):
-        """导出 PPT"""
+        """用 python-pptx 从已截取的图片生成 PPTX，不调用 hwc report export"""
+        if not self._captured_slides:
+            self._set_status("No slides captured yet. Apply contour first.")
+            return
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
-        self._set_status("Exporting report...")
+        self._set_status("Exporting report via python-pptx...")
 
         def export():
-            self.orchestrator.report_export()
-            self.after(0, lambda: self._set_status("All done! Report exported."))
+            output_dir = "C:/Temp/HyperView_Report"
+            counter_file = os.path.join(output_dir, 'report_counter.txt')
+            num = 1
+            if os.path.exists(counter_file):
+                with open(counter_file, 'r') as f:
+                    val = f.read().strip()
+                    if val:
+                        num = int(val) + 1
+            os.makedirs(output_dir, exist_ok=True)
+            export_path = os.path.join(output_dir, f'Report{num}.pptx')
+            build_pptx(self._captured_slides, export_path)
+            with open(counter_file, 'w') as f:
+                f.write(str(num))
+            self.after(0, lambda: self._set_status(f"Done! Exported to {export_path}"))
             self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
             self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
             self.after(0, self._update_parent_results)
