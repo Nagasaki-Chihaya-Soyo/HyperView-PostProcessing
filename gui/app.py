@@ -632,6 +632,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.on_execute = on_execute
         self.result = None
         self._hotspot_counter = 0
+        self._viewmode_updating = False
         self._create_ui()
         self.wait_window()
 
@@ -681,6 +682,24 @@ class ContourOptionDialog(tk.Toplevel):
         self.next_btn = ttk.Button(nav, text="Next >",
                                    command=self._on_next, width=12, state=tk.DISABLED)
         self.next_btn.pack(side=tk.RIGHT)
+
+        viewmode_panel = tk.Frame(hotspot_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN)
+        viewmode_panel.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(viewmode_panel, text="Hotspot Viewmode", bg="#8f8f8f", fg="white",
+                 font=("Arial", 10, "bold")).pack(anchor=tk.W, padx=8, pady=(6, 2))
+
+        switch_row = tk.Frame(viewmode_panel, bg="#8f8f8f")
+        switch_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self.viewmode_switches = {}
+        for mode in ("component", "global", "local"):
+            cell = tk.Frame(switch_row, bg="#8f8f8f")
+            cell.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=4)
+            tk.Label(cell, text=mode.capitalize(), bg="#8f8f8f", fg="white").pack(anchor=tk.W)
+            sw = ToggleSwitch(cell, width=52, height=24,
+                              command=lambda m=mode: self._on_viewmode_switch(m))
+            sw.pack(anchor=tk.W, pady=(2, 0))
+            sw.disable()
+            self.viewmode_switches[mode] = sw
 
         self.hotspot_status_var = tk.StringVar(value="Apply contour first to unlock")
         ttk.Label(hotspot_frame, textvariable=self.hotspot_status_var,
@@ -735,6 +754,8 @@ class ContourOptionDialog(tk.Toplevel):
     def _unlock_hotspot_buttons(self):
         """Contour 已应用后解锁 Hotspot 按钮"""
         self.find_btn.config(state=tk.NORMAL)
+        for sw in self.viewmode_switches.values():
+            sw.enable()
         self.hotspot_status_var.set("Click Find Hotspot to start")
 
     def _on_apply(self):
@@ -770,7 +791,8 @@ class ContourOptionDialog(tk.Toplevel):
                 print(f"[FindHotspot] apply_contour error: {e}")
             if self.on_execute:
                 self.on_execute(config)
-            ok = self.orchestrator.hotspot_find(name, label=label)
+            active_mode = self._get_active_viewmode()
+            ok = self.orchestrator.hotspot_find(name, viewmode=active_mode, label=label)
             def done():
                 self.find_btn.config(state=tk.NORMAL)
                 self.prev_btn.config(state=tk.NORMAL)
@@ -780,6 +802,38 @@ class ContourOptionDialog(tk.Toplevel):
                 else:
                     self.hotspot_status_var.set(f"{name} failed. Try again.")
             self.after(0, done)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _get_active_viewmode(self) -> str:
+        for mode, sw in self.viewmode_switches.items():
+            if sw.get():
+                return mode
+        return ""
+
+    def _on_viewmode_switch(self, mode: str):
+        if self._viewmode_updating:
+            return
+        selected = self.viewmode_switches[mode].get()
+        self._viewmode_updating = True
+        try:
+            if selected:
+                for other_mode, sw in self.viewmode_switches.items():
+                    if other_mode != mode:
+                        sw.set(False)
+            active_mode = self._get_active_viewmode()
+        finally:
+            self._viewmode_updating = False
+
+        if not self.orchestrator:
+            return
+
+        def run():
+            if active_mode:
+                self.orchestrator.hotspot_viewmode(active_mode)
+                self.after(0, lambda: self.hotspot_status_var.set(f"Viewmode set to {active_mode}"))
+            else:
+                self.after(0, lambda: self.hotspot_status_var.set("Viewmode cleared"))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -830,26 +884,32 @@ class ToggleSwitch(tk.Canvas):
         self.delete("all")
         r = self._h // 2
         if not self._enabled:
-            bg = "#cccccc"
-            knob = "#aaaaaa"
+            track = "#a8a8a8"
+            knob = "#d7d7d7"
         elif self._on:
-            bg = "#4CAF50"
-            knob = "white"
+            track = "#38b24a"
+            knob = "#ffffff"
         else:
-            bg = "#bbbbbb"
-            knob = "white"
+            track = "#9b9b9b"
+            knob = "#ffffff"
+
+        # groove/shadow effect
+        shadow = "#6f6f6f"
+        self.create_oval(1, 1, self._h - 1, self._h - 1, fill=shadow, outline=shadow)
+        self.create_oval(self._w - self._h + 1, 1, self._w - 1, self._h - 1, fill=shadow, outline=shadow)
+        self.create_rectangle(r, 1, self._w - r, self._h - 1, fill=shadow, outline=shadow)
+
         # track (rounded rectangle)
-        self.create_oval(0, 0, self._h, self._h, fill=bg, outline=bg)
-        self.create_oval(self._w - self._h, 0, self._w, self._h, fill=bg, outline=bg)
-        self.create_rectangle(r, 0, self._w - r, self._h, fill=bg, outline=bg)
+        inset = 2
+        self.create_oval(inset, inset, self._h - inset, self._h - inset, fill=track, outline=track)
+        self.create_oval(self._w - self._h + inset, inset, self._w - inset, self._h - inset, fill=track, outline=track)
+        self.create_rectangle(r, inset, self._w - r, self._h - inset, fill=track, outline=track)
+
         # knob
-        pad = 3
-        if self._on:
-            cx = self._w - r
-        else:
-            cx = r
+        pad = 4
+        cx = self._w - r if self._on else r
         self.create_oval(cx - r + pad, pad, cx + r - pad, self._h - pad,
-                         fill=knob, outline=knob)
+                         fill=knob, outline="#d0d0d0")
 
     def get(self) -> bool:
         return self._on
