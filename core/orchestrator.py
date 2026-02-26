@@ -518,9 +518,9 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "quit" {
-                puts "Executing quit command"
+                puts "Executing quit command (hwc hwd exit)"
                 write_result $job_id {{"success":true}}
-                hwc exit
+                hwc hwd exit
             }
             "load_model" {
                 puts "Executing load_model command"
@@ -852,7 +852,7 @@ after 4000 listen
         if self.state == State.AGENT_READY:
             try:
                 self.bridge.send_job(cmd="quit", params={})
-                self._log("HyperView quit command sent")
+                self._log("HyperView quit command sent (hwc hwd exit)")
             except Exception:
                 pass
         self.hv_process.terminate()
