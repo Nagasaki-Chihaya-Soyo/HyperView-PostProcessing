@@ -644,6 +644,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.on_execute = on_execute
         self.result = None
         self._hotspot_counter = 0
+        self._capture_counter = 0
         self._viewmode_var = tk.StringVar(value="")  # "component" | "global" | "local" | ""
         self._vm_component_var = tk.IntVar(value=0)
         self._vm_global_var = tk.IntVar(value=0)
@@ -910,8 +911,9 @@ class ContourOptionDialog(tk.Toplevel):
         option = self._vm_option_var.get()
         result_type = self.type_var.get()
         component = self.comp_var.get()
+        self._capture_counter += 1
         vm_suffix = f" ({mode} {option})" if mode and option else ""
-        label = f"{result_type} - {component}{vm_suffix}"
+        label = f"{result_type} - {component}{vm_suffix} [{self._capture_counter}]"
         self._capture_btn.config(state=tk.DISABLED)
 
         def run():
