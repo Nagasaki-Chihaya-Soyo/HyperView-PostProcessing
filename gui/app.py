@@ -676,13 +676,13 @@ class ContourOptionDialog(tk.Toplevel):
                                    command=self._on_prev, width=12, state=tk.DISABLED)
         self.prev_btn.pack(side=tk.LEFT)
         self.find_btn = ttk.Button(nav, text="Find Hotspot",
-                                   command=self._on_find_hotspot, width=14)
+                                   command=self._on_find_hotspot, width=14, state=tk.DISABLED)
         self.find_btn.pack(side=tk.LEFT, expand=True)
         self.next_btn = ttk.Button(nav, text="Next >",
                                    command=self._on_next, width=12, state=tk.DISABLED)
         self.next_btn.pack(side=tk.RIGHT)
 
-        self.hotspot_status_var = tk.StringVar(value="Click Find Hotspot to start")
+        self.hotspot_status_var = tk.StringVar(value="Apply contour first to unlock")
         ttk.Label(hotspot_frame, textvariable=self.hotspot_status_var,
                   foreground="gray").pack(pady=(5, 0), anchor=tk.W)
 
@@ -727,8 +727,15 @@ class ContourOptionDialog(tk.Toplevel):
                 self.on_execute(config)
             if close_after:
                 self.after(0, self.destroy)
+            else:
+                self.after(0, self._unlock_hotspot_buttons)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _unlock_hotspot_buttons(self):
+        """Contour 已应用后解锁 Hotspot 按钮"""
+        self.find_btn.config(state=tk.NORMAL)
+        self.hotspot_status_var.set("Click Find Hotspot to start")
 
     def _on_apply(self):
         """执行指令但不退出对话框"""
