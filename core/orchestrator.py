@@ -335,17 +335,6 @@ proc process_job {job_file} {
         }
     }
 
-    # 解析 "viewmode": "value"
-    set viewmode ""
-    set idx [string first {"viewmode"} $content]
-    if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 10}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
-        if {$start >= 0 && $end > $start} {
-            set viewmode [string range $content [expr {$start + 1}] [expr {$end - 1}]]
-        }
-    }
-
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -453,7 +442,7 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "hotspot_find" {
-                puts "Executing hotspot_find: hotspot_name=$hotspot_name viewmode=$viewmode"
+                puts "Executing hotspot_find: hotspot_name=$hotspot_name"
                 if { [catch {
                     hwc kpi hotspot create $hotspot_name
                 } err] } {
@@ -481,13 +470,6 @@ proc process_job {job_file} {
                     return
                 }
                 puts "hwc kpi hotspot $hotspot_name review done"
-                if {$viewmode ne ""} {
-                    if { [catch {
-                        hwc kpi hotspot display viewmode local $viewmode
-                    } err] } {
-                        puts "hwc kpi hotspot display viewmode error: $err"
-                    }
-                }
                 puts "hotspot_find completed successfully"
                 write_result $job_id {{"success":true}}
             }
@@ -502,19 +484,6 @@ proc process_job {job_file} {
                     return
                 }
                 puts "hotspot_navigate completed"
-                write_result $job_id {{"success":true}}
-            }
-            "hotspot_viewmode" {
-                puts "Executing hotspot_viewmode: viewmode=$viewmode"
-                if { [catch {
-                    hwc kpi hotspot display viewmode local $viewmode
-                } err] } {
-                    puts "hotspot_viewmode error: $err"
-                    set escaped_err [escape_json_string $err]
-                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
-                    return
-                }
-                puts "hotspot_viewmode completed"
                 write_result $job_id {{"success":true}}
             }
             "quit" {
@@ -752,7 +721,7 @@ after 4000 listen
             self._log(f"Report creation failed: {result.get('error', 'Unknown')}")
             return False
 
-    def hotspot_find(self, hotspot_name: str, viewmode: str = "") -> bool:
+    def hotspot_find(self, hotspot_name: str) -> bool:
         """Create hotspot, find hotspots, and review"""
         print(f"[hotspot_find] called: name={hotspot_name}, state={self.state}")
         if self.state != State.AGENT_READY:
@@ -762,8 +731,7 @@ after 4000 listen
         try:
             self._log(f"Finding hotspot: {hotspot_name}")
             result = self.bridge.send_job(cmd="hotspot_find", params={
-                "hotspot_name": hotspot_name,
-                "viewmode": viewmode
+                "hotspot_name": hotspot_name
             })
             print(f"[hotspot_find] result={result}")
             if result.get('success', False):
@@ -793,26 +761,6 @@ after 4000 listen
                 return True
             else:
                 self._log(f"Hotspot navigate failed: {result.get('error', 'Unknown')}")
-                return False
-        finally:
-            self._set_state(State.AGENT_READY)
-
-    def hotspot_viewmode(self, viewmode: str) -> bool:
-        """Set hotspot display viewmode: 'entityzoom' or 'transparency'"""
-        if self.state != State.AGENT_READY:
-            self._log("HyperView is not ready")
-            return False
-        self._set_state(State.RUNNING)
-        try:
-            self._log(f"Hotspot viewmode: {viewmode}")
-            result = self.bridge.send_job(cmd="hotspot_viewmode", params={
-                "viewmode": viewmode
-            })
-            if result.get('success', False):
-                self._log(f"Hotspot viewmode set to {viewmode}")
-                return True
-            else:
-                self._log(f"Hotspot viewmode failed: {result.get('error', 'Unknown')}")
                 return False
         finally:
             self._set_state(State.AGENT_READY)
