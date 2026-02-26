@@ -636,8 +636,7 @@ class ContourOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
-        self.geometry("460x640")
-        self.resizable(width=False, height=False)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
 
@@ -708,21 +707,27 @@ class ContourOptionDialog(tk.Toplevel):
         viewmode_frame = ttk.Frame(hotspot_frame)
         viewmode_frame.pack(fill=tk.X, pady=(6, 0))
         ttk.Label(viewmode_frame, text="View Mode:").pack(side=tk.LEFT)
-        ttk.Checkbutton(
+        self._vm_comp_cbtn = ttk.Checkbutton(
             viewmode_frame, text="Component",
             variable=self._vm_component_var,
             command=lambda: self._on_viewmode_check("component"),
-        ).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Checkbutton(
+            state=tk.DISABLED,
+        )
+        self._vm_comp_cbtn.pack(side=tk.LEFT, padx=(8, 0))
+        self._vm_global_cbtn = ttk.Checkbutton(
             viewmode_frame, text="Global",
             variable=self._vm_global_var,
             command=lambda: self._on_viewmode_check("global"),
-        ).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Checkbutton(
+            state=tk.DISABLED,
+        )
+        self._vm_global_cbtn.pack(side=tk.LEFT, padx=(8, 0))
+        self._vm_local_cbtn = ttk.Checkbutton(
             viewmode_frame, text="Local",
             variable=self._vm_local_var,
             command=lambda: self._on_viewmode_check("local"),
-        ).pack(side=tk.LEFT, padx=(8, 0))
+            state=tk.DISABLED,
+        )
+        self._vm_local_cbtn.pack(side=tk.LEFT, padx=(8, 0))
 
         # ── View Mode Option 下拉栏 ──
         vm_option_row = ttk.Frame(hotspot_frame)
@@ -734,12 +739,19 @@ class ContourOptionDialog(tk.Toplevel):
         )
         self._vm_option_cb.pack(side=tk.LEFT, padx=(8, 0))
 
-        # ── Change View 按钮 ──
+        # ── Change View + Capture 按钮（同一行）──
+        vm_btn_row = ttk.Frame(hotspot_frame)
+        vm_btn_row.pack(pady=(6, 2))
         self._change_view_btn = ttk.Button(
-            hotspot_frame, text="Change View",
-            command=self._on_change_view, state=tk.DISABLED,
+            vm_btn_row, text="Change View",
+            command=self._on_change_view, state=tk.DISABLED, width=14,
         )
-        self._change_view_btn.pack(pady=(6, 2))
+        self._change_view_btn.pack(side=tk.LEFT, padx=(0, 6))
+        self._capture_btn = ttk.Button(
+            vm_btn_row, text="Capture",
+            command=self._on_capture, state=tk.DISABLED, width=10,
+        )
+        self._capture_btn.pack(side=tk.LEFT)
 
     def _on_cat_changed(self, event=None):
         self._update_types()
@@ -790,9 +802,12 @@ class ContourOptionDialog(tk.Toplevel):
         threading.Thread(target=run, daemon=True).start()
 
     def _unlock_hotspot_buttons(self):
-        """Contour 已应用后解锁 Hotspot 按钮"""
+        """Contour 已应用后解锁 Hotspot 按钮及 View Mode CheckBox"""
         self.find_btn.config(state=tk.NORMAL)
         self.hotspot_status_var.set("Click Find Hotspot to start")
+        self._vm_comp_cbtn.config(state=tk.NORMAL)
+        self._vm_global_cbtn.config(state=tk.NORMAL)
+        self._vm_local_cbtn.config(state=tk.NORMAL)
 
     def _on_apply(self):
         """执行指令但不退出对话框"""
@@ -862,12 +877,14 @@ class ContourOptionDialog(tk.Toplevel):
             self._vm_option_cb.config(values=opts, state="readonly")
             self._vm_option_var.set(opts[0])
             self._change_view_btn.config(state=tk.NORMAL)
+            self._capture_btn.config(state=tk.NORMAL)
         else:
             # 取消选中，清空记录并禁用下拉栏和按钮
             self._viewmode_var.set("")
             self._vm_option_cb.config(values=[], state="disabled")
             self._vm_option_var.set("")
             self._change_view_btn.config(state=tk.DISABLED)
+            self._capture_btn.config(state=tk.DISABLED)
 
     def _on_change_view(self):
         """执行 hwc kpi hotspot display viewmode <mode> <option>"""
@@ -882,6 +899,32 @@ class ContourOptionDialog(tk.Toplevel):
         def run():
             self.orchestrator.hotspot_display_viewmode(mode, option)
             self.after(0, lambda: self._change_view_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_capture(self):
+        """与 Apply 效果相同，但 label 中附加当前 View Mode 名称。"""
+        if not self.orchestrator:
+            return
+        mode = self._viewmode_var.get()
+        option = self._vm_option_var.get()
+        result_type = self.type_var.get()
+        component = self.comp_var.get()
+        vm_suffix = f" ({mode} {option})" if mode and option else ""
+        label = f"{result_type} - {component}{vm_suffix}"
+        config = {'type': result_type, 'component': component}
+        self._capture_btn.config(state=tk.DISABLED)
+
+        def run():
+            try:
+                self.orchestrator.apply_contour(result_type, component, label)
+                self.orchestrator.report_run_position(label)
+            except Exception as e:
+                print(f"[Capture] error: {e}")
+            if self.on_execute:
+                self.on_execute(config)
+            self.after(0, self._unlock_hotspot_buttons)
+            self.after(0, lambda: self._capture_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=run, daemon=True).start()
 
