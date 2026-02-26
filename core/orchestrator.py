@@ -336,6 +336,17 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "viewmode_option": "value"
+    set viewmode_option ""
+    set idx [string first {"viewmode_option"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 17}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set viewmode_option [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -493,6 +504,19 @@ proc process_job {job_file} {
                     return
                 }
                 puts "hotspot_navigate completed"
+                write_result $job_id {{"success":true}}
+            }
+            "hotspot_display_viewmode" {
+                puts "Executing hotspot_display_viewmode: mode=$label option=$viewmode_option"
+                if { [catch {
+                    hwc kpi hotspot display viewmode $label $viewmode_option
+                } err] } {
+                    puts "hotspot_display_viewmode error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "hotspot_display_viewmode completed"
                 write_result $job_id {{"success":true}}
             }
             "quit" {
@@ -790,6 +814,29 @@ after 4000 listen
                 return True
             else:
                 self._log(f"Hotspot navigate failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def hotspot_display_viewmode(self, mode: str, option: str) -> bool:
+        """Execute: hwc kpi hotspot display viewmode <mode> <option>"""
+        print(f"[hotspot_display_viewmode] mode={mode}, option={option}, state={self.state}")
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Hotspot display viewmode: {mode} {option}")
+            result = self.bridge.send_job(cmd="hotspot_display_viewmode", params={
+                "label": mode,
+                "viewmode_option": option,
+            })
+            print(f"[hotspot_display_viewmode] result={result}")
+            if result.get('success', False):
+                self._log(f"Hotspot display viewmode {mode} {option} done")
+                return True
+            else:
+                self._log(f"Hotspot display viewmode failed: {result.get('error', 'Unknown')}")
                 return False
         finally:
             self._set_state(State.AGENT_READY)

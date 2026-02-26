@@ -627,6 +627,12 @@ class ContourOptionDialog(tk.Toplevel):
         ],
     }
 
+    VIEWMODE_OPTIONS = {
+        "component": ["componenttransparency", "isolatecomponent"],
+        "global":    ["component", "location", "model", "region", "spheres"],
+        "local":     ["contour", "entityzoom", "transparency"],
+    }
+
     def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
@@ -643,6 +649,7 @@ class ContourOptionDialog(tk.Toplevel):
         self._vm_component_var = tk.IntVar(value=0)
         self._vm_global_var = tk.IntVar(value=0)
         self._vm_local_var = tk.IntVar(value=0)
+        self._vm_option_var = tk.StringVar(value="")
         self._create_ui()
         self.wait_window()
 
@@ -716,6 +723,23 @@ class ContourOptionDialog(tk.Toplevel):
             variable=self._vm_local_var,
             command=lambda: self._on_viewmode_check("local"),
         ).pack(side=tk.LEFT, padx=(8, 0))
+
+        # ── View Mode Option 下拉栏 ──
+        vm_option_row = ttk.Frame(hotspot_frame)
+        vm_option_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(vm_option_row, text="Option:").pack(side=tk.LEFT)
+        self._vm_option_cb = ttk.Combobox(
+            vm_option_row, textvariable=self._vm_option_var,
+            state="disabled", width=24,
+        )
+        self._vm_option_cb.pack(side=tk.LEFT, padx=(8, 0))
+
+        # ── Change View 按钮 ──
+        self._change_view_btn = ttk.Button(
+            hotspot_frame, text="Change View",
+            command=self._on_change_view, state=tk.DISABLED,
+        )
+        self._change_view_btn.pack(pady=(6, 2))
 
     def _on_cat_changed(self, event=None):
         self._update_types()
@@ -822,7 +846,7 @@ class ContourOptionDialog(tk.Toplevel):
 
     def _on_viewmode_check(self, mode: str):
         """处理 View Mode CheckBox 互斥逻辑（kpi hotspot display viewmode <mode>）。
-        勾选某项时取消其余两项，记录当前选中的 viewmode 但不立即执行命令。"""
+        勾选某项时取消其余两项并更新 Option 下拉栏；取消勾选时重置下拉栏。"""
         var_map = {
             "component": self._vm_component_var,
             "global": self._vm_global_var,
@@ -834,9 +858,32 @@ class ContourOptionDialog(tk.Toplevel):
                 if m != mode:
                     v.set(0)
             self._viewmode_var.set(mode)
+            opts = self.VIEWMODE_OPTIONS[mode]
+            self._vm_option_cb.config(values=opts, state="readonly")
+            self._vm_option_var.set(opts[0])
+            self._change_view_btn.config(state=tk.NORMAL)
         else:
-            # 取消选中，清空记录
+            # 取消选中，清空记录并禁用下拉栏和按钮
             self._viewmode_var.set("")
+            self._vm_option_cb.config(values=[], state="disabled")
+            self._vm_option_var.set("")
+            self._change_view_btn.config(state=tk.DISABLED)
+
+    def _on_change_view(self):
+        """执行 hwc kpi hotspot display viewmode <mode> <option>"""
+        if not self.orchestrator:
+            return
+        mode = self._viewmode_var.get()
+        option = self._vm_option_var.get()
+        if not mode or not option:
+            return
+        self._change_view_btn.config(state=tk.DISABLED)
+
+        def run():
+            self.orchestrator.hotspot_display_viewmode(mode, option)
+            self.after(0, lambda: self._change_view_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _on_prev(self):
         if not self.orchestrator:
