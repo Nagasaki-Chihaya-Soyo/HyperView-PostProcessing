@@ -630,7 +630,7 @@ class ContourOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
-        self.geometry("450x560")
+        self.geometry("460x640")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -675,14 +675,16 @@ class ContourOptionDialog(tk.Toplevel):
         ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
 
         # ── Hotspot 视角开关区域（位于 Contour 与 Hotspot Analysis 之间） ──
-        viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=8)
-        viewmode_frame.pack(anchor=tk.W, padx=10, pady=(5, 5))
-        viewmode_panel = tk.Frame(viewmode_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN)
+        viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=6)
+        viewmode_frame.pack(anchor=tk.W, padx=10, pady=(5, 4))
+        viewmode_panel = tk.Frame(viewmode_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN,
+                                  width=170, height=84)
         viewmode_panel.pack(anchor=tk.W, padx=2, pady=2)
+        viewmode_panel.pack_propagate(False)
         self.viewmode_switches = {}
         for mode in ("component", "global", "local"):
             row = tk.Frame(viewmode_panel, bg="#8f8f8f")
-            row.pack(anchor=tk.W, padx=6, pady=2)
+            row.pack(anchor=tk.W, padx=6, pady=1)
             tk.Label(row, text=mode.capitalize(), bg="#8f8f8f", fg="white", width=8, anchor=tk.W).pack(side=tk.LEFT)
             sw = ToggleSwitch(row, width=30, height=16,
                               command=lambda m=mode: self._on_viewmode_switch(m))
@@ -691,7 +693,7 @@ class ContourOptionDialog(tk.Toplevel):
 
         # ── Hotspot 分析区域 ──
         hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=8)
-        hotspot_frame.pack(fill=tk.X, padx=10, pady=(3, 8))
+        hotspot_frame.pack(fill=tk.X, padx=10, pady=(2, 8))
 
         nav = ttk.Frame(hotspot_frame)
         nav.pack(pady=5, fill=tk.X)
