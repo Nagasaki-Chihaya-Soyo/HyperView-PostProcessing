@@ -632,6 +632,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.on_execute = on_execute
         self.result = None
         self._hotspot_counter = 0
+        self._viewmode_updating = False
         self._create_ui()
         self.wait_window()
 
@@ -669,6 +670,19 @@ class ContourOptionDialog(tk.Toplevel):
         # ── Hotspot 分析区域 ──
         hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=10)
         hotspot_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+
+        # 视角开关（竖向排列，互斥，仅 UI 框架）
+        viewmode_panel = tk.Frame(hotspot_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN)
+        viewmode_panel.pack(fill=tk.X, pady=(0, 6))
+        self.viewmode_switches = {}
+        for mode in ("component", "global", "local"):
+            row = tk.Frame(viewmode_panel, bg="#8f8f8f")
+            row.pack(fill=tk.X, padx=8, pady=3)
+            tk.Label(row, text=mode.capitalize(), bg="#8f8f8f", fg="white", width=10, anchor=tk.W).pack(side=tk.LEFT)
+            sw = ToggleSwitch(row, width=36, height=20,
+                              command=lambda m=mode: self._on_viewmode_switch(m))
+            sw.pack(side=tk.LEFT)
+            self.viewmode_switches[mode] = sw
 
         nav = ttk.Frame(hotspot_frame)
         nav.pack(pady=5, fill=tk.X)
@@ -782,6 +796,20 @@ class ContourOptionDialog(tk.Toplevel):
             self.after(0, done)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _on_viewmode_switch(self, mode: str):
+        """三个开关两两互斥；暂不绑定任何业务逻辑。"""
+        if self._viewmode_updating:
+            return
+        selected = self.viewmode_switches[mode].get()
+        self._viewmode_updating = True
+        try:
+            if selected:
+                for other_mode, sw in self.viewmode_switches.items():
+                    if other_mode != mode:
+                        sw.set(False)
+        finally:
+            self._viewmode_updating = False
 
     def _on_prev(self):
         if not self.orchestrator:
