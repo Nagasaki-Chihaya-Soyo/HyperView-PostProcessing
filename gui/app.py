@@ -639,6 +639,10 @@ class ContourOptionDialog(tk.Toplevel):
         self.on_execute = on_execute
         self.result = None
         self._hotspot_counter = 0
+        self._viewmode_var = tk.StringVar(value="")  # "component" | "global" | "local" | ""
+        self._vm_component_var = tk.IntVar(value=0)
+        self._vm_global_var = tk.IntVar(value=0)
+        self._vm_local_var = tk.IntVar(value=0)
         self._create_ui()
         self.wait_window()
 
@@ -692,6 +696,26 @@ class ContourOptionDialog(tk.Toplevel):
         self.hotspot_status_var = tk.StringVar(value="Apply contour first to unlock")
         ttk.Label(hotspot_frame, textvariable=self.hotspot_status_var,
                   foreground="gray").pack(pady=(5, 0), anchor=tk.W)
+
+        # ── View Mode CheckBoxes (kpi hotspot display viewmode) ──
+        viewmode_frame = ttk.Frame(hotspot_frame)
+        viewmode_frame.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(viewmode_frame, text="View Mode:").pack(side=tk.LEFT)
+        ttk.Checkbutton(
+            viewmode_frame, text="Component",
+            variable=self._vm_component_var,
+            command=lambda: self._on_viewmode_check("component"),
+        ).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Checkbutton(
+            viewmode_frame, text="Global",
+            variable=self._vm_global_var,
+            command=lambda: self._on_viewmode_check("global"),
+        ).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Checkbutton(
+            viewmode_frame, text="Local",
+            variable=self._vm_local_var,
+            command=lambda: self._on_viewmode_check("local"),
+        ).pack(side=tk.LEFT, padx=(8, 0))
 
     def _on_cat_changed(self, event=None):
         self._update_types()
@@ -795,6 +819,24 @@ class ContourOptionDialog(tk.Toplevel):
             self.after(0, done)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _on_viewmode_check(self, mode: str):
+        """处理 View Mode CheckBox 互斥逻辑（kpi hotspot display viewmode <mode>）。
+        勾选某项时取消其余两项，记录当前选中的 viewmode 但不立即执行命令。"""
+        var_map = {
+            "component": self._vm_component_var,
+            "global": self._vm_global_var,
+            "local": self._vm_local_var,
+        }
+        if var_map[mode].get() == 1:
+            # 选中此项，取消其他项
+            for m, v in var_map.items():
+                if m != mode:
+                    v.set(0)
+            self._viewmode_var.set(mode)
+        else:
+            # 取消选中，清空记录
+            self._viewmode_var.set("")
 
     def _on_prev(self):
         if not self.orchestrator:
