@@ -29,16 +29,18 @@ class Application(tk.Tk):
     def _create_ui(self):
         style = ttk.Style()
         style.configure('Treeview',
-                        rowheight=26,
-                        borderwidth=1,
-                        relief='solid')
+                        rowheight=28,
+                        font=('TkDefaultFont', 9),
+                        fieldbackground='#ffffff')
         style.configure('Treeview.Heading',
                         font=('TkDefaultFont', 9, 'bold'),
-                        relief='groove',
-                        padding=(4, 4))
-        style.layout('Treeview', [
-            ('Treeview.treearea', {'sticky': 'nswe'})
-        ])
+                        background='#2d3748',
+                        foreground='#ffffff',
+                        relief='flat',
+                        padding=(0, 5))
+        style.map('Treeview.Heading',
+                  background=[('active', '#4a5568'), ('!active', '#2d3748')],
+                  foreground=[('active', '#ffffff'), ('!active', '#ffffff')])
         self._create_status_bar()
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -251,24 +253,21 @@ Report Path:{result['report_path']}
         self.parts_tree = ttk.Treeview(tab, columns=columns, show='headings',
                                        selectmode='browse')
 
-        # 表头与数据列使用相同 anchor，确保对齐
-        self.parts_tree.heading('part_no',       text='Parts ID',          anchor='w')
-        self.parts_tree.heading('allowable_vm',  text='Permissible Stress', anchor='e')
-        self.parts_tree.heading('safety_factor', text='Safety Factor',      anchor='e')
-        self.parts_tree.heading('units',         text='Unit',               anchor='center')
-        self.parts_tree.heading('name',          text='Name',               anchor='w')
-        self.parts_tree.heading('notes',         text='Notes',              anchor='w')
+        # 表头和数据列全部居中对齐
+        for col, text, w in [
+            ('part_no',       'Parts ID',           110),
+            ('allowable_vm',  'Permissible Stress',  140),
+            ('safety_factor', 'Safety Factor',       120),
+            ('units',         'Unit',                 70),
+            ('name',          'Name',                160),
+            ('notes',         'Notes',               220),
+        ]:
+            self.parts_tree.heading(col, text=text, anchor='center')
+            self.parts_tree.column(col, width=w, minwidth=60, anchor='center')
 
-        self.parts_tree.column('part_no',       width=110, minwidth=80,  anchor='w',      stretch=False)
-        self.parts_tree.column('allowable_vm',  width=140, minwidth=100, anchor='e',      stretch=False)
-        self.parts_tree.column('safety_factor', width=110, minwidth=80,  anchor='e',      stretch=False)
-        self.parts_tree.column('units',         width=70,  minwidth=50,  anchor='center', stretch=False)
-        self.parts_tree.column('name',          width=160, minwidth=100, anchor='w')
-        self.parts_tree.column('notes',         width=220, minwidth=100, anchor='w')
-
-        # 交替行色，增强行间视觉分隔
-        self.parts_tree.tag_configure('odd',  background='#f4f6f9')
-        self.parts_tree.tag_configure('even', background='#ffffff')
+        # 奇偶行用明显的蓝白交替色 + 不同字体色，形成清晰行间分隔
+        self.parts_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        self.parts_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
 
         scrollbar = ttk.Scrollbar(tab, orient=tk.VERTICAL, command=self.parts_tree.yview)
         self.parts_tree.configure(yscrollcommand=scrollbar.set)
@@ -357,16 +356,16 @@ Report Path:{result['report_path']}
         columns = ('map_type', 'map_value', 'part_no')
         self.mapping_tree = ttk.Treeview(tab, columns=columns, show='headings',
                                          selectmode='browse')
-        self.mapping_tree.heading('map_type',  text='Map Type',    anchor='w')
-        self.mapping_tree.heading('map_value', text='Map Value',   anchor='w')
-        self.mapping_tree.heading('part_no',   text='Part Number', anchor='w')
+        for col, text, w in [
+            ('map_type',  'Map Type',    120),
+            ('map_value', 'Map Value',   280),
+            ('part_no',   'Part Number', 160),
+        ]:
+            self.mapping_tree.heading(col, text=text, anchor='center')
+            self.mapping_tree.column(col, width=w, minwidth=60, anchor='center')
 
-        self.mapping_tree.column('map_type',  width=120, minwidth=80,  anchor='w', stretch=False)
-        self.mapping_tree.column('map_value', width=240, minwidth=120, anchor='w')
-        self.mapping_tree.column('part_no',   width=160, minwidth=80,  anchor='w', stretch=False)
-
-        self.mapping_tree.tag_configure('odd',  background='#f4f6f9')
-        self.mapping_tree.tag_configure('even', background='#ffffff')
+        self.mapping_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        self.mapping_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
 
         scrollbar = ttk.Scrollbar(tab, orient=tk.VERTICAL, command=self.mapping_tree.yview)
         self.mapping_tree.configure(yscrollcommand=scrollbar.set)
