@@ -455,7 +455,7 @@ proc process_job {job_file} {
             "hotspot_find" {
                 puts "Executing hotspot_find: hotspot_name=$hotspot_name viewmode=$viewmode"
                 if { [catch {
-                    hwc kpi create $hotspot_name
+                    hwc kpi hotspot create $hotspot_name
                 } err] } {
                     puts "hwc kpi create error: $err"
                     set escaped_err [escape_json_string $err]
