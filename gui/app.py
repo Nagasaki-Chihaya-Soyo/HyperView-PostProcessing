@@ -675,16 +675,16 @@ class ContourOptionDialog(tk.Toplevel):
         ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
 
         # ── Hotspot 视角开关区域（位于 Contour 与 Hotspot Analysis 之间） ──
-        viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=10)
-        viewmode_frame.pack(fill=tk.X, padx=10, pady=(5, 5))
+        viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=8)
+        viewmode_frame.pack(anchor=tk.W, padx=10, pady=(5, 5))
         viewmode_panel = tk.Frame(viewmode_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN)
-        viewmode_panel.pack(fill=tk.X, padx=2, pady=2)
+        viewmode_panel.pack(anchor=tk.W, padx=2, pady=2)
         self.viewmode_switches = {}
         for mode in ("component", "global", "local"):
             row = tk.Frame(viewmode_panel, bg="#8f8f8f")
-            row.pack(fill=tk.X, padx=8, pady=2)
-            tk.Label(row, text=mode.capitalize(), bg="#8f8f8f", fg="white", width=10, anchor=tk.W).pack(side=tk.LEFT)
-            sw = ToggleSwitch(row, width=32, height=18,
+            row.pack(anchor=tk.W, padx=6, pady=2)
+            tk.Label(row, text=mode.capitalize(), bg="#8f8f8f", fg="white", width=8, anchor=tk.W).pack(side=tk.LEFT)
+            sw = ToggleSwitch(row, width=30, height=16,
                               command=lambda m=mode: self._on_viewmode_switch(m))
             sw.pack(side=tk.LEFT)
             self.viewmode_switches[mode] = sw
