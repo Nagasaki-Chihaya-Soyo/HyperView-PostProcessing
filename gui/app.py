@@ -4,6 +4,7 @@ import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
+import signal
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.orchestrator import Orchestrator, State
 from core.db_store import DBStore
@@ -23,6 +24,7 @@ class Application(tk.Tk):
         self._create_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.current_report_path = None
+        self._is_closing = False
 
     def _create_ui(self):
         self._create_status_bar()
@@ -452,8 +454,13 @@ Report Path:{result['report_path']}
             self.run_btn.config(state=tk.DISABLED)
 
     def _on_close(self):
-        self.orchestrator.shutdown()
-        self.destroy()
+        if self._is_closing:
+            return
+        self._is_closing = True
+        try:
+            self.orchestrator.shutdown()
+        finally:
+            self.destroy()
 
 
 class PartDialog(tk.Toplevel):
@@ -623,7 +630,7 @@ class ContourOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
-        self.geometry("450x420")
+        self.geometry("460x640")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -632,6 +639,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.on_execute = on_execute
         self.result = None
         self._hotspot_counter = 0
+        self._viewmode_updating = False
         self._create_ui()
         self.wait_window()
 
@@ -666,9 +674,26 @@ class ContourOptionDialog(tk.Toplevel):
         ttk.Button(contour_btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
         ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
 
+        # ── Hotspot 视角开关区域（位于 Contour 与 Hotspot Analysis 之间） ──
+        viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=6)
+        viewmode_frame.pack(anchor=tk.W, padx=10, pady=(5, 4))
+        viewmode_panel = tk.Frame(viewmode_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN,
+                                  width=170, height=84)
+        viewmode_panel.pack(anchor=tk.W, padx=2, pady=2)
+        viewmode_panel.pack_propagate(False)
+        self.viewmode_switches = {}
+        for mode in ("component", "global", "local"):
+            row = tk.Frame(viewmode_panel, bg="#8f8f8f")
+            row.pack(anchor=tk.W, padx=6, pady=1)
+            tk.Label(row, text=mode.capitalize(), bg="#8f8f8f", fg="white", width=8, anchor=tk.W).pack(side=tk.LEFT)
+            sw = ToggleSwitch(row, width=30, height=16,
+                              command=lambda m=mode: self._on_viewmode_switch(m))
+            sw.pack(side=tk.LEFT)
+            self.viewmode_switches[mode] = sw
+
         # ── Hotspot 分析区域 ──
-        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=10)
-        hotspot_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=8)
+        hotspot_frame.pack(fill=tk.X, padx=10, pady=(2, 8))
 
         nav = ttk.Frame(hotspot_frame)
         nav.pack(pady=5, fill=tk.X)
@@ -770,7 +795,7 @@ class ContourOptionDialog(tk.Toplevel):
                 print(f"[FindHotspot] apply_contour error: {e}")
             if self.on_execute:
                 self.on_execute(config)
-            ok = self.orchestrator.hotspot_find(name)
+            ok = self.orchestrator.hotspot_find(name, label=label)
             def done():
                 self.find_btn.config(state=tk.NORMAL)
                 self.prev_btn.config(state=tk.NORMAL)
@@ -782,6 +807,20 @@ class ContourOptionDialog(tk.Toplevel):
             self.after(0, done)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _on_viewmode_switch(self, mode: str):
+        """三个开关两两互斥；暂不绑定任何业务逻辑。"""
+        if self._viewmode_updating:
+            return
+        selected = self.viewmode_switches[mode].get()
+        self._viewmode_updating = True
+        try:
+            if selected:
+                for other_mode, sw in self.viewmode_switches.items():
+                    if other_mode != mode:
+                        sw.set(False)
+        finally:
+            self._viewmode_updating = False
 
     def _on_prev(self):
         if not self.orchestrator:
@@ -812,7 +851,7 @@ class ToggleSwitch(tk.Canvas):
     def __init__(self, parent, width=50, height=24, command=None, **kwargs):
         # Match parent background so canvas blends in
         try:
-            bg = parent.winfo_toplevel().cget("bg")
+            bg = parent.cget("bg")
         except Exception:
             bg = "#f0f0f0"
         super().__init__(parent, width=width, height=height,
@@ -1109,6 +1148,16 @@ class AnalysisDialog(tk.Toplevel):
 
 def main():
     app = Application()
+
+    def _signal_close(signum, frame):
+        try:
+            app.after(0, app._on_close)
+        except Exception:
+            app._on_close()
+
+    signal.signal(signal.SIGTERM, _signal_close)
+    signal.signal(signal.SIGINT, _signal_close)
+
     app.mainloop()
 
 
