@@ -639,7 +639,6 @@ class ContourOptionDialog(tk.Toplevel):
         self.on_execute = on_execute
         self.result = None
         self._hotspot_counter = 0
-        self._viewmode_updating = False
         self._create_ui()
         self.wait_window()
 
@@ -673,23 +672,6 @@ class ContourOptionDialog(tk.Toplevel):
         ttk.Button(contour_btn_frame, text="Confirm", command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
         ttk.Button(contour_btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
         ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
-
-        # ── Hotspot 视角开关区域（位于 Contour 与 Hotspot Analysis 之间） ──
-        viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=6)
-        viewmode_frame.pack(anchor=tk.W, padx=10, pady=(5, 4))
-        viewmode_panel = tk.Frame(viewmode_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN,
-                                  width=170, height=84)
-        viewmode_panel.pack(anchor=tk.W, padx=2, pady=2)
-        viewmode_panel.pack_propagate(False)
-        self.viewmode_switches = {}
-        for mode in ("component", "global", "local"):
-            row = tk.Frame(viewmode_panel, bg="#8f8f8f")
-            row.pack(anchor=tk.W, padx=6, pady=1)
-            tk.Label(row, text=mode.capitalize(), bg="#8f8f8f", fg="white", width=8, anchor=tk.W).pack(side=tk.LEFT)
-            sw = ToggleSwitch(row, width=30, height=16,
-                              command=lambda m=mode: self._on_viewmode_switch(m))
-            sw.pack(side=tk.LEFT)
-            self.viewmode_switches[mode] = sw
 
         # ── Hotspot 分析区域 ──
         hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=8)
@@ -814,20 +796,6 @@ class ContourOptionDialog(tk.Toplevel):
 
         threading.Thread(target=run, daemon=True).start()
 
-    def _on_viewmode_switch(self, mode: str):
-        """三个开关两两互斥；暂不绑定任何业务逻辑。"""
-        if self._viewmode_updating:
-            return
-        selected = self.viewmode_switches[mode].get()
-        self._viewmode_updating = True
-        try:
-            if selected:
-                for other_mode, sw in self.viewmode_switches.items():
-                    if other_mode != mode:
-                        sw.set(False)
-        finally:
-            self._viewmode_updating = False
-
     def _on_prev(self):
         if not self.orchestrator:
             return
@@ -849,75 +817,6 @@ class ContourOptionDialog(tk.Toplevel):
             self.after(0, lambda: self.next_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=run, daemon=True).start()
-
-
-class ToggleSwitch(tk.Canvas):
-    """自定义滑动开关控件：绿色=开，灰色=关"""
-
-    def __init__(self, parent, width=50, height=24, command=None, **kwargs):
-        # Match parent background so canvas blends in
-        try:
-            bg = parent.cget("bg")
-        except Exception:
-            bg = "#f0f0f0"
-        super().__init__(parent, width=width, height=height,
-                         highlightthickness=0, bd=0, bg=bg, **kwargs)
-        self._w = width
-        self._h = height
-        self._on = False
-        self._enabled = True
-        self._command = command
-        self._bg = bg
-        self._draw()
-        self.bind("<Button-1>", self._on_click)
-
-    def _draw(self):
-        self.delete("all")
-        r = self._h // 2
-        if not self._enabled:
-            bg = "#cccccc"
-            knob = "#aaaaaa"
-        elif self._on:
-            bg = "#4CAF50"
-            knob = "white"
-        else:
-            bg = "#bbbbbb"
-            knob = "white"
-        # track (rounded rectangle)
-        self.create_oval(0, 0, self._h, self._h, fill=bg, outline=bg)
-        self.create_oval(self._w - self._h, 0, self._w, self._h, fill=bg, outline=bg)
-        self.create_rectangle(r, 0, self._w - r, self._h, fill=bg, outline=bg)
-        # knob
-        pad = 3
-        if self._on:
-            cx = self._w - r
-        else:
-            cx = r
-        self.create_oval(cx - r + pad, pad, cx + r - pad, self._h - pad,
-                         fill=knob, outline=knob)
-
-    def get(self) -> bool:
-        return self._on
-
-    def set(self, value: bool):
-        self._on = value
-        self._draw()
-
-    def enable(self):
-        self._enabled = True
-        self._draw()
-
-    def disable(self):
-        self._enabled = False
-        self._draw()
-
-    def _on_click(self, event=None):
-        if not self._enabled:
-            return
-        self._on = not self._on
-        self._draw()
-        if self._command:
-            self._command()
 
 
 class AnalysisDialog(tk.Toplevel):
