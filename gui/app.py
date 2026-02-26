@@ -903,7 +903,7 @@ class ContourOptionDialog(tk.Toplevel):
         threading.Thread(target=run, daemon=True).start()
 
     def _on_capture(self):
-        """与 Apply 效果相同，但 label 中附加当前 View Mode 名称。"""
+        """Add slide + run position，label 中附加当前 View Mode 名称。不执行 result scalar。"""
         if not self.orchestrator:
             return
         mode = self._viewmode_var.get()
@@ -912,18 +912,10 @@ class ContourOptionDialog(tk.Toplevel):
         component = self.comp_var.get()
         vm_suffix = f" ({mode} {option})" if mode and option else ""
         label = f"{result_type} - {component}{vm_suffix}"
-        config = {'type': result_type, 'component': component}
         self._capture_btn.config(state=tk.DISABLED)
 
         def run():
-            try:
-                self.orchestrator.apply_contour(result_type, component, label)
-                self.orchestrator.report_run_position(label)
-            except Exception as e:
-                print(f"[Capture] error: {e}")
-            if self.on_execute:
-                self.on_execute(config)
-            self.after(0, self._unlock_hotspot_buttons)
+            self.orchestrator.capture_slide(label)
             self.after(0, lambda: self._capture_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=run, daemon=True).start()

@@ -398,6 +398,20 @@ proc process_job {job_file} {
                 puts "report_run_position completed"
                 write_result $job_id {{"success":true}}
             }
+            "capture_slide" {
+                puts "Executing capture_slide: label=$label"
+                if { [catch {
+                    hwc report Report add slide "One Image with Caption" label=$label
+                    hwc report Report run position=$label
+                } err] } {
+                    puts "capture_slide error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "capture_slide completed"
+                write_result $job_id {{"success":true}}
+            }
             "report_run" {
                 puts "Executing report_run command"
                 if { [catch {
@@ -720,6 +734,26 @@ after 4000 listen
                 return True
             else:
                 self._log(f"Report run position failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def capture_slide(self, label: str) -> bool:
+        """Add slide and run position: hwc report Report add slide ... + run position=$label"""
+        if self.state != State.AGENT_READY:
+            self._log(f"capture_slide: HyperView is not ready (state={self.state})")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Capture slide: {label}")
+            result = self.bridge.send_job(cmd="capture_slide", params={
+                "label": label
+            })
+            if result.get('success', False):
+                self._log(f"Capture slide completed: {label}")
+                return True
+            else:
+                self._log(f"Capture slide failed: {result.get('error', 'Unknown')}")
                 return False
         finally:
             self._set_state(State.AGENT_READY)
