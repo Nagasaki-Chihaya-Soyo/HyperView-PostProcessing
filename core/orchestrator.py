@@ -381,7 +381,20 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "apply_contour completed"
+                puts "apply_contour completed successfully"
+                write_result $job_id {{"success":true}}
+            }
+            "report_run_position" {
+                puts "Executing report_run_position: label=$label"
+                if { [catch {
+                    hwc report Report run position=$label
+                } err] } {
+                    puts "report_run_position error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "report_run_position completed"
                 write_result $job_id {{"success":true}}
             }
             "report_run" {
@@ -476,14 +489,6 @@ proc process_job {job_file} {
                     return
                 }
                 puts "hwc kpi hotspot $hotspot_name review done"
-                if {$label ne ""} {
-                    puts "run report position after hotspot ops: position=$label"
-                    if { [catch {
-                        hwc report Report run position=$label
-                    } err] } {
-                        puts "report run position error: $err"
-                    }
-                }
                 if {$viewmode ne ""} {
                     if { [catch {
                         hwc kpi hotspot display viewmode local $viewmode
@@ -702,6 +707,26 @@ after 4000 listen
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
             return None
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def report_run_position(self, label: str) -> bool:
+        """执行 hwc report Report run position=$label"""
+        if self.state != State.AGENT_READY:
+            self._log(f"report_run_position: HyperView is not ready (state={self.state})")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Running report position={label}...")
+            result = self.bridge.send_job(cmd="report_run_position", params={
+                "label": label
+            })
+            if result.get('success', False):
+                self._log("Report run position completed")
+                return True
+            else:
+                self._log(f"Report run position failed: {result.get('error', 'Unknown')}")
+                return False
         finally:
             self._set_state(State.AGENT_READY)
 
