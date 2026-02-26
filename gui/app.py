@@ -623,7 +623,7 @@ class ContourOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
-        self.geometry("450x420")
+        self.geometry("450x500")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -671,13 +671,13 @@ class ContourOptionDialog(tk.Toplevel):
         viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=10)
         viewmode_frame.pack(fill=tk.X, padx=10, pady=(5, 5))
         viewmode_panel = tk.Frame(viewmode_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN)
-        viewmode_panel.pack(fill=tk.X)
+        viewmode_panel.pack(fill=tk.X, padx=2, pady=2)
         self.viewmode_switches = {}
         for mode in ("component", "global", "local"):
             row = tk.Frame(viewmode_panel, bg="#8f8f8f")
-            row.pack(fill=tk.X, padx=8, pady=3)
+            row.pack(fill=tk.X, padx=8, pady=2)
             tk.Label(row, text=mode.capitalize(), bg="#8f8f8f", fg="white", width=10, anchor=tk.W).pack(side=tk.LEFT)
-            sw = ToggleSwitch(row, width=36, height=20,
+            sw = ToggleSwitch(row, width=32, height=18,
                               command=lambda m=mode: self._on_viewmode_switch(m))
             sw.pack(side=tk.LEFT)
             self.viewmode_switches[mode] = sw
@@ -842,7 +842,7 @@ class ToggleSwitch(tk.Canvas):
     def __init__(self, parent, width=50, height=24, command=None, **kwargs):
         # Match parent background so canvas blends in
         try:
-            bg = parent.winfo_toplevel().cget("bg")
+            bg = parent.cget("bg")
         except Exception:
             bg = "#f0f0f0"
         super().__init__(parent, width=width, height=height,
