@@ -456,8 +456,8 @@ proc process_job {job_file} {
                 puts "Executing hotspot_find: hotspot_name=$hotspot_name viewmode=$viewmode"
                 if { [catch {
                     hwc kpi create $hotspot_name
-                    hwc kpi $hotspot_name find hotspots
-                    hwc kpi $hotspot_name review
+                    hwc kpi hotspot $hotspot_name findhotspot
+                    hwc kpi hotspot $hotspot_name review
                     if {$viewmode ne ""} {
                         hwc kpi hotspot display viewmode local $viewmode
                     }
@@ -733,8 +733,9 @@ after 4000 listen
 
     def hotspot_find(self, hotspot_name: str, viewmode: str = "") -> bool:
         """Create hotspot, find hotspots, and review"""
+        print(f"[hotspot_find] called: name={hotspot_name}, state={self.state}")
         if self.state != State.AGENT_READY:
-            self._log("HyperView is not ready")
+            self._log(f"HyperView is not ready (state={self.state})")
             return False
         self._set_state(State.RUNNING)
         try:
@@ -743,6 +744,7 @@ after 4000 listen
                 "hotspot_name": hotspot_name,
                 "viewmode": viewmode
             })
+            print(f"[hotspot_find] result={result}")
             if result.get('success', False):
                 self._log(f"Hotspot {hotspot_name} found successfully")
                 return True
@@ -754,6 +756,7 @@ after 4000 listen
 
     def hotspot_navigate(self, direction: str) -> bool:
         """Navigate hotspots: 'previous' or 'next'"""
+        print(f"[hotspot_navigate] called: direction={direction}, state={self.state}")
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
@@ -763,6 +766,7 @@ after 4000 listen
             result = self.bridge.send_job(cmd="hotspot_navigate", params={
                 "label": direction
             })
+            print(f"[hotspot_navigate] result={result}")
             if result.get('success', False):
                 self._log(f"Hotspot navigate {direction} done")
                 return True
