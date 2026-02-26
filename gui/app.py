@@ -27,6 +27,18 @@ class Application(tk.Tk):
         self._is_closing = False
 
     def _create_ui(self):
+        style = ttk.Style()
+        style.configure('Treeview',
+                        rowheight=26,
+                        borderwidth=1,
+                        relief='solid')
+        style.configure('Treeview.Heading',
+                        font=('TkDefaultFont', 9, 'bold'),
+                        relief='groove',
+                        padding=(4, 4))
+        style.layout('Treeview', [
+            ('Treeview.treearea', {'sticky': 'nswe'})
+        ])
         self._create_status_bar()
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -236,21 +248,27 @@ Report Path:{result['report_path']}
         ttk.Button(toolbar, text="Export CSV", command=self._export_parts_csv).pack(side=tk.RIGHT, padx=2)
 
         columns = ('part_no', 'allowable_vm', 'safety_factor', 'units', 'name', 'notes')
-        self.parts_tree = ttk.Treeview(tab, columns=columns, show='headings')
+        self.parts_tree = ttk.Treeview(tab, columns=columns, show='headings',
+                                       selectmode='browse')
 
-        self.parts_tree.heading('part_no', text='Parts ID')
-        self.parts_tree.heading('allowable_vm', text='Permissible Stress')
-        self.parts_tree.heading('safety_factor', text='Safety Factor')
-        self.parts_tree.heading('units', text='Unit')
-        self.parts_tree.heading('name', text='Name')
-        self.parts_tree.heading('notes', text='Notes')
+        # 表头与数据列使用相同 anchor，确保对齐
+        self.parts_tree.heading('part_no',       text='Parts ID',          anchor='w')
+        self.parts_tree.heading('allowable_vm',  text='Permissible Stress', anchor='e')
+        self.parts_tree.heading('safety_factor', text='Safety Factor',      anchor='e')
+        self.parts_tree.heading('units',         text='Unit',               anchor='center')
+        self.parts_tree.heading('name',          text='Name',               anchor='w')
+        self.parts_tree.heading('notes',         text='Notes',              anchor='w')
 
-        self.parts_tree.column('part_no', width=100)
-        self.parts_tree.column('allowable_vm', width=100)
-        self.parts_tree.column('safety_factor', width=80)
-        self.parts_tree.column('units', width=60)
-        self.parts_tree.column('name', width=150)
-        self.parts_tree.column('notes', width=200)
+        self.parts_tree.column('part_no',       width=110, minwidth=80,  anchor='w',      stretch=False)
+        self.parts_tree.column('allowable_vm',  width=140, minwidth=100, anchor='e',      stretch=False)
+        self.parts_tree.column('safety_factor', width=110, minwidth=80,  anchor='e',      stretch=False)
+        self.parts_tree.column('units',         width=70,  minwidth=50,  anchor='center', stretch=False)
+        self.parts_tree.column('name',          width=160, minwidth=100, anchor='w')
+        self.parts_tree.column('notes',         width=220, minwidth=100, anchor='w')
+
+        # 交替行色，增强行间视觉分隔
+        self.parts_tree.tag_configure('odd',  background='#f4f6f9')
+        self.parts_tree.tag_configure('even', background='#ffffff')
 
         scrollbar = ttk.Scrollbar(tab, orient=tk.VERTICAL, command=self.parts_tree.yview)
         self.parts_tree.configure(yscrollcommand=scrollbar.set)
@@ -264,11 +282,12 @@ Report Path:{result['report_path']}
             self.parts_tree.delete(item)
 
         parts = self.db.get_all_parts()
-        for p in parts:
+        for i, p in enumerate(parts):
+            tag = 'odd' if i % 2 else 'even'
             self.parts_tree.insert('', tk.END, values=(
                 p['part_no'], p['allowable_vm'], p['safety_factor'],
                 p['units'], p['name'], p['notes']
-            ))
+            ), tags=(tag,))
 
     def _add_part(self):
         dialog = PartDialog(self, title="Add Parts")
@@ -336,14 +355,18 @@ Report Path:{result['report_path']}
         ttk.Button(toolbar, text="Refresh", command=self._refresh_mappings).pack(side=tk.RIGHT, padx=2)
 
         columns = ('map_type', 'map_value', 'part_no')
-        self.mapping_tree = ttk.Treeview(tab, columns=columns, show='headings')
-        self.mapping_tree.heading('map_type', text='Map Type')
-        self.mapping_tree.heading('map_value', text='Map Value')
-        self.mapping_tree.heading('part_no', text='Part Number')
+        self.mapping_tree = ttk.Treeview(tab, columns=columns, show='headings',
+                                         selectmode='browse')
+        self.mapping_tree.heading('map_type',  text='Map Type',    anchor='w')
+        self.mapping_tree.heading('map_value', text='Map Value',   anchor='w')
+        self.mapping_tree.heading('part_no',   text='Part Number', anchor='w')
 
-        self.mapping_tree.column('map_type', width=100)
-        self.mapping_tree.column('map_value', width=200)
-        self.mapping_tree.column('part_no', width=150)
+        self.mapping_tree.column('map_type',  width=120, minwidth=80,  anchor='w', stretch=False)
+        self.mapping_tree.column('map_value', width=240, minwidth=120, anchor='w')
+        self.mapping_tree.column('part_no',   width=160, minwidth=80,  anchor='w', stretch=False)
+
+        self.mapping_tree.tag_configure('odd',  background='#f4f6f9')
+        self.mapping_tree.tag_configure('even', background='#ffffff')
 
         scrollbar = ttk.Scrollbar(tab, orient=tk.VERTICAL, command=self.mapping_tree.yview)
         self.mapping_tree.configure(yscrollcommand=scrollbar.set)
@@ -357,10 +380,11 @@ Report Path:{result['report_path']}
         for item in self.mapping_tree.get_children():
             self.mapping_tree.delete(item)
         mappings = self.db.get_all_mappings()
-        for m in mappings:
+        for i, m in enumerate(mappings):
+            tag = 'odd' if i % 2 else 'even'
             self.mapping_tree.insert('', tk.END, values=(
                 m['map_type'], m['map_value'], m['part_no']
-            ))
+            ), tags=(tag,))
 
     def _add_mapping(self):
         parts = self.db.get_all_parts()
