@@ -670,17 +670,16 @@ class ContourOptionDialog(tk.Toplevel):
         hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=10)
         hotspot_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
 
-        self.find_btn = ttk.Button(hotspot_frame, text="Find Hotspot",
-                                   command=self._on_find_hotspot, width=24)
-        self.find_btn.pack(pady=(5, 8))
-
         nav = ttk.Frame(hotspot_frame)
         nav.pack(pady=5, fill=tk.X)
-        self.prev_btn = ttk.Button(nav, text="< Previous Hotspot",
-                                   command=self._on_prev, width=20, state=tk.DISABLED)
+        self.prev_btn = ttk.Button(nav, text="< Previous",
+                                   command=self._on_prev, width=12, state=tk.DISABLED)
         self.prev_btn.pack(side=tk.LEFT)
-        self.next_btn = ttk.Button(nav, text="Next Hotspot >",
-                                   command=self._on_next, width=20, state=tk.DISABLED)
+        self.find_btn = ttk.Button(nav, text="Find Hotspot",
+                                   command=self._on_find_hotspot, width=14)
+        self.find_btn.pack(side=tk.LEFT, expand=True)
+        self.next_btn = ttk.Button(nav, text="Next >",
+                                   command=self._on_next, width=12, state=tk.DISABLED)
         self.next_btn.pack(side=tk.RIGHT)
 
         self.hotspot_status_var = tk.StringVar(value="Click Find Hotspot to start")
@@ -750,10 +749,20 @@ class ContourOptionDialog(tk.Toplevel):
             return
         self._hotspot_counter += 1
         name = f"hotspot{self._hotspot_counter}"
+        result_type = self.type_var.get()
+        component = self.comp_var.get()
+        label = f"{result_type} - {component} (view hotspot)"
+        config = {'type': result_type, 'component': component}
         self.find_btn.config(state=tk.DISABLED)
-        self.hotspot_status_var.set(f"Finding {name}...")
+        self.hotspot_status_var.set(f"Applying contour & finding {name}...")
 
         def run():
+            try:
+                self.orchestrator.apply_contour(result_type, component, label)
+            except Exception as e:
+                print(f"[FindHotspot] apply_contour error: {e}")
+            if self.on_execute:
+                self.on_execute(config)
             ok = self.orchestrator.hotspot_find(name)
             def done():
                 self.find_btn.config(state=tk.NORMAL)
