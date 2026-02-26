@@ -667,13 +667,11 @@ class ContourOptionDialog(tk.Toplevel):
         ttk.Button(contour_btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
         ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
 
-        # ── Hotspot 分析区域 ──
-        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=10)
-        hotspot_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
-
-        # 视角开关（竖向排列，互斥，仅 UI 框架）
-        viewmode_panel = tk.Frame(hotspot_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN)
-        viewmode_panel.pack(fill=tk.X, pady=(0, 6))
+        # ── Hotspot 视角开关区域（位于 Contour 与 Hotspot Analysis 之间） ──
+        viewmode_frame = ttk.LabelFrame(self, text="Hotspot Viewmode", padding=10)
+        viewmode_frame.pack(fill=tk.X, padx=10, pady=(5, 5))
+        viewmode_panel = tk.Frame(viewmode_frame, bg="#8f8f8f", bd=2, relief=tk.SUNKEN)
+        viewmode_panel.pack(fill=tk.X)
         self.viewmode_switches = {}
         for mode in ("component", "global", "local"):
             row = tk.Frame(viewmode_panel, bg="#8f8f8f")
@@ -683,6 +681,10 @@ class ContourOptionDialog(tk.Toplevel):
                               command=lambda m=mode: self._on_viewmode_switch(m))
             sw.pack(side=tk.LEFT)
             self.viewmode_switches[mode] = sw
+
+        # ── Hotspot 分析区域 ──
+        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=10)
+        hotspot_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
 
         nav = ttk.Frame(hotspot_frame)
         nav.pack(pady=5, fill=tk.X)
