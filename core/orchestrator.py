@@ -851,14 +851,30 @@ after 4000 listen
             self._log(f"Load failed:{result.get('error', 'Unknown')}")
             return False
 
+    def _send_quit_no_wait(self) -> bool:
+        """Best-effort quit injection: write quit job directly, do not wait for response."""
+        try:
+            job_id = self.bridge._generate_job_id()
+            self.bridge._write_job(job_id, {
+                "id": job_id,
+                "cmd": "quit",
+            })
+            self._log(f"Quit job injected directly: job_{job_id} (hwd exit)")
+            return True
+        except Exception as e:
+            self._log(f"Failed to inject quit job: {e}")
+            return False
+
     def shutdown(self):
         self._log("closing now")
         should_quit = self.state not in (State.IDLE, State.EXITED)
         if should_quit and self.ready_signal.is_ready():
-            try:
-                self.bridge.send_job(cmd="quit", params={})
-                self._log("HyperView quit command sent (hwd exit)")
-            except Exception as e:
-                self._log(f"Failed to send quit command: {e}")
+            quit_sent = self._send_quit_no_wait()
+            if not quit_sent:
+                try:
+                    self.bridge.send_job(cmd="quit", params={})
+                    self._log("HyperView quit command sent (hwd exit)")
+                except Exception as e:
+                    self._log(f"Failed to send quit command: {e}")
         self.hv_process.terminate()
         self._set_state(State.EXITED)
