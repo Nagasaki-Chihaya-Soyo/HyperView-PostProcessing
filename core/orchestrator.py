@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from enum import Enum, auto
 from typing import Optional, Callable, Dict, Any
 from datetime import datetime
@@ -839,13 +840,15 @@ after 4000 listen
 
     def shutdown(self):
         self._log("closing now")
-        should_quit = self.state not in (State.IDLE, State.EXITED)
-        if should_quit and self.ready_signal.is_ready():
+        if self.ready_signal.is_ready():
             quit_sent = self._send_quit_no_wait()
-            if not quit_sent:
+            if quit_sent:
+                # 等待 HyperView TCL agent 轮询并执行 hwc hwd exit（轮询间隔 500ms）
+                time.sleep(1.5)
+            else:
                 try:
                     self.bridge.send_job(cmd="quit", params={})
-                    self._log("HyperView quit command sent (hwd exit)")
+                    self._log("HyperView quit command sent (hwc hwd exit)")
                 except Exception as e:
                     self._log(f"Failed to send quit command: {e}")
         self.hv_process.terminate()
