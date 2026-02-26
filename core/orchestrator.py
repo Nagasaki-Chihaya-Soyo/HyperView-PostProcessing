@@ -324,6 +324,17 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "hotspot_name": "value"
+    set hotspot_name ""
+    set idx [string first {"hotspot_name"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 14}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set hotspot_name [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -359,7 +370,12 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "apply_contour completed, slide added for $label"
+                puts "apply_contour completed, now report run position=$label..."
+                if { [catch {
+                    hwc report Report run position=$label
+                } err2] } {
+                    puts "report run error: $err2"
+                }
                 write_result $job_id {{"success":true}}
             }
             "report_run" {
@@ -377,28 +393,9 @@ proc process_job {job_file} {
             }
             "report_export" {
                 puts "Executing report_export command"
-                puts "output_dir=$output_dir"
                 if { [catch {
-                    # 读取计数文件确定编号
-                    set counter_file [file join $output_dir report_counter.txt]
-                    set num 1
-                    if {[file exists $counter_file]} {
-                        set cf [open $counter_file r]
-                        set num_str [string trim [read $cf]]
-                        close $cf
-                        if {$num_str ne ""} {
-                            set num [expr {int($num_str) + 1}]
-                        }
-                    }
-                    file mkdir $output_dir
-                    set export_path [file join $output_dir "Report${num}.pptx"]
-                    puts "Exporting report to: $export_path"
-                    hwc report export file=$export_path
-                    # 更新计数文件
-                    set cf [open $counter_file w]
-                    puts $cf $num
-                    close $cf
-                    puts "report_export completed: $export_path"
+                    .hw_report.hw_hw_report.mainwardMainWidget1.toolbar.export invoke
+                    puts "report_export completed"
                 } err] } {
                     puts "report_export error: $err"
                     set escaped_err [escape_json_string $err]
@@ -444,10 +441,55 @@ proc process_job {job_file} {
                 puts "create_report completed successfully"
                 write_result $job_id {{"success":true}}
             }
-            "quit" {
-                puts "Executing quit command"
+            "hotspot_find" {
+                puts "Executing hotspot_find: hotspot_name=$hotspot_name"
+                if { [catch {
+                    hwc kpi hotspot create $hotspot_name
+                } err] } {
+                    puts "hwc kpi create error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"kpi create failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "hwc kpi create $hotspot_name done"
+                if { [catch {
+                    hwc kpi hotspot $hotspot_name findhotspots
+                } err] } {
+                    puts "hwc kpi hotspot findhotspot error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"findhotspot failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "hwc kpi hotspot $hotspot_name findhotspot done"
+                if { [catch {
+                    hwc kpi hotspot $hotspot_name review
+                } err] } {
+                    puts "hwc kpi hotspot review error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"review failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "hwc kpi hotspot $hotspot_name review done"
+                puts "hotspot_find completed successfully"
                 write_result $job_id {{"success":true}}
-                hwc exit
+            }
+            "hotspot_navigate" {
+                puts "Executing hotspot_navigate: direction=$label"
+                if { [catch {
+                    hwc kpi hotspot display $label
+                } err] } {
+                    puts "hotspot_navigate error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "hotspot_navigate completed"
+                write_result $job_id {{"success":true}}
+            }
+            "quit" {
+                puts "Executing quit command (hwc hwd exit)"
+                write_result $job_id {{"success":true}}
+                hwc hwd exit
             }
             "load_model" {
                 puts "Executing load_model command"
@@ -647,17 +689,15 @@ after 4000 listen
         finally:
             self._set_state(State.AGENT_READY)
 
-    def report_export(self, output_dir: str = "C:/Temp/HyperView_Report") -> bool:
-        """导出 report 为递增编号的 pptx"""
+    def report_export(self) -> bool:
+        """通过 TCL 控件触发 HyperView 报告导出"""
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
         self._set_state(State.RUNNING)
         try:
-            self._log(f"Exporting report to: {output_dir}")
-            result = self.bridge.send_job(cmd="report_export", params={
-                "output_dir": output_dir.replace('\\', '/')
-            })
+            self._log("Exporting report...")
+            result = self.bridge.send_job(cmd="report_export", params={})
             if result.get('success', False):
                 self._log("Report exported successfully")
                 return True
@@ -680,6 +720,50 @@ after 4000 listen
         else:
             self._log(f"Report creation failed: {result.get('error', 'Unknown')}")
             return False
+
+    def hotspot_find(self, hotspot_name: str) -> bool:
+        """Create hotspot, find hotspots, and review"""
+        print(f"[hotspot_find] called: name={hotspot_name}, state={self.state}")
+        if self.state != State.AGENT_READY:
+            self._log(f"HyperView is not ready (state={self.state})")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Finding hotspot: {hotspot_name}")
+            result = self.bridge.send_job(cmd="hotspot_find", params={
+                "hotspot_name": hotspot_name
+            })
+            print(f"[hotspot_find] result={result}")
+            if result.get('success', False):
+                self._log(f"Hotspot {hotspot_name} found successfully")
+                return True
+            else:
+                self._log(f"Hotspot find failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def hotspot_navigate(self, direction: str) -> bool:
+        """Navigate hotspots: 'previous' or 'next'"""
+        print(f"[hotspot_navigate] called: direction={direction}, state={self.state}")
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Hotspot navigate: {direction}")
+            result = self.bridge.send_job(cmd="hotspot_navigate", params={
+                "label": direction
+            })
+            print(f"[hotspot_navigate] result={result}")
+            if result.get('success', False):
+                self._log(f"Hotspot navigate {direction} done")
+                return True
+            else:
+                self._log(f"Hotspot navigate failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def setup_view(self) -> bool:
         """执行 view orientation iso 和 animate frame last"""
@@ -716,7 +800,7 @@ after 4000 listen
         if self.state == State.AGENT_READY:
             try:
                 self.bridge.send_job(cmd="quit", params={})
-                self._log("HyperView quit command sent")
+                self._log("HyperView quit command sent (hwc hwd exit)")
             except Exception:
                 pass
         self.hv_process.terminate()

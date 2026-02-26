@@ -579,7 +579,7 @@ class MappingDialog(tk.Toplevel):
 
 
 class ContourOptionDialog(tk.Toplevel):
-    """云图参数设置对话框"""
+    """云图参数设置对话框（含 Hotspot 分析功能）"""
 
     CATEGORIES = {
         "Stress & Displacement": [
@@ -622,8 +622,8 @@ class ContourOptionDialog(tk.Toplevel):
 
     def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
-        self.title("Contour Settings")
-        self.geometry("450x250")
+        self.title("Contour & Hotspot Settings")
+        self.geometry("450x420")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -631,38 +631,60 @@ class ContourOptionDialog(tk.Toplevel):
         self.orchestrator = orchestrator
         self.on_execute = on_execute
         self.result = None
+        self._hotspot_counter = 0
         self._create_ui()
         self.wait_window()
 
     def _create_ui(self):
-        frame = ttk.Frame(self, padding=15)
-        frame.pack(fill=tk.BOTH, expand=True)
+        # ── Contour 设置区域 ──
+        contour_frame = ttk.LabelFrame(self, text="Contour Settings", padding=10)
+        contour_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
 
-        ttk.Label(frame, text="Category:").grid(row=0, column=0, sticky=tk.W, pady=8)
+        ttk.Label(contour_frame, text="Category:").grid(row=0, column=0, sticky=tk.W, pady=5)
         cats = list(self.CATEGORIES.keys())
         self.cat_var = tk.StringVar(value=cats[0])
-        self.cat_cb = ttk.Combobox(frame, textvariable=self.cat_var, values=cats, width=35, state="readonly")
-        self.cat_cb.grid(row=0, column=1, pady=8, padx=5)
+        self.cat_cb = ttk.Combobox(contour_frame, textvariable=self.cat_var, values=cats, width=35, state="readonly")
+        self.cat_cb.grid(row=0, column=1, pady=5, padx=5)
         self.cat_cb.bind("<<ComboboxSelected>>", self._on_cat_changed)
 
-        ttk.Label(frame, text="Data Type:").grid(row=1, column=0, sticky=tk.W, pady=8)
+        ttk.Label(contour_frame, text="Data Type:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.type_var = tk.StringVar()
-        self.type_cb = ttk.Combobox(frame, textvariable=self.type_var, width=35, state="readonly")
-        self.type_cb.grid(row=1, column=1, pady=8, padx=5)
+        self.type_cb = ttk.Combobox(contour_frame, textvariable=self.type_var, width=35, state="readonly")
+        self.type_cb.grid(row=1, column=1, pady=5, padx=5)
         self.type_cb.bind("<<ComboboxSelected>>", self._on_type_changed)
 
-        ttk.Label(frame, text="Component:").grid(row=2, column=0, sticky=tk.W, pady=8)
+        ttk.Label(contour_frame, text="Component:").grid(row=2, column=0, sticky=tk.W, pady=5)
         self.comp_var = tk.StringVar()
-        self.comp_cb = ttk.Combobox(frame, textvariable=self.comp_var, width=35, state="readonly")
-        self.comp_cb.grid(row=2, column=1, pady=8, padx=5)
+        self.comp_cb = ttk.Combobox(contour_frame, textvariable=self.comp_var, width=35, state="readonly")
+        self.comp_cb.grid(row=2, column=1, pady=5, padx=5)
 
         self._update_types()
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=15)
-        ttk.Button(btn_frame, text="Confirm", command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
+        contour_btn_frame = ttk.Frame(contour_frame)
+        contour_btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
+        ttk.Button(contour_btn_frame, text="Confirm", command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
+        ttk.Button(contour_btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
+        ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
+
+        # ── Hotspot 分析区域 ──
+        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=10)
+        hotspot_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+
+        nav = ttk.Frame(hotspot_frame)
+        nav.pack(pady=5, fill=tk.X)
+        self.prev_btn = ttk.Button(nav, text="< Previous",
+                                   command=self._on_prev, width=12, state=tk.DISABLED)
+        self.prev_btn.pack(side=tk.LEFT)
+        self.find_btn = ttk.Button(nav, text="Find Hotspot",
+                                   command=self._on_find_hotspot, width=14, state=tk.DISABLED)
+        self.find_btn.pack(side=tk.LEFT, expand=True)
+        self.next_btn = ttk.Button(nav, text="Next >",
+                                   command=self._on_next, width=12, state=tk.DISABLED)
+        self.next_btn.pack(side=tk.RIGHT)
+
+        self.hotspot_status_var = tk.StringVar(value="Apply contour first to unlock")
+        ttk.Label(hotspot_frame, textvariable=self.hotspot_status_var,
+                  foreground="gray").pack(pady=(5, 0), anchor=tk.W)
 
     def _on_cat_changed(self, event=None):
         self._update_types()
@@ -705,8 +727,15 @@ class ContourOptionDialog(tk.Toplevel):
                 self.on_execute(config)
             if close_after:
                 self.after(0, self.destroy)
+            else:
+                self.after(0, self._unlock_hotspot_buttons)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _unlock_hotspot_buttons(self):
+        """Contour 已应用后解锁 Hotspot 按钮"""
+        self.find_btn.config(state=tk.NORMAL)
+        self.hotspot_status_var.set("Click Find Hotspot to start")
 
     def _on_apply(self):
         """执行指令但不退出对话框"""
@@ -719,6 +748,131 @@ class ContourOptionDialog(tk.Toplevel):
             'component': self.comp_var.get()
         }
         self._execute_contour(close_after=True)
+
+    # ── Hotspot 功能 ──
+
+    def _on_find_hotspot(self):
+        if not self.orchestrator:
+            return
+        self._hotspot_counter += 1
+        name = f"hotspot{self._hotspot_counter}"
+        result_type = self.type_var.get()
+        component = self.comp_var.get()
+        label = f"{result_type} - {component} (view hotspot)"
+        config = {'type': result_type, 'component': component}
+        self.find_btn.config(state=tk.DISABLED)
+        self.hotspot_status_var.set(f"Applying contour & finding {name}...")
+
+        def run():
+            try:
+                self.orchestrator.apply_contour(result_type, component, label)
+            except Exception as e:
+                print(f"[FindHotspot] apply_contour error: {e}")
+            if self.on_execute:
+                self.on_execute(config)
+            ok = self.orchestrator.hotspot_find(name)
+            def done():
+                self.find_btn.config(state=tk.NORMAL)
+                self.prev_btn.config(state=tk.NORMAL)
+                self.next_btn.config(state=tk.NORMAL)
+                if ok:
+                    self.hotspot_status_var.set(f"{name} found. Navigate or find more.")
+                else:
+                    self.hotspot_status_var.set(f"{name} failed. Try again.")
+            self.after(0, done)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_prev(self):
+        if not self.orchestrator:
+            return
+        self.prev_btn.config(state=tk.DISABLED)
+
+        def run():
+            self.orchestrator.hotspot_navigate("previous")
+            self.after(0, lambda: self.prev_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_next(self):
+        if not self.orchestrator:
+            return
+        self.next_btn.config(state=tk.DISABLED)
+
+        def run():
+            self.orchestrator.hotspot_navigate("next")
+            self.after(0, lambda: self.next_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=run, daemon=True).start()
+
+
+class ToggleSwitch(tk.Canvas):
+    """自定义滑动开关控件：绿色=开，灰色=关"""
+
+    def __init__(self, parent, width=50, height=24, command=None, **kwargs):
+        # Match parent background so canvas blends in
+        try:
+            bg = parent.winfo_toplevel().cget("bg")
+        except Exception:
+            bg = "#f0f0f0"
+        super().__init__(parent, width=width, height=height,
+                         highlightthickness=0, bd=0, bg=bg, **kwargs)
+        self._w = width
+        self._h = height
+        self._on = False
+        self._enabled = True
+        self._command = command
+        self._bg = bg
+        self._draw()
+        self.bind("<Button-1>", self._on_click)
+
+    def _draw(self):
+        self.delete("all")
+        r = self._h // 2
+        if not self._enabled:
+            bg = "#cccccc"
+            knob = "#aaaaaa"
+        elif self._on:
+            bg = "#4CAF50"
+            knob = "white"
+        else:
+            bg = "#bbbbbb"
+            knob = "white"
+        # track (rounded rectangle)
+        self.create_oval(0, 0, self._h, self._h, fill=bg, outline=bg)
+        self.create_oval(self._w - self._h, 0, self._w, self._h, fill=bg, outline=bg)
+        self.create_rectangle(r, 0, self._w - r, self._h, fill=bg, outline=bg)
+        # knob
+        pad = 3
+        if self._on:
+            cx = self._w - r
+        else:
+            cx = r
+        self.create_oval(cx - r + pad, pad, cx + r - pad, self._h - pad,
+                         fill=knob, outline=knob)
+
+    def get(self) -> bool:
+        return self._on
+
+    def set(self, value: bool):
+        self._on = value
+        self._draw()
+
+    def enable(self):
+        self._enabled = True
+        self._draw()
+
+    def disable(self):
+        self._enabled = False
+        self._draw()
+
+    def _on_click(self, event=None):
+        if not self._enabled:
+            return
+        self._on = not self._on
+        self._draw()
+        if self._command:
+            self._command()
 
 
 class AnalysisDialog(tk.Toplevel):
@@ -766,34 +920,31 @@ class AnalysisDialog(tk.Toplevel):
         opt_frame = ttk.LabelFrame(main_frame, text="Select Analysis Items", padding=10)
         opt_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        self.chk_contour = tk.BooleanVar(value=True)
-        self.chk_stress_peak = tk.BooleanVar(value=False)
+        self.chk_contour = tk.BooleanVar(value=False)
         self.chk_compare = tk.BooleanVar(value=False)
+        # Track whether Create Report has completed (checkboxes locked before that)
+        self._report_created = False
 
         row1 = ttk.Frame(opt_frame)
         row1.pack(fill=tk.X, pady=4)
-        ttk.Checkbutton(row1, text="Plot Contour",
-                        variable=self.chk_contour).pack(side=tk.LEFT)
+        self.chk_btn_contour = ttk.Checkbutton(
+            row1, text="Plot Contour",
+            variable=self.chk_contour, state=tk.DISABLED,
+            command=self._on_checkbox_toggled)
+        self.chk_btn_contour.pack(side=tk.LEFT)
         self.opt_btn_contour = ttk.Button(row1, text="Option", width=8, state=tk.DISABLED,
                                           command=self._open_contour_option)
         self.opt_btn_contour.pack(side=tk.RIGHT)
-        ttk.Label(opt_frame, text="    Plot contour on the model",
-                  foreground='gray').pack(anchor=tk.W)
-
-        row2 = ttk.Frame(opt_frame)
-        row2.pack(fill=tk.X, pady=4)
-        ttk.Checkbutton(row2, text="Stress Peak Analysis",
-                        variable=self.chk_stress_peak).pack(side=tk.LEFT)
-        self.opt_btn_stress = ttk.Button(row2, text="Option", width=8, state=tk.DISABLED,
-                                          command=self._run_stress_peak)
-        self.opt_btn_stress.pack(side=tk.RIGHT)
-        ttk.Label(opt_frame, text="    Find maximum Von Mises stress location and value",
+        ttk.Label(opt_frame, text="    Plot contour on the model and find stress hotspots",
                   foreground='gray').pack(anchor=tk.W)
 
         row3 = ttk.Frame(opt_frame)
         row3.pack(fill=tk.X, pady=4)
-        ttk.Checkbutton(row3, text="Compare with Material Standards",
-                        variable=self.chk_compare).pack(side=tk.LEFT)
+        self.chk_btn_compare = ttk.Checkbutton(
+            row3, text="Compare with Material Standards",
+            variable=self.chk_compare, state=tk.DISABLED,
+            command=self._on_checkbox_toggled)
+        self.chk_btn_compare.pack(side=tk.LEFT)
         self.opt_btn_compare = ttk.Button(row3, text="Option", width=8, state=tk.DISABLED,
                                            command=self._run_compare)
         self.opt_btn_compare.pack(side=tk.RIGHT)
@@ -844,16 +995,24 @@ class AnalysisDialog(tk.Toplevel):
         threading.Thread(target=do_create, daemon=True).start()
 
     def _unlock_after_create(self):
-        """Create Report 完成后解锁 Option 按钮和 Run/Close"""
+        """Create Report 完成后解锁 Checkbox 和 Run/Close"""
+        self._report_created = True
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
-        if self.chk_contour.get():
-            self.opt_btn_contour.config(state=tk.NORMAL)
-        if self.chk_stress_peak.get():
-            self.opt_btn_stress.config(state=tk.NORMAL)
-        if self.chk_compare.get():
-            self.opt_btn_compare.config(state=tk.NORMAL)
-        self._set_status("Step 2: Click Option to configure, then Step 3: Run to export PPT")
+        # Enable checkboxes so user can tick them
+        self.chk_btn_contour.config(state=tk.NORMAL)
+        self.chk_btn_compare.config(state=tk.NORMAL)
+        # Option buttons stay disabled until their checkbox is ticked
+        self._set_status("Step 2: Tick items and click Option to configure, then Step 3: Export PPT")
+
+    def _on_checkbox_toggled(self):
+        """Checkbox 状态变化时，同步更新对应 Option 按钮的启用/禁用"""
+        if not self._report_created:
+            return
+        self.opt_btn_contour.config(
+            state=tk.NORMAL if self.chk_contour.get() else tk.DISABLED)
+        self.opt_btn_compare.config(
+            state=tk.NORMAL if self.chk_compare.get() else tk.DISABLED)
 
     # ── Step 2: 自由配置分析项 ──
 
@@ -868,35 +1027,20 @@ class AnalysisDialog(tk.Toplevel):
             'type': 'contour', 'success': True, 'config': config
         })
 
-    def _run_stress_peak(self):
-        """执行 Stress Peak 分析"""
-        self.opt_btn_stress.config(state=tk.DISABLED)
-        self._set_status("Running stress peak analysis...")
-
-        def run():
-            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            if result and result.get('success'):
-                self.after(0, lambda: self._completed_results.append({
-                    'type': 'stress_peak', 'success': True, 'result': result
-                }))
-            self.after(0, lambda: self.opt_btn_stress.config(state=tk.NORMAL))
-            self.after(0, lambda: self._set_status("Stress peak done. Continue or Export."))
-
-        threading.Thread(target=run, daemon=True).start()
-
     def _run_compare(self):
-        """执行 Material Compare 分析"""
+        """执行 Material Compare 分析 + report Run"""
         self.opt_btn_compare.config(state=tk.DISABLED)
         self._set_status("Comparing with material standards...")
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
             if result and result.get('success'):
+                self.orchestrator.report_run()
                 self.after(0, lambda: self._completed_results.append({
                     'type': 'compare', 'success': True, 'result': result
                 }))
             self.after(0, lambda: self.opt_btn_compare.config(state=tk.NORMAL))
-            self.after(0, lambda: self._set_status("Compare done. Continue or Export."))
+            self.after(0, lambda: self._set_status("Compare done. Continue or Run to export."))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -941,12 +1085,6 @@ class AnalysisDialog(tk.Toplevel):
                 if cfg:
                     lines.append(f"  [Plot Contour]  {cfg['type']} - {cfg['component']}\n")
 
-            elif r['type'] == 'stress_peak':
-                a = r['result']['analysis']
-                lines.append(f"  [Stress Peak]  {a.peak_value:.4f} MPa  (Entity {a.peak_entity_id})\n")
-                if not report_path:
-                    report_path = r['result'].get('report_path')
-
             elif r['type'] == 'compare':
                 a = r['result']['analysis']
                 status = "PASSED" if a.passed else "FAILED"
@@ -957,7 +1095,7 @@ class AnalysisDialog(tk.Toplevel):
                     report_path = r['result'].get('report_path')
 
         lines.append(f"\nModel: {os.path.basename(self.model_path)}")
-        lines.append("\nPPT Report exported to C:/Temp/HyperView_Report")
+        lines.append("\nPPT Report exported via HyperView")
 
         self.parent.result_text.config(state=tk.NORMAL)
         self.parent.result_text.delete(1.0, tk.END)
