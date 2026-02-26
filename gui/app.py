@@ -770,7 +770,7 @@ class ContourOptionDialog(tk.Toplevel):
                 print(f"[FindHotspot] apply_contour error: {e}")
             if self.on_execute:
                 self.on_execute(config)
-            ok = self.orchestrator.hotspot_find(name)
+            ok = self.orchestrator.hotspot_find(name, label=label)
             def done():
                 self.find_btn.config(state=tk.NORMAL)
                 self.prev_btn.config(state=tk.NORMAL)

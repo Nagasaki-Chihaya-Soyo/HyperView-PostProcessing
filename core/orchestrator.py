@@ -381,12 +381,7 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "apply_contour completed, now report run position=$label..."
-                if { [catch {
-                    hwc report Report run position=$label
-                } err2] } {
-                    puts "report run error: $err2"
-                }
+                puts "apply_contour completed"
                 write_result $job_id {{"success":true}}
             }
             "report_run" {
@@ -481,6 +476,14 @@ proc process_job {job_file} {
                     return
                 }
                 puts "hwc kpi hotspot $hotspot_name review done"
+                if {$label ne ""} {
+                    puts "run report position after hotspot ops: position=$label"
+                    if { [catch {
+                        hwc report Report run position=$label
+                    } err] } {
+                        puts "report run position error: $err"
+                    }
+                }
                 if {$viewmode ne ""} {
                     if { [catch {
                         hwc kpi hotspot display viewmode local $viewmode
@@ -752,7 +755,7 @@ after 4000 listen
             self._log(f"Report creation failed: {result.get('error', 'Unknown')}")
             return False
 
-    def hotspot_find(self, hotspot_name: str, viewmode: str = "") -> bool:
+    def hotspot_find(self, hotspot_name: str, viewmode: str = "", label: str = "") -> bool:
         """Create hotspot, find hotspots, and review"""
         print(f"[hotspot_find] called: name={hotspot_name}, state={self.state}")
         if self.state != State.AGENT_READY:
@@ -763,7 +766,8 @@ after 4000 listen
             self._log(f"Finding hotspot: {hotspot_name}")
             result = self.bridge.send_job(cmd="hotspot_find", params={
                 "hotspot_name": hotspot_name,
-                "viewmode": viewmode
+                "viewmode": viewmode,
+                "label": label,
             })
             print(f"[hotspot_find] result={result}")
             if result.get('success', False):
