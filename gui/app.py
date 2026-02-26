@@ -630,7 +630,7 @@ class ContourOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None, on_execute=None):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
-        self.geometry("450x500")
+        self.geometry("450x560")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -690,8 +690,8 @@ class ContourOptionDialog(tk.Toplevel):
             self.viewmode_switches[mode] = sw
 
         # ── Hotspot 分析区域 ──
-        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=10)
-        hotspot_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=8)
+        hotspot_frame.pack(fill=tk.X, padx=10, pady=(3, 8))
 
         nav = ttk.Frame(hotspot_frame)
         nav.pack(pady=5, fill=tk.X)
