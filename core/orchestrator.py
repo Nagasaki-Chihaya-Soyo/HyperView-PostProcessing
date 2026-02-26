@@ -497,7 +497,7 @@ proc process_job {job_file} {
             "quit" {
                 puts "Executing quit command"
                 write_result $job_id {{"success":true}}
-                hwd exit
+                hwc hwd exit
             }
             "load_model" {
                 puts "Executing load_model command"
