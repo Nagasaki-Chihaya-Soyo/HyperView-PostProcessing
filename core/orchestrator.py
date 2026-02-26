@@ -853,7 +853,8 @@ after 4000 listen
 
     def shutdown(self):
         self._log("closing now")
-        if self.state != State.EXITED and self.hv_process.is_running():
+        should_quit = self.state not in (State.IDLE, State.EXITED)
+        if should_quit and self.ready_signal.is_ready():
             try:
                 self.bridge.send_job(cmd="quit", params={})
                 self._log("HyperView quit command sent (hwd exit)")
