@@ -523,7 +523,7 @@ proc process_job {job_file} {
             "quit" {
                 puts "Executing quit command"
                 write_result $job_id {{"success":true}}
-                hwc exit
+                hwd exit
             }
             "load_model" {
                 puts "Executing load_model command"
@@ -853,11 +853,11 @@ after 4000 listen
 
     def shutdown(self):
         self._log("closing now")
-        if self.state == State.AGENT_READY:
+        if self.state != State.EXITED and self.hv_process.is_running():
             try:
                 self.bridge.send_job(cmd="quit", params={})
-                self._log("HyperView quit command sent")
-            except Exception:
-                pass
+                self._log("HyperView quit command sent (hwd exit)")
+            except Exception as e:
+                self._log(f"Failed to send quit command: {e}")
         self.hv_process.terminate()
         self._set_state(State.EXITED)

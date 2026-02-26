@@ -4,6 +4,7 @@ import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
+import signal
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.orchestrator import Orchestrator, State
 from core.db_store import DBStore
@@ -23,6 +24,7 @@ class Application(tk.Tk):
         self._create_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.current_report_path = None
+        self._is_closing = False
 
     def _create_ui(self):
         self._create_status_bar()
@@ -452,8 +454,13 @@ Report Path:{result['report_path']}
             self.run_btn.config(state=tk.DISABLED)
 
     def _on_close(self):
-        self.orchestrator.shutdown()
-        self.destroy()
+        if self._is_closing:
+            return
+        self._is_closing = True
+        try:
+            self.orchestrator.shutdown()
+        finally:
+            self.destroy()
 
 
 class PartDialog(tk.Toplevel):
@@ -1139,6 +1146,16 @@ class AnalysisDialog(tk.Toplevel):
 
 def main():
     app = Application()
+
+    def _signal_close(signum, frame):
+        try:
+            app.after(0, app._on_close)
+        except Exception:
+            app._on_close()
+
+    signal.signal(signal.SIGTERM, _signal_close)
+    signal.signal(signal.SIGINT, _signal_close)
+
     app.mainloop()
 
 
