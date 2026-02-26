@@ -456,16 +456,37 @@ proc process_job {job_file} {
                 puts "Executing hotspot_find: hotspot_name=$hotspot_name viewmode=$viewmode"
                 if { [catch {
                     hwc kpi create $hotspot_name
-                    hwc kpi hotspot $hotspot_name findhotspot
-                    hwc kpi hotspot $hotspot_name review
-                    if {$viewmode ne ""} {
-                        hwc kpi hotspot display viewmode local $viewmode
-                    }
                 } err] } {
-                    puts "hotspot_find error: $err"
+                    puts "hwc kpi create error: $err"
                     set escaped_err [escape_json_string $err]
-                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    write_result $job_id [format {{"success":false,"error":"kpi create failed: %s"}} $escaped_err]
                     return
+                }
+                puts "hwc kpi create $hotspot_name done"
+                if { [catch {
+                    hwc kpi hotspot $hotspot_name findhotspot
+                } err] } {
+                    puts "hwc kpi hotspot findhotspot error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"findhotspot failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "hwc kpi hotspot $hotspot_name findhotspot done"
+                if { [catch {
+                    hwc kpi hotspot $hotspot_name review
+                } err] } {
+                    puts "hwc kpi hotspot review error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"review failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "hwc kpi hotspot $hotspot_name review done"
+                if {$viewmode ne ""} {
+                    if { [catch {
+                        hwc kpi hotspot display viewmode local $viewmode
+                    } err] } {
+                        puts "hwc kpi hotspot display viewmode error: $err"
+                    }
                 }
                 puts "hotspot_find completed successfully"
                 write_result $job_id {{"success":true}}
