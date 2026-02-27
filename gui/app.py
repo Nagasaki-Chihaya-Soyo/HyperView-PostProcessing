@@ -732,7 +732,8 @@ class ContourOptionDialog(tk.Toplevel):
         "local":     ["contour", "entityzoom", "transparency"],
     }
 
-    def __init__(self, parent, orchestrator=None, on_execute=None):
+    def __init__(self, parent, orchestrator=None, on_execute=None,
+                 applied_model_path=None, current_model_path=None):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
         self.resizable(True, True)
@@ -749,6 +750,13 @@ class ContourOptionDialog(tk.Toplevel):
         self._vm_global_var = tk.IntVar(value=0)
         self._vm_local_var = tk.IntVar(value=0)
         self._vm_option_var = tk.StringVar(value="")
+        # Unlock is allowed only when Apply/Confirm was previously done on the
+        # same model file (i.e. the user had results but accidentally hit Cancel)
+        self._can_unlock = (
+            applied_model_path is not None
+            and current_model_path is not None
+            and applied_model_path == current_model_path
+        )
         self._create_ui()
         self.wait_window()
 
@@ -852,6 +860,12 @@ class ContourOptionDialog(tk.Toplevel):
             command=self._on_capture, state=tk.DISABLED, width=10,
         )
         self._capture_btn.pack(side=tk.LEFT)
+        unlock_state = tk.NORMAL if self._can_unlock else tk.DISABLED
+        self._unlock_btn = ttk.Button(
+            vm_btn_row, text="Unlock",
+            command=self._on_unlock, state=unlock_state, width=8,
+        )
+        self._unlock_btn.pack(side=tk.LEFT, padx=(6, 0))
 
     def _on_cat_changed(self, event=None):
         self._update_types()
@@ -908,6 +922,12 @@ class ContourOptionDialog(tk.Toplevel):
         self._vm_comp_cbtn.config(state=tk.NORMAL)
         self._vm_global_cbtn.config(state=tk.NORMAL)
         self._vm_local_cbtn.config(state=tk.NORMAL)
+
+    def _on_unlock(self):
+        """Restore hotspot buttons using a previously confirmed result.
+        Only callable when a prior Apply/Confirm existed on the same model file."""
+        self._unlock_hotspot_buttons()
+        self._unlock_btn.config(state=tk.DISABLED)
 
     def _on_apply(self):
         """执行指令但不退出对话框"""
@@ -1059,6 +1079,8 @@ class AnalysisDialog(tk.Toplevel):
         self.model_path = model_path
         self.result_path = result_path
         self.result = None
+        # model path recorded when Apply/Confirm last succeeded; None if never done
+        self._contour_applied_model: str | None = None
 
         # 启动 setup_view 线程
         self._setup_thread = threading.Thread(target=self.orchestrator.setup_view, daemon=True)
@@ -1188,13 +1210,17 @@ class AnalysisDialog(tk.Toplevel):
     def _open_contour_option(self):
         """打开云图参数设置对话框，Apply/Confirm 都会执行 hwc 指令"""
         ContourOptionDialog(self, orchestrator=self.orchestrator,
-                            on_execute=self._on_contour_executed)
+                            on_execute=self._on_contour_executed,
+                            applied_model_path=self._contour_applied_model,
+                            current_model_path=self.model_path)
 
     def _on_contour_executed(self, config):
         """每次 Apply/Confirm 执行后的回调"""
         self._completed_results.append({
             'type': 'contour', 'success': True, 'config': config
         })
+        # Record that a successful apply/confirm was done for this model file
+        self._contour_applied_model = self.model_path
 
     def _run_compare(self):
         """执行 Material Compare 分析 + report Run"""
