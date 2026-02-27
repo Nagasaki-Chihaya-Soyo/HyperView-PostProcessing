@@ -287,7 +287,7 @@ Report Path:{result['report_path']}
             ), tags=(tag,))
 
     def _add_part(self):
-        dialog = PartDialog(self, title="Add Parts")
+        dialog = PartDialog(self, title="Add Material")
         if dialog.result:
             self.db.add_part(**dialog.result)
             self._refresh_parts()
@@ -306,7 +306,7 @@ Report Path:{result['report_path']}
             'name': values[4],
             'notes': values[5]
         }
-        dialog = PartDialog(self, title="Edit Parts", data=data)
+        dialog = PartDialog(self, title="Edit Material", data=data)
         if dialog.result:
             self.db.update_part(**dialog.result)
             self._refresh_parts()
@@ -519,9 +519,11 @@ class PartDialog(tk.Toplevel):
         self.safety_factor.insert(0, self.data.get('safety_factor', '1.0'))
 
         ttk.Label(frame, text="Unit").grid(row=3, column=0, sticky=tk.W, pady=5)
-        self.units_entry = ttk.Entry(frame, width=30)
-        self.units_entry.grid(row=3, column=1, pady=5)
-        self.units_entry.insert(0, self.data.get('units', 'Mpa'))
+        _UNITS = ['Pa', 'kPa', 'MPa', 'GPa', 'psi', 'ksi']
+        self.units_cb = ttk.Combobox(frame, width=28, values=_UNITS, state='readonly')
+        self.units_cb.grid(row=3, column=1, pady=5)
+        current_unit = self.data.get('units', 'MPa')
+        self.units_cb.set(current_unit if current_unit in _UNITS else 'MPa')
 
         ttk.Label(frame, text="Name").grid(row=4, column=0, sticky=tk.W, pady=5)
         self.name_entry = ttk.Entry(frame, width=30)
@@ -543,7 +545,7 @@ class PartDialog(tk.Toplevel):
                 'part_no': self.part_no_entry.get().strip(),
                 'allowable_vm': float(self.allowable_entry.get()),
                 'safety_factor': float(self.safety_factor.get() or 1.0),
-                'units': self.units_entry.get().strip() or 'MPa',
+                'units': self.units_cb.get() or 'MPa',
                 'name': self.name_entry.get().strip(),
                 'notes': self.notes_entry.get().strip()
             }
