@@ -321,10 +321,9 @@ Report Path:{result['report_path']}
         self._drag_original_order = []
 
     def _add_part(self):
-        next_no = self.db.get_next_part_no()
-        dialog = PartDialog(self, title="Add Material", next_part_no=next_no)
+        dialog = PartDialog(self, title="Add Material")
         if dialog.result:
-            self.db.add_part(**dialog.result)
+            self.db.add_part(part_no=self.db.get_next_part_no(), **dialog.result)
             self._refresh_parts()
 
     def _edit_part(self):
@@ -333,8 +332,8 @@ Report Path:{result['report_path']}
             messagebox.showwarning(title="WARNING", message="SELECT A PART FIRST")
             return
         values = self.parts_tree.item(selection[0])['values']
+        part_no = str(values[0])
         data = {
-            'part_no': values[0],
             'allowable_vm': values[1],
             'safety_factor': values[2],
             'units': values[3],
@@ -343,7 +342,7 @@ Report Path:{result['report_path']}
         }
         dialog = PartDialog(self, title="Edit Material", data=data)
         if dialog.result:
-            self.db.update_part(**dialog.result)
+            self.db.update_part(part_no=part_no, **dialog.result)
             self._refresh_parts()
 
     def _delete_part(self):
@@ -520,16 +519,15 @@ Report Path:{result['report_path']}
 
 
 class PartDialog(tk.Toplevel):
-    def __init__(self, parent, title, data=None, next_part_no=None):
+    def __init__(self, parent, title, data=None):
         super().__init__(parent)
         self.title(title)
-        self.geometry("400x300")
+        self.geometry("400x260")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
         self.result = None
         self.data = data or {}
-        self.next_part_no = next_part_no
         self._create_ui()
         self.wait_window()
 
@@ -537,58 +535,46 @@ class PartDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="Part Number").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.part_no_entry = ttk.Entry(frame, width=30)
-        self.part_no_entry.grid(row=0, column=1, pady=5)
-        if self.data.get('part_no'):
-            self.part_no_entry.insert(0, self.data.get('part_no', ''))
-            self.part_no_entry.config(state=tk.DISABLED)
-        elif self.next_part_no is not None:
-            self.part_no_entry.insert(0, self.next_part_no)
-
-        ttk.Label(frame, text="Allowable Stress").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Allowable Stress").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.allowable_entry = ttk.Entry(frame, width=30)
-        self.allowable_entry.grid(row=1, column=1, pady=5)
+        self.allowable_entry.grid(row=0, column=1, pady=5)
         self.allowable_entry.insert(0, self.data.get('allowable_vm', ''))
 
-        ttk.Label(frame, text="Safety Factor").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Safety Factor").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.safety_factor = ttk.Entry(frame, width=30)
-        self.safety_factor.grid(row=2, column=1, pady=5)
+        self.safety_factor.grid(row=1, column=1, pady=5)
         self.safety_factor.insert(0, self.data.get('safety_factor', '1.0'))
 
-        ttk.Label(frame, text="Unit").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Unit").grid(row=2, column=0, sticky=tk.W, pady=5)
         _UNITS = ['Pa', 'kPa', 'MPa', 'GPa', 'psi', 'ksi']
         self.units_cb = ttk.Combobox(frame, width=28, values=_UNITS, state='readonly')
-        self.units_cb.grid(row=3, column=1, pady=5)
+        self.units_cb.grid(row=2, column=1, pady=5)
         current_unit = self.data.get('units', 'MPa')
         self.units_cb.set(current_unit if current_unit in _UNITS else 'MPa')
 
-        ttk.Label(frame, text="Name").grid(row=4, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Name").grid(row=3, column=0, sticky=tk.W, pady=5)
         self.name_entry = ttk.Entry(frame, width=30)
-        self.name_entry.grid(row=4, column=1, pady=5)
+        self.name_entry.grid(row=3, column=1, pady=5)
         self.name_entry.insert(0, self.data.get('name', ''))
 
-        ttk.Label(frame, text="Notes").grid(row=5, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Notes").grid(row=4, column=0, sticky=tk.W, pady=5)
         self.notes_entry = ttk.Entry(frame, width=30)
-        self.notes_entry.grid(row=5, column=1, pady=5)
+        self.notes_entry.grid(row=4, column=1, pady=5)
         self.notes_entry.insert(0, self.data.get('notes', ''))
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=6, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=5, column=0, columnspan=2, pady=20)
         ttk.Button(btn_frame, text="Confirm", command=self._ok).pack(side=tk.LEFT, padx=10)
 
     def _ok(self):
         try:
             self.result = {
-                'part_no': self.part_no_entry.get().strip(),
                 'allowable_vm': float(self.allowable_entry.get()),
                 'safety_factor': float(self.safety_factor.get() or 1.0),
                 'units': self.units_cb.get() or 'MPa',
                 'name': self.name_entry.get().strip(),
                 'notes': self.notes_entry.get().strip()
             }
-            if not self.result['part_no']:
-                raise ValueError('Part Number is Required')
             self.destroy()
         except ValueError as e:
             messagebox.showerror(title="Error", message=str(e))
