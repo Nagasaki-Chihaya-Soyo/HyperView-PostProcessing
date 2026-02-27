@@ -627,7 +627,7 @@ class ContourOptionDialog(tk.Toplevel):
         ],
     }
 
-    def __init__(self, parent, orchestrator=None, on_execute=None):
+    def __init__(self, parent, orchestrator=None, on_execute=None, model_path=""):
         super().__init__(parent)
         self.title("Contour & Hotspot Settings")
         self.geometry("460x640")
@@ -637,6 +637,7 @@ class ContourOptionDialog(tk.Toplevel):
 
         self.orchestrator = orchestrator
         self.on_execute = on_execute
+        self.model_path = model_path
         self.result = None
         self._hotspot_counter = 0
         self._create_ui()
@@ -669,9 +670,12 @@ class ContourOptionDialog(tk.Toplevel):
 
         contour_btn_frame = ttk.Frame(contour_frame)
         contour_btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
-        ttk.Button(contour_btn_frame, text="Confirm", command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(contour_btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
+        ttk.Button(contour_btn_frame, text="Confirm", command=self._on_confirm, width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Button(contour_btn_frame, text="Apply", command=self._on_apply, width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=10).pack(side=tk.LEFT, padx=5)
+        self.unlock_btn = ttk.Button(contour_btn_frame, text="Unlock", command=self._on_unlock,
+                                     width=10, state=tk.NORMAL if self._can_unlock() else tk.DISABLED)
+        self.unlock_btn.pack(side=tk.LEFT, padx=5)
 
         # ── Hotspot 分析区域 ──
         hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=8)
@@ -757,6 +761,25 @@ class ContourOptionDialog(tk.Toplevel):
             'component': self.comp_var.get()
         }
         self._execute_contour(close_after=True)
+
+    def _can_unlock(self):
+        """检查是否允许 Unlock：之前执行过 Apply/Confirm 且模型文件未更改"""
+        if not self.orchestrator:
+            return False
+        if not self.orchestrator._contour_applied:
+            return False
+        if self.model_path and self.orchestrator._contour_applied_model \
+                and self.model_path != self.orchestrator._contour_applied_model:
+            return False
+        return True
+
+    def _on_unlock(self):
+        """Unlock Find Hotspot 按钮（无需重新 Apply）"""
+        if not self._can_unlock():
+            self.hotspot_status_var.set("Cannot unlock: apply contour first")
+            return
+        self._unlock_hotspot_buttons()
+        self.unlock_btn.config(state=tk.DISABLED)
 
     # ── Hotspot 功能 ──
 
@@ -963,7 +986,8 @@ class AnalysisDialog(tk.Toplevel):
     def _open_contour_option(self):
         """打开云图参数设置对话框，Apply/Confirm 都会执行 hwc 指令"""
         ContourOptionDialog(self, orchestrator=self.orchestrator,
-                            on_execute=self._on_contour_executed)
+                            on_execute=self._on_contour_executed,
+                            model_path=self.model_path)
 
     def _on_contour_executed(self, config):
         """每次 Apply/Confirm 执行后的回调"""

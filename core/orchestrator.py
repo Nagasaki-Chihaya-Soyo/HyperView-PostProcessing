@@ -47,6 +47,8 @@ class Orchestrator:
         self.current_job_id: Optional[str] = None
         self.on_state_change = None
         self.on_log = None
+        self._contour_applied = False
+        self._contour_applied_model: Optional[str] = None
         setup_logger(self.logs_dir)
 
     def _set_state(self, new_state: State):
@@ -673,6 +675,7 @@ after 4000 listen
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
                 return None
             self._log("Contour applied successfully")
+            self._contour_applied = True
             return {'success': True}
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
@@ -819,6 +822,8 @@ after 4000 listen
         })
         if result.get('success', False):
             self._log("Model loaded successfully")
+            self._contour_applied = False
+            self._contour_applied_model = model_path
             return True
         else:
             self._log(f"Load failed:{result.get('error', 'Unknown')}")
