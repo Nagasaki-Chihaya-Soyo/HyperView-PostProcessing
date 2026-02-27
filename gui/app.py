@@ -569,6 +569,25 @@ class PartDialog(tk.Toplevel):
         btn_frame.grid(row=5, column=0, columnspan=2, pady=20)
         ttk.Button(btn_frame, text="Confirm", command=self._ok).pack(side=tk.LEFT, padx=10)
 
+        self._bind_navigation()
+        self.after(50, self.allowable_entry.focus_set)
+
+    def _bind_navigation(self):
+        fields = [
+            self.allowable_entry,
+            self.safety_factor,
+            self.units_cb,
+            self.name_entry,
+            self.notes_entry,
+        ]
+        for i, widget in enumerate(fields):
+            if i < len(fields) - 1:
+                nw = fields[i + 1]
+                widget.bind('<Return>', lambda e, w=nw: (w.focus_set(), 'break')[1])
+            else:
+                widget.bind('<Return>', lambda e: self._ok())
+            widget.bind('<Control-Return>', lambda e: self._ok())
+
     def _ok(self):
         try:
             self.result = {
