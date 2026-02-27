@@ -38,6 +38,17 @@ class DBStore:
             ''')
             conn.commit()
 
+    def get_next_part_no(self) -> str:
+        """返回下一个可用的零件编号（最后一条记录编号+1，无数据则返回'0'）"""
+        with self._get_conn() as conn:
+            row = conn.execute('SELECT part_no FROM parts ORDER BY rowid DESC LIMIT 1').fetchone()
+            if row is None:
+                return '0'
+            try:
+                return str(int(row['part_no']) + 1)
+            except (ValueError, TypeError):
+                return '0'
+
     def get_all_parts(self) -> List[Dict]:
         """获取所有零件标准"""
         with self._get_conn() as conn:

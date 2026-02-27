@@ -287,7 +287,8 @@ Report Path:{result['report_path']}
             ), tags=(tag,))
 
     def _add_part(self):
-        dialog = PartDialog(self, title="Add Material")
+        next_no = self.db.get_next_part_no()
+        dialog = PartDialog(self, title="Add Material", next_part_no=next_no)
         if dialog.result:
             self.db.add_part(**dialog.result)
             self._refresh_parts()
@@ -485,7 +486,7 @@ Report Path:{result['report_path']}
 
 
 class PartDialog(tk.Toplevel):
-    def __init__(self, parent, title, data=None):
+    def __init__(self, parent, title, data=None, next_part_no=None):
         super().__init__(parent)
         self.title(title)
         self.geometry("400x300")
@@ -494,6 +495,7 @@ class PartDialog(tk.Toplevel):
         self.grab_set()
         self.result = None
         self.data = data or {}
+        self.next_part_no = next_part_no
         self._create_ui()
         self.wait_window()
 
@@ -507,6 +509,8 @@ class PartDialog(tk.Toplevel):
         if self.data.get('part_no'):
             self.part_no_entry.insert(0, self.data.get('part_no', ''))
             self.part_no_entry.config(state=tk.DISABLED)
+        elif self.next_part_no is not None:
+            self.part_no_entry.insert(0, self.next_part_no)
 
         ttk.Label(frame, text="Allowable Stress").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.allowable_entry = ttk.Entry(frame, width=30)
