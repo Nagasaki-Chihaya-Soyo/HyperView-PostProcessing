@@ -580,13 +580,43 @@ class PartDialog(tk.Toplevel):
             self.name_entry,
             self.notes_entry,
         ]
-        for i, widget in enumerate(fields):
-            if i < len(fields) - 1:
-                nw = fields[i + 1]
-                widget.bind('<Return>', lambda e, w=nw: (w.focus_set(), 'break')[1])
-            else:
-                widget.bind('<Return>', lambda e: self._ok())
-            widget.bind('<Control-Return>', lambda e: self._ok())
+        cb_idx = 2  # index of units_cb in fields
+
+        # Entry widgets: Up/Down navigate fields, Enter confirms
+        for idx, widget in [(0, self.allowable_entry), (1, self.safety_factor),
+                            (3, self.name_entry), (4, self.notes_entry)]:
+            if idx > 0:
+                pw = fields[idx - 1]
+                widget.bind('<Up>', lambda e, w=pw: (w.focus_set(), 'break')[1])
+            if idx < len(fields) - 1:
+                nw = fields[idx + 1]
+                widget.bind('<Down>', lambda e, w=nw: (w.focus_set(), 'break')[1])
+            widget.bind('<Return>', lambda e: self._ok())
+
+        # Combobox: Up/Down navigate fields (only fires when dropdown is closed)
+        self.units_cb.bind('<Up>', lambda e, w=fields[cb_idx - 1]: (w.focus_set(), 'break')[1])
+        self.units_cb.bind('<Down>', lambda e, w=fields[cb_idx + 1]: (w.focus_set(), 'break')[1])
+
+        # Combobox Enter: 1st press opens dropdown, 2nd selects unit,
+        # 3rd press confirms dialog
+        self._cb_ready = False
+
+        def _on_cb_selected(e):
+            # Defer so the Return event in this same cycle does not trigger confirm
+            self.after(0, lambda: setattr(self, '_cb_ready', True))
+
+        def _on_cb_return(e):
+            if self._cb_ready:
+                self._cb_ready = False
+                self._ok()
+                return 'break'
+
+        def _on_cb_focus_out(e):
+            self._cb_ready = False
+
+        self.units_cb.bind('<<ComboboxSelected>>', _on_cb_selected)
+        self.units_cb.bind('<Return>', _on_cb_return)
+        self.units_cb.bind('<FocusOut>', _on_cb_focus_out)
 
     def _ok(self):
         try:
