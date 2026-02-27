@@ -33,14 +33,12 @@ class Application(tk.Tk):
                         font=('TkDefaultFont', 9),
                         fieldbackground='#ffffff')
         style.configure('Treeview.Heading',
-                        font=('TkDefaultFont', 9, 'bold'),
-                        background='#2d3748',
-                        foreground='#ffffff',
-                        relief='flat',
+                        font=('TkDefaultFont', 9),
+                        relief='raised',
                         padding=(0, 5))
         style.map('Treeview.Heading',
-                  background=[('active', '#4a5568'), ('!active', '#2d3748')],
-                  foreground=[('active', '#ffffff'), ('!active', '#ffffff')])
+                  background=[('active', '#e2e8f0'), ('!active', '#e2e8f0')],
+                  foreground=[('active', '#000000'), ('!active', '#000000')])
         self._create_status_bar()
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
