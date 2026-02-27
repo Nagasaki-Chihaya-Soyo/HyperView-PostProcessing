@@ -274,6 +274,12 @@ Report Path:{result['report_path']}
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=10)
         self._refresh_parts()
 
+        self._drag_item = None
+        self._drag_original_order = []
+        self.parts_tree.bind('<ButtonPress-1>', self._on_parts_drag_start)
+        self.parts_tree.bind('<B1-Motion>', self._on_parts_drag_motion)
+        self.parts_tree.bind('<ButtonRelease-1>', self._on_parts_drag_release)
+
     def _refresh_parts(self):
         for item in self.parts_tree.get_children():
             self.parts_tree.delete(item)
@@ -285,6 +291,34 @@ Report Path:{result['report_path']}
                 p['part_no'], p['allowable_vm'], p['safety_factor'],
                 p['units'], p['name'], p['notes']
             ), tags=(tag,))
+
+    def _on_parts_drag_start(self, event):
+        if self.parts_tree.identify_region(event.x, event.y) != 'cell':
+            return
+        item = self.parts_tree.identify_row(event.y)
+        if item:
+            self._drag_item = item
+            self._drag_original_order = list(self.parts_tree.get_children())
+            self.parts_tree.configure(cursor='hand2')
+
+    def _on_parts_drag_motion(self, event):
+        if not self._drag_item:
+            return
+        target = self.parts_tree.identify_row(event.y)
+        if target and target != self._drag_item:
+            self.parts_tree.move(self._drag_item, '', self.parts_tree.index(target))
+
+    def _on_parts_drag_release(self, event):
+        self.parts_tree.configure(cursor='')
+        if not self._drag_item:
+            return
+        current_order = list(self.parts_tree.get_children())
+        if current_order != self._drag_original_order:
+            ordered_part_nos = [str(self.parts_tree.item(i)['values'][0]) for i in current_order]
+            self.db.renumber_parts(ordered_part_nos)
+            self._refresh_parts()
+        self._drag_item = None
+        self._drag_original_order = []
 
     def _add_part(self):
         next_no = self.db.get_next_part_no()

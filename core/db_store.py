@@ -39,15 +39,42 @@ class DBStore:
             conn.commit()
 
     def get_next_part_no(self) -> str:
-        """返回下一个可用的零件编号（最后一条记录编号+1，无数据则返回'0'）"""
+        """返回下一个可用的零件编号（所有数值编号中最大值+1，无数据则返回'0'）"""
         with self._get_conn() as conn:
-            row = conn.execute('SELECT part_no FROM parts ORDER BY rowid DESC LIMIT 1').fetchone()
-            if row is None:
-                return '0'
+            rows = conn.execute('SELECT part_no FROM parts').fetchall()
+        if not rows:
+            return '0'
+        max_no = -1
+        for r in rows:
             try:
-                return str(int(row['part_no']) + 1)
+                val = int(r['part_no'])
+                if val > max_no:
+                    max_no = val
             except (ValueError, TypeError):
-                return '0'
+                pass
+        return '0' if max_no < 0 else str(max_no + 1)
+
+    def renumber_parts(self, ordered_part_nos: List[str]) -> bool:
+        """按照给定顺序对所有零件从0开始重新编号，同步更新 mapping 表"""
+        conn = self._get_conn()
+        conn.execute('PRAGMA foreign_keys = OFF')
+        try:
+            for i, old_no in enumerate(ordered_part_nos):
+                temp = f'__tmp_{i}__'
+                conn.execute('UPDATE parts SET part_no=? WHERE part_no=?', (temp, old_no))
+                conn.execute('UPDATE mapping SET part_no=? WHERE part_no=?', (temp, old_no))
+            for i in range(len(ordered_part_nos)):
+                temp = f'__tmp_{i}__'
+                conn.execute('UPDATE parts SET part_no=? WHERE part_no=?', (str(i), temp))
+                conn.execute('UPDATE mapping SET part_no=? WHERE part_no=?', (str(i), temp))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.execute('PRAGMA foreign_keys = ON')
+            conn.close()
+        return True
 
     def get_all_parts(self) -> List[Dict]:
         """获取所有零件标准"""
