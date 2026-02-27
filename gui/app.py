@@ -354,6 +354,9 @@ Report Path:{result['report_path']}
             for sel in selection:
                 part_no = self.parts_tree.item(sel)['values'][0]
                 self.db.delete_part(part_no)
+            remaining = [p['part_no'] for p in self.db.get_all_parts()]
+            if remaining:
+                self.db.renumber_parts(remaining)
             self._refresh_parts()
 
     def _import_parts_csv(self):

@@ -55,7 +55,7 @@ class DBStore:
         return '1' if max_no < 1 else str(max_no + 1)
 
     def renumber_parts(self, ordered_part_nos: List[str]) -> bool:
-        """按照给定顺序对所有零件从0开始重新编号，同步更新 mapping 表"""
+        """按照给定顺序对所有零件从1开始重新编号，同步更新 mapping 表"""
         conn = self._get_conn()
         conn.execute('PRAGMA foreign_keys = OFF')
         try:
@@ -65,8 +65,8 @@ class DBStore:
                 conn.execute('UPDATE mapping SET part_no=? WHERE part_no=?', (temp, old_no))
             for i in range(len(ordered_part_nos)):
                 temp = f'__tmp_{i}__'
-                conn.execute('UPDATE parts SET part_no=? WHERE part_no=?', (str(i), temp))
-                conn.execute('UPDATE mapping SET part_no=? WHERE part_no=?', (str(i), temp))
+                conn.execute('UPDATE parts SET part_no=? WHERE part_no=?', (str(i + 1), temp))
+                conn.execute('UPDATE mapping SET part_no=? WHERE part_no=?', (str(i + 1), temp))
             conn.commit()
         except Exception:
             conn.rollback()
