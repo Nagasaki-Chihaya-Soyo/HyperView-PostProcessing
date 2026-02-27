@@ -39,12 +39,12 @@ class DBStore:
             conn.commit()
 
     def get_next_part_no(self) -> str:
-        """返回下一个可用的零件编号（所有数值编号中最大值+1，无数据则返回'0'）"""
+        """返回下一个可用的零件编号（所有数值编号中最大值+1，无数据则返回'1'）"""
         with self._get_conn() as conn:
             rows = conn.execute('SELECT part_no FROM parts').fetchall()
         if not rows:
-            return '0'
-        max_no = -1
+            return '1'
+        max_no = 0
         for r in rows:
             try:
                 val = int(r['part_no'])
@@ -52,7 +52,7 @@ class DBStore:
                     max_no = val
             except (ValueError, TypeError):
                 pass
-        return '0' if max_no < 0 else str(max_no + 1)
+        return '1' if max_no < 1 else str(max_no + 1)
 
     def renumber_parts(self, ordered_part_nos: List[str]) -> bool:
         """按照给定顺序对所有零件从0开始重新编号，同步更新 mapping 表"""
