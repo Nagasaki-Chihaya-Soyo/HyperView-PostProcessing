@@ -1137,6 +1137,184 @@ class ContourOptionDialog(tk.Toplevel):
         threading.Thread(target=run, daemon=True).start()
 
 
+class CompareOptionDialog(tk.Toplevel):
+    """Compare with Material Standards 选项对话框"""
+
+    def __init__(self, parent, orchestrator, db, model_path, result_path="", on_complete=None):
+        super().__init__(parent)
+        self.title("Compare with Material Standards")
+        self.geometry("620x560")
+        self.resizable(True, True)
+        self.minsize(500, 480)
+        self.transient(parent)
+        self.grab_set()
+
+        self.orchestrator = orchestrator
+        self.db = db
+        self.model_path = model_path
+        self.result_path = result_path
+        self.on_complete = on_complete
+
+        self._create_ui()
+        self.wait_window()
+
+    def _create_ui(self):
+        # ── Standards Overview ──
+        std_frame = ttk.LabelFrame(self, text="Standards Overview", padding=8)
+        std_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 4))
+
+        columns = ('part_no', 'name', 'allowable_vm', 'safety_factor', 'effective', 'units')
+        std_tree = ttk.Treeview(std_frame, columns=columns, show='headings',
+                                selectmode='none', height=6)
+        for col, text, w in [
+            ('part_no',       'ID',             50),
+            ('name',          'Name',          140),
+            ('allowable_vm',  'Allowable',      90),
+            ('safety_factor', 'SF',             55),
+            ('effective',     'Effective (÷SF)', 110),
+            ('units',         'Unit',            55),
+        ]:
+            std_tree.heading(col, text=text, anchor='center')
+            std_tree.column(col, width=w, minwidth=40, anchor='center')
+        std_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        std_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
+
+        std_sb = ttk.Scrollbar(std_frame, orient=tk.VERTICAL, command=std_tree.yview)
+        std_tree.configure(yscrollcommand=std_sb.set)
+        std_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        std_sb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        parts = self.db.get_all_parts()
+        for i, p in enumerate(parts):
+            tag = 'odd' if i % 2 else 'even'
+            try:
+                eff = f"{p['allowable_vm'] / p['safety_factor']:.2f}"
+            except (TypeError, ZeroDivisionError):
+                eff = '-'
+            std_tree.insert('', tk.END, values=(
+                p['part_no'], p['name'] or '-', p['allowable_vm'],
+                p['safety_factor'], eff, p['units']
+            ), tags=(tag,))
+
+        # ── Mapping Summary ──
+        map_frame = ttk.LabelFrame(self, text="Mapping Configuration", padding=8)
+        map_frame.pack(fill=tk.X, padx=10, pady=4)
+
+        mappings = self.db.get_all_mappings()
+        counts = {'component': 0, 'part': 0, 'property': 0}
+        for m in mappings:
+            counts[m['map_type']] = counts.get(m['map_type'], 0) + 1
+        total_maps = sum(counts.values())
+
+        cnt_row = ttk.Frame(map_frame)
+        cnt_row.pack(fill=tk.X)
+        for mtype, cnt in counts.items():
+            color = '#1e3a5f' if cnt > 0 else 'gray'
+            ttk.Label(cnt_row, text=f"{mtype.capitalize()}: {cnt}",
+                      foreground=color).pack(side=tk.LEFT, padx=12)
+
+        if total_maps == 0:
+            ttk.Label(map_frame,
+                      text="  No mappings configured — peak stress may not match any standard.",
+                      foreground='#b91c1c').pack(anchor=tk.W, pady=(4, 0))
+        elif not parts:
+            ttk.Label(map_frame,
+                      text="  No parts in standards database.",
+                      foreground='#b91c1c').pack(anchor=tk.W, pady=(4, 0))
+
+        # ── Analysis Result ──
+        result_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
+        result_frame.pack(fill=tk.X, padx=10, pady=4)
+
+        self._result_text = tk.Text(result_frame, height=7, state=tk.DISABLED,
+                                    wrap=tk.WORD, font=('Courier', 9))
+        self._result_text.tag_configure('pass', foreground='#166534',
+                                        font=('Courier', 9, 'bold'))
+        self._result_text.tag_configure('fail', foreground='#991b1b',
+                                        font=('Courier', 9, 'bold'))
+        self._result_text.tag_configure('info', foreground='#1e40af')
+        self._result_text.tag_configure('dim',  foreground='gray')
+        self._result_text.pack(fill=tk.X)
+
+        # ── Progress bar ──
+        self._progress = ttk.Progressbar(self, mode='indeterminate')
+        self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
+
+        # ── Buttons ──
+        btn_frame = ttk.Frame(self, padding=(10, 6))
+        btn_frame.pack(fill=tk.X)
+        can_run = bool(parts) and total_maps > 0
+        self._run_btn = ttk.Button(btn_frame, text="Run Analysis",
+                                   command=self._run, width=14,
+                                   state=tk.NORMAL if can_run else tk.DISABLED)
+        self._run_btn.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(btn_frame, text="Close",
+                   command=self.destroy, width=10).pack(side=tk.LEFT)
+
+        if not can_run:
+            hint = "Configure standards and mappings in the Standard Repository and Map tabs first."
+            self._set_result("  " + hint, 'dim')
+
+    # ── Helpers ──
+
+    def _set_result(self, text, tag='info'):
+        self._result_text.config(state=tk.NORMAL)
+        self._result_text.delete(1.0, tk.END)
+        self._result_text.insert(tk.END, text, tag)
+        self._result_text.config(state=tk.DISABLED)
+
+    # ── Analysis execution ──
+
+    def _run(self):
+        self._run_btn.config(state=tk.DISABLED)
+        self._progress.start(10)
+        self._set_result("Running analysis, please wait...", 'info')
+
+        def do_run():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_done(result))
+
+        threading.Thread(target=do_run, daemon=True).start()
+
+    def _on_done(self, result):
+        self._progress.stop()
+        self._run_btn.config(state=tk.NORMAL)
+
+        if not result or not result.get('success'):
+            self._set_result("Analysis failed. Check the Logs tab for details.", 'fail')
+            return
+
+        a = result['analysis']
+        status_tag = 'pass' if a.passed else 'fail'
+        status_str = "PASSED" if a.passed else "FAILED"
+        unit = getattr(a, 'units', None) or 'MPa'
+
+        lines = [f"  Status       :  {status_str}\n\n"]
+        lines.append(f"  Peak Stress  :  {a.peak_value:.4f} {unit}\n")
+        lines.append(f"  Component ID :  {a.peak_entity_id}\n")
+
+        if a.part_no:
+            lines.append(f"  Part No.     :  {a.part_no}  ({a.part_name or '-'})\n")
+            lines.append(f"  Allowable    :  {a.allowable_vm:.2f}  "
+                         f"SF={a.safety_factor:.2f}  →  Effective={a.allowable:.2f} {unit}\n")
+            lines.append(f"  Margin       :  {a.margin:.2f} {unit}   "
+                         f"Ratio={a.ratio:.2%}\n")
+        else:
+            lines.append("  Part No.     :  Not matched — check mapping configuration\n")
+
+        lines.append(f"\n  {a.message}\n")
+
+        self._result_text.config(state=tk.NORMAL)
+        self._result_text.delete(1.0, tk.END)
+        self._result_text.insert(tk.END, f"  {'─' * 50}\n", 'dim')
+        self._result_text.insert(tk.END, "".join(lines), status_tag)
+        self._result_text.insert(tk.END, f"  {'─' * 50}\n", 'dim')
+        self._result_text.config(state=tk.DISABLED)
+
+        if self.on_complete:
+            self.on_complete(result)
+
+
 class AnalysisDialog(tk.Toplevel):
     """分析功能对话框"""
 
@@ -1296,21 +1474,28 @@ class AnalysisDialog(tk.Toplevel):
         self._contour_applied_model = self.model_path
 
     def _run_compare(self):
-        """执行 Material Compare 分析 + report Run"""
-        self.opt_btn_compare.config(state=tk.DISABLED)
-        self._set_status("Comparing with material standards...")
+        """打开 Compare Options 对话框"""
+        CompareOptionDialog(
+            self,
+            orchestrator=self.orchestrator,
+            db=self.orchestrator.db,
+            model_path=self.model_path,
+            result_path=self.result_path,
+            on_complete=self._on_compare_done,
+        )
 
-        def run():
-            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            if result and result.get('success'):
+    def _on_compare_done(self, result):
+        """CompareOptionDialog 分析完成后的回调"""
+        if result and result.get('success'):
+            self._completed_results.append({
+                'type': 'compare', 'success': True, 'result': result
+            })
+            self._set_status("Compare done. Continue or Export to finish.")
+
+            def do_report():
                 self.orchestrator.report_run()
-                self.after(0, lambda: self._completed_results.append({
-                    'type': 'compare', 'success': True, 'result': result
-                }))
-            self.after(0, lambda: self.opt_btn_compare.config(state=tk.NORMAL))
-            self.after(0, lambda: self._set_status("Compare done. Continue or Run to export."))
 
-        threading.Thread(target=run, daemon=True).start()
+            threading.Thread(target=do_report, daemon=True).start()
 
     # ── Step 3: 导出 PPT ──
 
