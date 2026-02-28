@@ -1143,9 +1143,9 @@ class CompareOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator, db, model_path, result_path="", on_complete=None):
         super().__init__(parent)
         self.title("Compare with Material Standards")
-        self.geometry("620x560")
+        self.geometry("660x750")
         self.resizable(True, True)
-        self.minsize(500, 480)
+        self.minsize(560, 640)
         self.transient(parent)
         self.grab_set()
 
@@ -1163,70 +1163,76 @@ class CompareOptionDialog(tk.Toplevel):
         std_frame = ttk.LabelFrame(self, text="Standards Overview", padding=8)
         std_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 4))
 
+        std_toolbar = ttk.Frame(std_frame)
+        std_toolbar.pack(fill=tk.X, pady=(0, 4))
+        ttk.Button(std_toolbar, text="Add",    command=self._add_part,    width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(std_toolbar, text="Edit",   command=self._edit_part,   width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(std_toolbar, text="Delete", command=self._delete_part, width=8).pack(side=tk.LEFT, padx=2)
+
+        std_tree_frame = ttk.Frame(std_frame)
+        std_tree_frame.pack(fill=tk.BOTH, expand=True)
+
         columns = ('part_no', 'name', 'allowable_vm', 'safety_factor', 'effective', 'units')
-        std_tree = ttk.Treeview(std_frame, columns=columns, show='headings',
-                                selectmode='none', height=6)
+        self._std_tree = ttk.Treeview(std_tree_frame, columns=columns, show='headings',
+                                      selectmode='browse', height=5)
         for col, text, w in [
-            ('part_no',       'ID',             50),
-            ('name',          'Name',          140),
-            ('allowable_vm',  'Allowable',      90),
-            ('safety_factor', 'SF',             55),
+            ('part_no',       'ID',              50),
+            ('name',          'Name',           140),
+            ('allowable_vm',  'Allowable',       90),
+            ('safety_factor', 'SF',              55),
             ('effective',     'Effective (÷SF)', 110),
-            ('units',         'Unit',            55),
+            ('units',         'Unit',             55),
         ]:
-            std_tree.heading(col, text=text, anchor='center')
-            std_tree.column(col, width=w, minwidth=40, anchor='center')
-        std_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
-        std_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
+            self._std_tree.heading(col, text=text, anchor='center')
+            self._std_tree.column(col, width=w, minwidth=40, anchor='center')
+        self._std_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        self._std_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
 
-        std_sb = ttk.Scrollbar(std_frame, orient=tk.VERTICAL, command=std_tree.yview)
-        std_tree.configure(yscrollcommand=std_sb.set)
-        std_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        std_sb = ttk.Scrollbar(std_tree_frame, orient=tk.VERTICAL, command=self._std_tree.yview)
+        self._std_tree.configure(yscrollcommand=std_sb.set)
+        self._std_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         std_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self._std_tree.bind('<Double-1>', lambda e: self._edit_part())
 
-        parts = self.db.get_all_parts()
-        for i, p in enumerate(parts):
-            tag = 'odd' if i % 2 else 'even'
-            try:
-                eff = f"{p['allowable_vm'] / p['safety_factor']:.2f}"
-            except (TypeError, ZeroDivisionError):
-                eff = '-'
-            std_tree.insert('', tk.END, values=(
-                p['part_no'], p['name'] or '-', p['allowable_vm'],
-                p['safety_factor'], eff, p['units']
-            ), tags=(tag,))
-
-        # ── Mapping Summary ──
+        # ── Mapping Configuration ──
         map_frame = ttk.LabelFrame(self, text="Mapping Configuration", padding=8)
         map_frame.pack(fill=tk.X, padx=10, pady=4)
 
-        mappings = self.db.get_all_mappings()
-        counts = {'component': 0, 'part': 0, 'property': 0}
-        for m in mappings:
-            counts[m['map_type']] = counts.get(m['map_type'], 0) + 1
-        total_maps = sum(counts.values())
+        map_toolbar = ttk.Frame(map_frame)
+        map_toolbar.pack(fill=tk.X, pady=(0, 4))
+        ttk.Button(map_toolbar, text="Add Mapping",    command=self._add_mapping,    width=14).pack(side=tk.LEFT, padx=2)
+        ttk.Button(map_toolbar, text="Delete Mapping", command=self._delete_mapping, width=14).pack(side=tk.LEFT, padx=2)
 
-        cnt_row = ttk.Frame(map_frame)
-        cnt_row.pack(fill=tk.X)
-        for mtype, cnt in counts.items():
-            color = '#1e3a5f' if cnt > 0 else 'gray'
-            ttk.Label(cnt_row, text=f"{mtype.capitalize()}: {cnt}",
-                      foreground=color).pack(side=tk.LEFT, padx=12)
+        map_tree_frame = ttk.Frame(map_frame)
+        map_tree_frame.pack(fill=tk.BOTH)
 
-        if total_maps == 0:
-            ttk.Label(map_frame,
-                      text="  No mappings configured — peak stress may not match any standard.",
-                      foreground='#b91c1c').pack(anchor=tk.W, pady=(4, 0))
-        elif not parts:
-            ttk.Label(map_frame,
-                      text="  No parts in standards database.",
-                      foreground='#b91c1c').pack(anchor=tk.W, pady=(4, 0))
+        map_columns = ('map_type', 'map_value', 'part_no')
+        self._map_tree = ttk.Treeview(map_tree_frame, columns=map_columns, show='headings',
+                                      selectmode='browse', height=3)
+        for col, text, w in [
+            ('map_type',  'Type',    100),
+            ('map_value', 'Value',   220),
+            ('part_no',   'Part No', 120),
+        ]:
+            self._map_tree.heading(col, text=text, anchor='center')
+            self._map_tree.column(col, width=w, minwidth=50, anchor='center')
+        self._map_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        self._map_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
+
+        map_sb = ttk.Scrollbar(map_tree_frame, orient=tk.VERTICAL, command=self._map_tree.yview)
+        self._map_tree.configure(yscrollcommand=map_sb.set)
+        self._map_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        map_sb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self._map_warn_var = tk.StringVar()
+        ttk.Label(map_frame, textvariable=self._map_warn_var,
+                  foreground='#b91c1c').pack(anchor=tk.W, pady=(2, 0))
 
         # ── Analysis Result ──
         result_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
         result_frame.pack(fill=tk.X, padx=10, pady=4)
 
-        self._result_text = tk.Text(result_frame, height=7, state=tk.DISABLED,
+        self._result_text = tk.Text(result_frame, height=5, state=tk.DISABLED,
                                     wrap=tk.WORD, font=('Courier', 9))
         self._result_text.tag_configure('pass', foreground='#166534',
                                         font=('Courier', 9, 'bold'))
@@ -1236,24 +1242,135 @@ class CompareOptionDialog(tk.Toplevel):
         self._result_text.tag_configure('dim',  foreground='gray')
         self._result_text.pack(fill=tk.X)
 
-        # ── Progress bar ──
+        # ── Progress bar (hidden initially, shown only while running) ──
         self._progress = ttk.Progressbar(self, mode='indeterminate')
-        self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
 
         # ── Buttons ──
         btn_frame = ttk.Frame(self, padding=(10, 6))
         btn_frame.pack(fill=tk.X)
-        can_run = bool(parts) and total_maps > 0
+        self._fetch_btn = ttk.Button(btn_frame, text="Read Max Stress",
+                                     command=self._read_from_hyperview, width=16)
+        self._fetch_btn.pack(side=tk.LEFT, padx=(0, 6))
         self._run_btn = ttk.Button(btn_frame, text="Run Analysis",
-                                   command=self._run, width=14,
-                                   state=tk.NORMAL if can_run else tk.DISABLED)
+                                   command=self._run, width=14)
         self._run_btn.pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(btn_frame, text="Close",
                    command=self.destroy, width=10).pack(side=tk.LEFT)
 
-        if not can_run:
-            hint = "Configure standards and mappings in the Standard Repository and Map tabs first."
-            self._set_result("  " + hint, 'dim')
+        # Populate data and set initial button states
+        self._refresh_std_tree()
+        self._refresh_map_tree()
+
+    # ── Standards management ──
+
+    def _refresh_std_tree(self):
+        for item in self._std_tree.get_children():
+            self._std_tree.delete(item)
+        parts = self.db.get_all_parts()
+        for i, p in enumerate(parts):
+            tag = 'odd' if i % 2 else 'even'
+            try:
+                eff = f"{p['allowable_vm'] / p['safety_factor']:.2f}"
+            except (TypeError, ZeroDivisionError):
+                eff = '-'
+            self._std_tree.insert('', tk.END, values=(
+                p['part_no'], p['name'] or '-', p['allowable_vm'],
+                p['safety_factor'], eff, p['units']
+            ), tags=(tag,))
+        self._update_run_btn()
+
+    def _add_part(self):
+        dialog = PartDialog(self, title="Add Material")
+        if dialog.result:
+            self.db.add_part(part_no=self.db.get_next_part_no(), **dialog.result)
+            self._refresh_std_tree()
+
+    def _edit_part(self):
+        selection = self._std_tree.selection()
+        if not selection:
+            messagebox.showwarning(title="WARNING", message="Select a part first", parent=self)
+            return
+        values = self._std_tree.item(selection[0])['values']
+        part_no = str(values[0])
+        full = self.db.get_part(part_no)
+        data = {
+            'allowable_vm': values[2],
+            'safety_factor': values[3],
+            'units': values[5],
+            'name': values[1] if values[1] != '-' else '',
+            'notes': full.get('notes', '') if full else '',
+        }
+        dialog = PartDialog(self, title="Edit Material", data=data)
+        if dialog.result:
+            self.db.update_part(part_no=part_no, **dialog.result)
+            self._refresh_std_tree()
+
+    def _delete_part(self):
+        selection = self._std_tree.selection()
+        if not selection:
+            messagebox.showwarning(title="WARNING", message="Select a part first", parent=self)
+            return
+        if messagebox.askyesno(title="Confirm",
+                               message="Delete selected part? This cannot be undone.",
+                               parent=self):
+            part_no = str(self._std_tree.item(selection[0])['values'][0])
+            self.db.delete_part(part_no)
+            remaining = [p['part_no'] for p in self.db.get_all_parts()]
+            if remaining:
+                self.db.renumber_parts(remaining)
+            self._refresh_std_tree()
+            self._refresh_map_tree()
+
+    # ── Mapping management ──
+
+    def _refresh_map_tree(self):
+        for item in self._map_tree.get_children():
+            self._map_tree.delete(item)
+        mappings = self.db.get_all_mappings()
+        for i, m in enumerate(mappings):
+            tag = 'odd' if i % 2 else 'even'
+            self._map_tree.insert('', tk.END, values=(
+                m['map_type'], m['map_value'], m['part_no']
+            ), tags=(tag,))
+        parts = self.db.get_all_parts()
+        if not mappings:
+            self._map_warn_var.set("  No mappings configured — peak stress may not match any standard.")
+        elif not parts:
+            self._map_warn_var.set("  No parts in standards database.")
+        else:
+            self._map_warn_var.set("")
+        self._update_run_btn()
+
+    def _add_mapping(self):
+        parts = self.db.get_all_parts()
+        if not parts:
+            messagebox.showwarning(title="WARNING", message="Add parts to the database first.", parent=self)
+            return
+        dialog = MappingDialog(self, title="Add Mapping", parts=parts)
+        if dialog.result:
+            self.db.add_mapping(**dialog.result)
+            self._refresh_map_tree()
+
+    def _delete_mapping(self):
+        selection = self._map_tree.selection()
+        if not selection:
+            messagebox.showwarning(title="WARNING", message="Select a mapping first.", parent=self)
+            return
+        if messagebox.askyesno(title="Confirm",
+                               message="Delete selected mapping? This cannot be undone.",
+                               parent=self):
+            values = self._map_tree.item(selection[0])['values']
+            self.db.delete_mapping(values[0], values[1])
+            self._refresh_map_tree()
+
+    def _update_run_btn(self):
+        parts = self.db.get_all_parts()
+        mappings = self.db.get_all_mappings()
+        can_run = bool(parts) and bool(mappings)
+        if hasattr(self, '_run_btn'):
+            self._run_btn.config(state=tk.NORMAL if can_run else tk.DISABLED)
+        if not can_run and hasattr(self, '_result_text'):
+            self._set_result("  Configure standards and mappings first.", 'dim')
 
     # ── Helpers ──
 
@@ -1263,10 +1380,54 @@ class CompareOptionDialog(tk.Toplevel):
         self._result_text.insert(tk.END, text, tag)
         self._result_text.config(state=tk.DISABLED)
 
+    # ── Read max stress from HyperView ──
+
+    def _read_from_hyperview(self):
+        self._fetch_btn.config(state=tk.DISABLED)
+        self._run_btn.config(state=tk.DISABLED)
+        self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
+        self._progress.start(10)
+        self._set_result("Reading max stress from HyperView, please wait...", 'info')
+
+        def do_fetch():
+            result = self.orchestrator.run_analysis(self.model_path, self.result_path)
+            self.after(0, lambda: self._on_fetch_done(result))
+
+        threading.Thread(target=do_fetch, daemon=True).start()
+
+    def _on_fetch_done(self, result):
+        self._progress.stop()
+        self._progress.pack_forget()
+        self._fetch_btn.config(state=tk.NORMAL)
+        self._update_run_btn()
+
+        if not result or not result.get('success'):
+            self._set_result("Failed to read from HyperView. Check the Logs tab for details.", 'fail')
+            return
+
+        a = result['analysis']
+        unit = getattr(a, 'units', None) or 'MPa'
+
+        self._result_text.config(state=tk.NORMAL)
+        self._result_text.delete(1.0, tk.END)
+        self._result_text.insert(tk.END, f"  {'─' * 50}\n", 'dim')
+        self._result_text.insert(tk.END,
+            f"  Max Stress (Von Mises)  :  {a.peak_value:.4f} {unit}\n"
+            f"  Component ID            :  {a.peak_entity_id}\n",
+            'info')
+        if a.peak_coords and any(a.peak_coords):
+            cx, cy, cz = a.peak_coords
+            self._result_text.insert(tk.END,
+                f"  Coordinates             :  ({cx:.3f}, {cy:.3f}, {cz:.3f})\n", 'info')
+        self._result_text.insert(tk.END, f"  {'─' * 50}\n", 'dim')
+        self._result_text.config(state=tk.DISABLED)
+
     # ── Analysis execution ──
 
     def _run(self):
         self._run_btn.config(state=tk.DISABLED)
+        self._fetch_btn.config(state=tk.DISABLED)
+        self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
         self._progress.start(10)
         self._set_result("Running analysis, please wait...", 'info')
 
@@ -1278,6 +1439,8 @@ class CompareOptionDialog(tk.Toplevel):
 
     def _on_done(self, result):
         self._progress.stop()
+        self._progress.pack_forget()
+        self._fetch_btn.config(state=tk.NORMAL)
         self._run_btn.config(state=tk.NORMAL)
 
         if not result or not result.get('success'):
