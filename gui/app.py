@@ -1595,7 +1595,7 @@ class AnalysisDialog(tk.Toplevel):
             self._setup_thread.join()
             self.orchestrator.create_report()
             self.after(0, lambda: self._set_status("Report created. Waiting for HyperView..."))
-            self.after(0, lambda: self.after(20000, self._unlock_after_create))
+            self.after(0, lambda: self.after(20, self._unlock_after_create))
 
         threading.Thread(target=do_create, daemon=True).start()
 
