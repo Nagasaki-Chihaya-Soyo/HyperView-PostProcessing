@@ -238,59 +238,107 @@ Report Path:{result['report_path']}
     def _create_parts_tab(self):
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="Standard Repository")
-        toolbar = ttk.Frame(tab)
-        toolbar.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(toolbar, text="Add", command=self._add_part).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Edit", command=self._edit_part).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Delete", command=self._delete_part).pack(side=tk.LEFT, padx=2)
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
-        ttk.Button(toolbar, text="Import CSV", command=self._import_parts_csv).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Export CSV", command=self._export_parts_csv).pack(side=tk.RIGHT, padx=2)
 
-        columns = ('part_no', 'allowable_vm', 'safety_factor', 'units', 'name', 'notes')
-        self.parts_tree = ttk.Treeview(tab, columns=columns, show='headings',
+        # ── Toolbar ──
+        toolbar = ttk.Frame(tab)
+        toolbar.pack(fill=tk.X, padx=10, pady=(8, 2))
+        ttk.Button(toolbar, text="Add",    command=self._add_part).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="Edit",   command=self._edit_part).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="Delete", command=self._delete_part).pack(side=tk.LEFT, padx=2)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        ttk.Button(toolbar, text="Import CSV", command=self._import_parts_csv).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="Export CSV", command=self._export_parts_csv).pack(side=tk.LEFT, padx=2)
+
+        # ── Search / Filter bar ──
+        search_frame = ttk.Frame(tab)
+        search_frame.pack(fill=tk.X, padx=10, pady=(2, 4))
+        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
+        self._parts_search_var = tk.StringVar()
+        self._parts_search_var.trace_add('write', lambda *_: self._refresh_parts())
+        ttk.Entry(search_frame, textvariable=self._parts_search_var, width=30).pack(side=tk.LEFT, padx=5)
+        ttk.Button(search_frame, text="Clear",
+                   command=lambda: self._parts_search_var.set('')).pack(side=tk.LEFT)
+
+        # ── Tree frame (Treeview + vertical scrollbar side by side) ──
+        tree_frame = ttk.Frame(tab)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 0))
+
+        columns = ('part_no', 'name', 'allowable_vm', 'safety_factor', 'effective', 'units', 'notes')
+        self.parts_tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
                                        selectmode='browse')
 
-        # 表头和数据列全部居中对齐
         for col, text, w in [
-            ('part_no',       'Parts ID',           110),
-            ('allowable_vm',  'Permissible Stress',  140),
-            ('safety_factor', 'Safety Factor',       120),
-            ('units',         'Unit',                 70),
-            ('name',          'Name',                160),
-            ('notes',         'Notes',               220),
+            ('part_no',       'Parts ID',            80),
+            ('name',          'Name',               160),
+            ('allowable_vm',  'Allowable Stress',   130),
+            ('safety_factor', 'Safety Factor',      100),
+            ('effective',     'Effective (÷SF)',    120),
+            ('units',         'Unit',                60),
+            ('notes',         'Notes',              180),
         ]:
             self.parts_tree.heading(col, text=text, anchor='center')
-            self.parts_tree.column(col, width=w, minwidth=60, anchor='center')
+            self.parts_tree.column(col, width=w, minwidth=50, anchor='center')
 
-        # 奇偶行用明显的蓝白交替色 + 不同字体色，形成清晰行间分隔
         self.parts_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
         self.parts_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
 
-        scrollbar = ttk.Scrollbar(tab, orient=tk.VERTICAL, command=self.parts_tree.yview)
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.parts_tree.yview)
         self.parts_tree.configure(yscrollcommand=scrollbar.set)
+        self.parts_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.parts_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0), pady=10)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=10)
+        # ── Status bar ──
+        status_frame = ttk.Frame(tab)
+        status_frame.pack(fill=tk.X, padx=10, pady=(2, 6))
+        self._parts_count_var = tk.StringVar(value="0 parts")
+        ttk.Label(status_frame, textvariable=self._parts_count_var,
+                  foreground='gray').pack(side=tk.LEFT)
+        ttk.Label(status_frame, text="  |  Drag rows to reorder",
+                  foreground='gray').pack(side=tk.LEFT)
+
         self._refresh_parts()
 
         self._drag_item = None
         self._drag_original_order = []
-        self.parts_tree.bind('<ButtonPress-1>', self._on_parts_drag_start)
-        self.parts_tree.bind('<B1-Motion>', self._on_parts_drag_motion)
-        self.parts_tree.bind('<ButtonRelease-1>', self._on_parts_drag_release)
+        self.parts_tree.bind('<ButtonPress-1>',   self._on_parts_drag_start)
+        self.parts_tree.bind('<B1-Motion>',        self._on_parts_drag_motion)
+        self.parts_tree.bind('<ButtonRelease-1>',  self._on_parts_drag_release)
+        self.parts_tree.bind('<Double-1>',         lambda e: self._edit_part())
 
     def _refresh_parts(self):
         for item in self.parts_tree.get_children():
             self.parts_tree.delete(item)
 
+        keyword = getattr(self, '_parts_search_var', None)
+        keyword = keyword.get().strip().lower() if keyword else ''
+
         parts = self.db.get_all_parts()
+        if keyword:
+            parts = [p for p in parts if
+                     keyword in str(p.get('part_no', '')).lower() or
+                     keyword in str(p.get('name', '')).lower() or
+                     keyword in str(p.get('notes', '')).lower()]
+
         for i, p in enumerate(parts):
             tag = 'odd' if i % 2 else 'even'
+            try:
+                eff = p['allowable_vm'] / p['safety_factor']
+                eff_str = f"{eff:.2f}"
+            except (TypeError, ZeroDivisionError):
+                eff_str = '-'
             self.parts_tree.insert('', tk.END, values=(
-                p['part_no'], p['allowable_vm'], p['safety_factor'],
-                p['units'], p['name'], p['notes']
+                p['part_no'], p['name'], p['allowable_vm'], p['safety_factor'],
+                eff_str, p['units'], p['notes']
             ), tags=(tag,))
+
+        count = len(parts)
+        total = len(self.db.get_all_parts())
+        if keyword and count != total:
+            label = f"{count} of {total} parts (filtered)"
+        else:
+            label = f"{total} part{'s' if total != 1 else ''}"
+        if hasattr(self, '_parts_count_var'):
+            self._parts_count_var.set(label)
 
     def _on_parts_drag_start(self, event):
         if self.parts_tree.identify_region(event.x, event.y) != 'cell':
@@ -525,7 +573,7 @@ class PartDialog(tk.Toplevel):
     def __init__(self, parent, title, data=None):
         super().__init__(parent)
         self.title(title)
-        self.geometry("400x260")
+        self.geometry("420x310")
         self.resizable(width=False, height=False)
         self.transient(parent)
         self.grab_set()
@@ -548,29 +596,54 @@ class PartDialog(tk.Toplevel):
         self.safety_factor.grid(row=1, column=1, pady=5)
         self.safety_factor.insert(0, self.data.get('safety_factor', '1.0'))
 
-        ttk.Label(frame, text="Unit").grid(row=2, column=0, sticky=tk.W, pady=5)
+        # Live preview: Effective allowable = allowable / safety_factor
+        self._effective_var = tk.StringVar(value='—')
+        ttk.Label(frame, text="Effective (÷SF)").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, textvariable=self._effective_var,
+                  foreground='#1d6fa4', font=('TkDefaultFont', 9, 'bold')
+                  ).grid(row=2, column=1, sticky=tk.W, pady=5, padx=4)
+
+        ttk.Label(frame, text="Unit").grid(row=3, column=0, sticky=tk.W, pady=5)
         _UNITS = ['Pa', 'kPa', 'MPa', 'GPa', 'psi', 'ksi']
         self.units_cb = ttk.Combobox(frame, width=28, values=_UNITS, state='readonly')
-        self.units_cb.grid(row=2, column=1, pady=5)
+        self.units_cb.grid(row=3, column=1, pady=5)
         current_unit = self.data.get('units', 'MPa')
         self.units_cb.set(current_unit if current_unit in _UNITS else 'MPa')
 
-        ttk.Label(frame, text="Name").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Name").grid(row=4, column=0, sticky=tk.W, pady=5)
         self.name_entry = ttk.Entry(frame, width=30)
-        self.name_entry.grid(row=3, column=1, pady=5)
+        self.name_entry.grid(row=4, column=1, pady=5)
         self.name_entry.insert(0, self.data.get('name', ''))
 
-        ttk.Label(frame, text="Notes").grid(row=4, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Notes").grid(row=5, column=0, sticky=tk.W, pady=5)
         self.notes_entry = ttk.Entry(frame, width=30)
-        self.notes_entry.grid(row=4, column=1, pady=5)
+        self.notes_entry.grid(row=5, column=1, pady=5)
         self.notes_entry.insert(0, self.data.get('notes', ''))
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=6, column=0, columnspan=2, pady=15)
         ttk.Button(btn_frame, text="Confirm", command=self._ok).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="Cancel",  command=self.destroy).pack(side=tk.LEFT, padx=10)
+
+        # Wire up live preview
+        self.allowable_entry.bind('<KeyRelease>', lambda e: self._update_effective())
+        self.safety_factor.bind('<KeyRelease>',   lambda e: self._update_effective())
+        self.units_cb.bind('<<ComboboxSelected>>', lambda e: self._update_effective())
+        self._update_effective()
 
         self._bind_navigation()
         self.after(50, self.allowable_entry.focus_set)
+
+    def _update_effective(self):
+        try:
+            a = float(self.allowable_entry.get())
+            sf = float(self.safety_factor.get())
+            if sf == 0:
+                raise ZeroDivisionError
+            unit = self.units_cb.get() or 'MPa'
+            self._effective_var.set(f"{a / sf:.3f} {unit}")
+        except (ValueError, ZeroDivisionError):
+            self._effective_var.set('—')
 
     def _bind_navigation(self):
         fields = [
