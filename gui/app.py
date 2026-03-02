@@ -1400,7 +1400,7 @@ class ReadMaxValueDialog(tk.Toplevel):
 
         # result is always truthy here (failures handled in _on_read_failed)
 
-        peak_value, entity_id = self._parse_csv(csv_path)
+        peak_value, entity_id, rows, headers = self._parse_csv(csv_path)
         if peak_value is None:
             self._status_var.set("CSV exported but could not parse max value.")
             return
@@ -1414,26 +1414,30 @@ class ReadMaxValueDialog(tk.Toplevel):
         self._entity_var.set(str(entity_id))
         self._map_val_var.set(str(entity_id))
 
+        img_path = self._save_table_image(csv_path, rows, headers, peak_value)
+        if img_path:
+            print(f"[table image] {img_path}")
+
         self._status_var.set("Done. Select material and click Add to Mapping & Run Analysis.")
         self._add_run_btn.config(state=tk.NORMAL)
 
     @staticmethod
     def _parse_csv(csv_path: str):
         """Find the column whose header contains 'Contour' (case-insensitive),
-        return (max_value, entity_id_of_that_row)."""
+        return (max_value, entity_id_of_that_row, all_rows, headers)."""
         import csv as csv_mod
         try:
             with open(csv_path, 'r', encoding='utf-8-sig') as f:
                 reader = csv_mod.DictReader(f)
                 rows = list(reader)
             if not rows:
-                return None, ""
+                return None, "", [], []
 
             headers = list(rows[0].keys())
             contour_col = next((h for h in headers if 'contour' in h.lower()), None)
             if contour_col is None:
                 print(f"[_parse_csv] No 'Contour' column found. Headers: {headers}")
-                return None, ""
+                return None, "", rows, headers
 
             best_value = None
             best_row = None
@@ -1444,7 +1448,7 @@ class ReadMaxValueDialog(tk.Toplevel):
                     best_row = row
 
             if best_row is None:
-                return None, ""
+                return None, "", rows, headers
 
             entity_id = ""
             for col in ('ID', 'id', 'Entity ID', 'EntityID',
@@ -1456,10 +1460,84 @@ class ReadMaxValueDialog(tk.Toplevel):
             if not entity_id:
                 entity_id = str(next(iter(best_row.values()), ""))
 
-            return best_value, entity_id
+            return best_value, entity_id, rows, headers
         except Exception as e:
             print(f"[_parse_csv] {e}")
-            return None, ""
+            return None, "", [], []
+
+    @staticmethod
+    def _save_table_image(csv_path: str, rows: list, headers: list, peak_value: float) -> str:
+        """Render the hotspot CSV rows as a styled PNG table saved next to the CSV."""
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+
+            if not rows or not headers:
+                return ""
+
+            display_rows = rows[:20]  # cap at 20 rows so the image stays readable
+
+            # locate the peak row index within the displayed slice
+            contour_col = next((h for h in headers if 'contour' in h.lower()), None)
+            peak_row_idx = None
+            if contour_col is not None:
+                best_v = None
+                for i, row in enumerate(display_rows):
+                    v = _safe_float(row.get(contour_col, ""))
+                    if v is not None and (best_v is None or v > best_v):
+                        best_v = v
+                        peak_row_idx = i
+
+            cell_data = [[row.get(h, '') for h in headers] for row in display_rows]
+
+            col_count = len(headers)
+            row_count = len(display_rows)
+            fig_w = max(8, col_count * 2.0)
+            fig_h = max(2, row_count * 0.38 + 1.2)
+
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            ax.axis('off')
+
+            tbl = ax.table(
+                cellText=cell_data,
+                colLabels=headers,
+                loc='center',
+                cellLoc='center',
+            )
+            tbl.auto_set_font_size(False)
+            tbl.set_fontsize(9)
+            tbl.auto_set_column_width(range(col_count))
+
+            HEADER_BG = '#1f3864'
+            PEAK_BG   = '#ffd966'
+            ALT_BG    = '#f2f2f2'
+
+            for col in range(col_count):
+                cell = tbl[0, col]
+                cell.set_facecolor(HEADER_BG)
+                cell.set_text_props(color='white', fontweight='bold')
+
+            for row in range(row_count):
+                for col in range(col_count):
+                    cell = tbl[row + 1, col]
+                    if row == peak_row_idx:
+                        cell.set_facecolor(PEAK_BG)
+                        cell.set_text_props(fontweight='bold')
+                    elif row % 2 == 0:
+                        cell.set_facecolor(ALT_BG)
+                    else:
+                        cell.set_facecolor('white')
+
+            ax.set_title('Hotspot KPI Table', fontsize=11, fontweight='bold', pad=10)
+
+            img_path = os.path.splitext(csv_path)[0] + '_table.png'
+            fig.savefig(img_path, dpi=150, bbox_inches='tight', facecolor='white')
+            plt.close(fig)
+            return img_path
+        except Exception as e:
+            print(f"[_save_table_image] {e}")
+            return ""
 
     # ── Add mapping & direct analysis ──
 
