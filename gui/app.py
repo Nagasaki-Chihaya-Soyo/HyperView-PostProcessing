@@ -1138,6 +1138,342 @@ class ContourOptionDialog(tk.Toplevel):
         threading.Thread(target=run, daemon=True).start()
 
 
+class ReadMaxValueDialog(tk.Toplevel):
+    """Plot contour, find hotspot, export CSV → read peak stress → compare to material."""
+
+    # Reuse contour option tables from ContourOptionDialog
+    CATEGORIES = ContourOptionDialog.CATEGORIES
+    COMPONENTS = ContourOptionDialog.COMPONENTS
+
+    def __init__(self, parent, orchestrator, db, model_path, result_path="",
+                 on_mapping_added=None):
+        super().__init__(parent)
+        self.title("Read Max Value")
+        self.geometry("560x680")
+        self.resizable(True, True)
+        self.minsize(480, 580)
+        self.transient(parent)
+        self.grab_set()
+
+        self.orchestrator = orchestrator
+        self.db = db
+        self.model_path = model_path
+        self.result_path = result_path
+        self.on_mapping_added = on_mapping_added
+        self._hotspot_counter = 0
+        self._peak_value = None
+        self._entity_id = ""
+        self._parts_data = []
+
+        self._create_ui()
+        self.wait_window()
+
+    # ── UI construction ──
+
+    def _create_ui(self):
+        # ── Contour Settings ──
+        contour_frame = ttk.LabelFrame(self, text="Contour Settings", padding=10)
+        contour_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+
+        ttk.Label(contour_frame, text="Category:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        cats = list(self.CATEGORIES.keys())
+        self.cat_var = tk.StringVar(value=cats[0])
+        self.cat_cb = ttk.Combobox(contour_frame, textvariable=self.cat_var,
+                                   values=cats, width=35, state="readonly")
+        self.cat_cb.grid(row=0, column=1, pady=5, padx=5)
+        self.cat_cb.bind("<<ComboboxSelected>>", self._on_cat_changed)
+
+        ttk.Label(contour_frame, text="Data Type:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.type_var = tk.StringVar()
+        self.type_cb = ttk.Combobox(contour_frame, textvariable=self.type_var,
+                                    width=35, state="readonly")
+        self.type_cb.grid(row=1, column=1, pady=5, padx=5)
+        self.type_cb.bind("<<ComboboxSelected>>", self._on_type_changed)
+
+        ttk.Label(contour_frame, text="Component:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        self.comp_var = tk.StringVar()
+        self.comp_cb = ttk.Combobox(contour_frame, textvariable=self.comp_var,
+                                    width=35, state="readonly")
+        self.comp_cb.grid(row=2, column=1, pady=5, padx=5)
+        self._update_types()
+
+        # ── Read button row ──
+        action_row = ttk.Frame(self, padding=(10, 4))
+        action_row.pack(fill=tk.X)
+        self._read_btn = ttk.Button(action_row, text="Read", command=self._do_read, width=10)
+        self._read_btn.pack(side=tk.LEFT)
+        self._status_var = tk.StringVar(value="Configure contour settings and click Read.")
+        ttk.Label(action_row, textvariable=self._status_var,
+                  foreground='gray').pack(side=tk.LEFT, padx=8)
+
+        # Progress bar — hidden until running
+        self._progress = ttk.Progressbar(self, mode='indeterminate')
+        # (packed/unpacked dynamically)
+
+        # ── Result section ──
+        res_frame = ttk.LabelFrame(self, text="Peak Value Result", padding=10)
+        res_frame.pack(fill=tk.X, padx=10, pady=(4, 2))
+
+        ttk.Label(res_frame, text="Peak Stress:").grid(row=0, column=0, sticky=tk.W, pady=4)
+        self._max_val_var = tk.StringVar(value="—")
+        ttk.Label(res_frame, textvariable=self._max_val_var,
+                  foreground='#1e3a5f',
+                  font=('Arial', 10, 'bold')).grid(row=0, column=1, sticky=tk.W, padx=6)
+
+        ttk.Label(res_frame, text="Entity ID:").grid(row=1, column=0, sticky=tk.W, pady=4)
+        self._entity_var = tk.StringVar(value="—")
+        ttk.Label(res_frame, textvariable=self._entity_var,
+                  foreground='gray').grid(row=1, column=1, sticky=tk.W, padx=6)
+
+        # ── Add to Mapping section ──
+        map_frame = ttk.LabelFrame(self, text="Add to Mapping", padding=10)
+        map_frame.pack(fill=tk.X, padx=10, pady=2)
+
+        ttk.Label(map_frame, text="Map Type:").grid(row=0, column=0, sticky=tk.W, pady=4)
+        self._map_type_var = tk.StringVar(value="component")
+        ttk.Combobox(map_frame, textvariable=self._map_type_var,
+                     values=["component", "part", "property"],
+                     state="readonly", width=14).grid(row=0, column=1, sticky=tk.W, padx=6, pady=4)
+
+        ttk.Label(map_frame, text="Map Value:").grid(row=1, column=0, sticky=tk.W, pady=4)
+        self._map_val_var = tk.StringVar()
+        ttk.Entry(map_frame, textvariable=self._map_val_var,
+                  width=24).grid(row=1, column=1, sticky=tk.W, padx=6, pady=4)
+        ttk.Label(map_frame, text="(auto-filled with Entity ID, editable)",
+                  foreground='gray').grid(row=1, column=2, sticky=tk.W, padx=4)
+
+        ttk.Label(map_frame, text="Material:").grid(row=2, column=0, sticky=tk.W, pady=4)
+        self._part_var = tk.StringVar()
+        self._part_cb = ttk.Combobox(map_frame, textvariable=self._part_var,
+                                     state="readonly", width=34)
+        self._part_cb.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=6, pady=4)
+        self._refresh_parts()
+
+        # ── Analysis Result ──
+        analysis_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
+        analysis_frame.pack(fill=tk.X, padx=10, pady=2)
+
+        self._result_text = tk.Text(analysis_frame, height=6, state=tk.DISABLED,
+                                    wrap=tk.WORD, font=('Courier', 9))
+        self._result_text.tag_configure('pass', foreground='#166534',
+                                        font=('Courier', 9, 'bold'))
+        self._result_text.tag_configure('fail', foreground='#991b1b',
+                                        font=('Courier', 9, 'bold'))
+        self._result_text.tag_configure('info', foreground='#1e40af')
+        self._result_text.tag_configure('dim',  foreground='gray')
+        self._result_text.pack(fill=tk.X)
+
+        # ── Bottom buttons ──
+        btn_frame = ttk.Frame(self, padding=(10, 6))
+        btn_frame.pack(fill=tk.X)
+        self._add_run_btn = ttk.Button(btn_frame, text="Add to Mapping & Run Analysis",
+                                       command=self._add_and_run, width=30,
+                                       state=tk.DISABLED)
+        self._add_run_btn.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(btn_frame, text="Close",
+                   command=self.destroy, width=10).pack(side=tk.LEFT)
+
+    # ── Contour dropdowns ──
+
+    def _on_cat_changed(self, event=None):
+        self._update_types()
+
+    def _on_type_changed(self, event=None):
+        self._update_components()
+
+    def _update_types(self):
+        cat = self.cat_var.get()
+        types = self.CATEGORIES.get(cat, [])
+        self.type_cb['values'] = types
+        if types:
+            self.type_var.set(types[0])
+        self._update_components()
+
+    def _update_components(self):
+        t = self.type_var.get()
+        comps = self.COMPONENTS.get(t, [])
+        self.comp_cb['values'] = comps
+        if comps:
+            self.comp_var.set(comps[0])
+
+    def _refresh_parts(self):
+        parts = self.db.get_all_parts()
+        self._parts_data = parts
+        opts = [
+            f"{p['part_no']} — {p['name'] or 'Unnamed'}  "
+            f"({p['allowable_vm']}/{p['safety_factor']} {p['units']})"
+            for p in parts
+        ]
+        self._part_cb['values'] = opts
+        if opts:
+            self._part_cb.current(0)
+
+    # ── Read workflow ──
+
+    def _do_read(self):
+        if not self.orchestrator:
+            messagebox.showerror(title="Error", message="Orchestrator not available.", parent=self)
+            return
+        self._read_btn.config(state=tk.DISABLED)
+        self._add_run_btn.config(state=tk.DISABLED)
+        self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
+        self._progress.start(10)
+        self._status_var.set("Plotting contour and finding hotspot…")
+
+        self._hotspot_counter += 1
+        hotspot_name = f"maxhotspot{self._hotspot_counter}"
+        result_type = self.type_var.get()
+        component = self.comp_var.get()
+
+        import datetime
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_dir = os.path.join(self.orchestrator.runs_dir, f"maxval_{ts}")
+        os.makedirs(csv_dir, exist_ok=True)
+        csv_path = os.path.join(csv_dir, "result.csv").replace('\\', '/')
+
+        def run():
+            result = self.orchestrator.read_max_value(
+                result_type, component, hotspot_name, csv_path
+            )
+            self.after(0, lambda: self._on_read_done(result, csv_path))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_read_done(self, result, csv_path):
+        self._progress.stop()
+        self._progress.pack_forget()
+        self._read_btn.config(state=tk.NORMAL)
+
+        if not result:
+            self._status_var.set("Read failed — check Logs tab.")
+            return
+
+        peak_value, entity_id = self._parse_csv(csv_path)
+        if peak_value is None:
+            self._status_var.set("CSV exported but could not parse max value.")
+            return
+
+        self._peak_value = peak_value
+        self._entity_id = entity_id
+
+        dtype = self.type_var.get()
+        unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
+        self._max_val_var.set(f"{peak_value:.4f} {unit}")
+        self._entity_var.set(str(entity_id))
+        self._map_val_var.set(str(entity_id))
+
+        self._status_var.set("Done. Select material and click Add to Mapping & Run Analysis.")
+        self._add_run_btn.config(state=tk.NORMAL)
+
+    @staticmethod
+    def _parse_csv(csv_path: str):
+        """Parse kpi hotspot export CSV. Returns (peak_value, entity_id)."""
+        import csv as csv_mod
+        try:
+            with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv_mod.DictReader(f)
+                rows = list(reader)
+            if not rows:
+                return None, ""
+
+            # First row = rank-1 hotspot (highest value)
+            row = rows[0]
+
+            # --- Find the value column ---
+            peak_value = None
+            for col in ('Value', 'value', 'Stress', 'stress', 'Result', 'result',
+                        'Max', 'max', 'Data', 'data'):
+                if col in row:
+                    try:
+                        peak_value = float(row[col])
+                        break
+                    except (ValueError, TypeError):
+                        pass
+            if peak_value is None:
+                # Fallback: largest float across all columns
+                best = None
+                for val in row.values():
+                    try:
+                        v = float(val)
+                        if best is None or v > best:
+                            best = v
+                    except (ValueError, TypeError):
+                        pass
+                peak_value = best
+
+            # --- Find the entity ID column ---
+            entity_id = ""
+            for col in ('ID', 'id', 'Entity ID', 'EntityID', 'Element',
+                        'Element ID', 'ElementID', 'Rank', 'rank', 'Index'):
+                if col in row:
+                    entity_id = str(row[col])
+                    break
+            if not entity_id:
+                # Use value of the first column
+                entity_id = str(next(iter(row.values()), ""))
+
+            return peak_value, entity_id
+        except Exception as e:
+            print(f"[ReadMaxValueDialog._parse_csv] {e}")
+            return None, ""
+
+    # ── Add mapping & direct analysis ──
+
+    def _add_and_run(self):
+        if self._peak_value is None:
+            messagebox.showwarning(title="Warning",
+                                   message="No peak value available. Click Read first.",
+                                   parent=self)
+            return
+
+        sel_idx = self._part_cb.current()
+        if sel_idx < 0 or not self._parts_data:
+            messagebox.showwarning(title="Warning",
+                                   message="Select a material standard first.", parent=self)
+            return
+        part = self._parts_data[sel_idx]
+
+        map_type = self._map_type_var.get()
+        map_value = self._map_val_var.get().strip()
+        if not map_value:
+            messagebox.showwarning(title="Warning",
+                                   message="Map Value cannot be empty.", parent=self)
+            return
+
+        # Add to mapping (skip silently if already exists)
+        self.db.add_mapping(map_type, map_value, part['part_no'])
+
+        # Notify parent to refresh its mapping view
+        if self.on_mapping_added:
+            self.on_mapping_added()
+
+        # Direct comparison (no need for a second HyperView round-trip)
+        a = self.orchestrator.analyzer.analyze_direct(
+            self._peak_value, self._entity_id, part
+        )
+        self._show_result(a)
+
+    def _show_result(self, a):
+        dtype = self.type_var.get()
+        unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
+        tag = 'pass' if a.passed else 'fail'
+        lines = [
+            f"  Status     :  {'PASSED' if a.passed else 'FAILED'}\n\n",
+            f"  Peak Value :  {a.peak_value:.4f} {unit}\n",
+            f"  Material   :  {a.part_no}  ({a.part_name or '—'})\n",
+            f"  Allowable  :  {a.allowable_vm:.2f}  "
+            f"SF={a.safety_factor:.2f}  →  Eff={a.allowable:.2f} {unit}\n",
+            f"  Margin     :  {a.margin:.2f} {unit}   Ratio={a.ratio:.2%}\n\n",
+            f"  {a.message}\n",
+        ]
+        self._result_text.config(state=tk.NORMAL)
+        self._result_text.delete(1.0, tk.END)
+        self._result_text.insert(tk.END, f"  {'─'*48}\n", 'dim')
+        self._result_text.insert(tk.END, "".join(lines), tag)
+        self._result_text.insert(tk.END, f"  {'─'*48}\n", 'dim')
+        self._result_text.config(state=tk.DISABLED)
+
+
 class CompareOptionDialog(tk.Toplevel):
     """Compare with Material Standards 选项对话框"""
 
@@ -1406,11 +1742,15 @@ class CompareOptionDialog(tk.Toplevel):
             self._update_run_btn()
 
     def _read_max_value(self):
-        """Placeholder: read max value from HWC (implementation to be added)."""
-        messagebox.showinfo(title="Read Max Value",
-                            message="Read Max Value feature coming soon.\n"
-                                    "HWC code will be connected here.",
-                            parent=self)
+        """Open ReadMaxValueDialog — plot contour, export hotspot CSV, compare to material."""
+        ReadMaxValueDialog(
+            self,
+            orchestrator=self.orchestrator,
+            db=self.db,
+            model_path=self.model_path,
+            result_path=self.result_path,
+            on_mapping_added=lambda: (self._refresh_map(), self._update_run_btn()),
+        )
 
     def _update_run_btn(self):
         parts = self.db.get_all_parts()

@@ -347,6 +347,17 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "csv_path": "value"
+    set csv_path ""
+    set idx [string first {"csv_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 10}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set csv_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -532,6 +543,30 @@ proc process_job {job_file} {
                 }
                 puts "hotspot_display_viewmode completed"
                 write_result $job_id {{"success":true}}
+            }
+            "read_max_value" {
+                puts "Executing read_max_value"
+                puts "result_type=$result_type result_component=$result_component"
+                puts "hotspot_name=$hotspot_name csv_path=$csv_path"
+                if { [catch {
+                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
+                    hwc result scalar plot "Current Contour"
+                    hwc kpi hotspot create $hotspot_name
+                    hwc kpi hotspot $hotspot_name findhotspots
+                    hwc kpi hotspot $hotspot_name review
+                    hwc show component all
+                    hwc hide component all
+                    hwc show element all
+                    hwc kpi hotspot $hotspot_name export $csv_path
+                } err] } {
+                    puts "read_max_value error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "read_max_value completed successfully"
+                set escaped_csv [escape_json_string $csv_path]
+                write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]
             }
             "quit" {
                 puts "Executing quit command"
@@ -904,6 +939,32 @@ after 4000 listen
         else:
             self._log(f"Load failed:{result.get('error', 'Unknown')}")
             return False
+
+    def read_max_value(self, result_type: str, component: str,
+                       hotspot_name: str, csv_path: str) -> Optional[Dict[str, Any]]:
+        """Plot contour, find hotspot, export KPI CSV. Returns {'success': True, 'csv_path': ...}."""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView NOT Ready, Start First")
+            return None
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"read_max_value: {result_type}/{component} → {csv_path}")
+            result = self.bridge.send_job(cmd="read_max_value", params={
+                "result_type": result_type,
+                "result_component": component,
+                "hotspot_name": hotspot_name,
+                "csv_path": csv_path.replace('\\', '/'),
+            })
+            if not result.get('success', False):
+                self._log(f"read_max_value failed: {result.get('error', 'Unknown')}")
+                return None
+            self._log(f"read_max_value done, CSV: {csv_path}")
+            return {'success': True, 'csv_path': result.get('csv_path', csv_path)}
+        except Exception as e:
+            self._log(f"read_max_value error: {str(e)}")
+            return None
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def _send_quit_no_wait(self) -> bool:
         """Best-effort quit injection: write quit job directly, do not wait for response."""

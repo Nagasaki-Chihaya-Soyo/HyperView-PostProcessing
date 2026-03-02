@@ -75,3 +75,33 @@ class Analyzer:
             ratio=ratio,
             message=messages
         )
+
+    def analyze_direct(self, peak_value: float, entity_id: Any, part: Dict) -> AnalysisResult:
+        """Directly compare peak_value to the given part standard (no tag/mapping lookup)."""
+        allowable_vm = part['allowable_vm']
+        safety_factor = part['safety_factor'] or 1.0
+        allowable = allowable_vm / safety_factor
+        passed = peak_value <= allowable
+        margin = allowable - peak_value
+        ratio = peak_value / allowable if allowable > 0 else float('inf')
+        if passed:
+            message = (f"PASS — Peak {peak_value:.2f} ≤ Allowable {allowable:.2f}, "
+                       f"Margin {margin:.2f}")
+        else:
+            message = (f"FAIL — Peak {peak_value:.2f} > Allowable {allowable:.2f}, "
+                       f"Exceeded by {-margin:.2f}")
+        return AnalysisResult(
+            peak_value=peak_value,
+            peak_entity_id=entity_id,
+            peak_coords=(0, 0, 0),
+            tags={},
+            part_no=part['part_no'],
+            part_name=part.get('name', ''),
+            allowable_vm=allowable_vm,
+            safety_factor=safety_factor,
+            allowable=allowable,
+            passed=passed,
+            margin=margin,
+            ratio=ratio,
+            message=message,
+        )
