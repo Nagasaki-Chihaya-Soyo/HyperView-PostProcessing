@@ -326,7 +326,7 @@ Report Path:{result['report_path']}
 
     def _create_mapping_tab(self):
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="Map")
+        self.notebook.add(tab, text="选择材料")
         toolbar = ttk.Frame(tab)
         toolbar.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(toolbar, text="Add", command=self._add_mapping).pack(side=tk.LEFT, padx=2)
@@ -480,7 +480,7 @@ class PartDialog(tk.Toplevel):
             self.part_no_entry.insert(0, self.data.get('part_no', ''))
             self.part_no_entry.config(state=tk.DISABLED)
 
-        ttk.Label(frame, text="Allowable Stress").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="Read Max").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.allowable_entry = ttk.Entry(frame, width=30)
         self.allowable_entry.grid(row=1, column=1, pady=5)
         self.allowable_entry.insert(0, self.data.get('allowable_vm', ''))
