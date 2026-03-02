@@ -1214,8 +1214,8 @@ class ReadMaxValueDialog(tk.Toplevel):
         ttk.Label(action_row, textvariable=self._status_var,
                   foreground='gray').pack(side=tk.LEFT, padx=8)
 
-        # Progress bar — hidden until running
-        self._progress = ttk.Progressbar(self, mode='indeterminate')
+        # Progress bar — determinate, hidden until running
+        self._progress = ttk.Progressbar(self, mode='determinate', maximum=100, value=0)
         # (packed/unpacked dynamically)
 
         # ── Result section ──
@@ -1316,7 +1316,13 @@ class ReadMaxValueDialog(tk.Toplevel):
         if opts:
             self._part_cb.current(0)
 
-    # ── Read workflow ──
+    # ── Read workflow (3 steps with determinate progress) ──
+
+    def _set_progress(self, value: int, status: str = ""):
+        """Update progress bar value (0-100) and optional status label (call from main thread)."""
+        self._progress['value'] = value
+        if status:
+            self._status_var.set(status)
 
     def _do_read(self):
         if not self.orchestrator:
@@ -1324,9 +1330,9 @@ class ReadMaxValueDialog(tk.Toplevel):
             return
         self._read_btn.config(state=tk.DISABLED)
         self._add_run_btn.config(state=tk.DISABLED)
+        self._progress['value'] = 0
         self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
-        self._progress.start(10)
-        self._status_var.set("Plotting contour and finding hotspot…")
+        self._status_var.set("Step 1/3 — Plotting contour…")
 
         self._hotspot_counter += 1
         hotspot_name = f"maxhotspot{self._hotspot_counter}"
@@ -1340,21 +1346,45 @@ class ReadMaxValueDialog(tk.Toplevel):
         csv_path = os.path.join(csv_dir, "result.csv").replace('\\', '/')
 
         def run():
-            result = self.orchestrator.read_max_value(
-                result_type, component, hotspot_name, csv_path
-            )
-            self.after(0, lambda: self._on_read_done(result, csv_path))
+            # ── Step 1: result scalar edit + plot (0 → 30%) ──
+            # Matches ContourOptionDialog._on_find_hotspot → apply_contour,
+            # but WITHOUT the 'hwc report Report add slide' PPT command.
+            ok = self.orchestrator.plot_contour_only(result_type, component)
+            if not ok:
+                self.after(0, lambda: self._on_read_failed("Step 1 failed — contour plot error."))
+                return
+            self.after(0, lambda: self._set_progress(30, "Step 2/3 — Finding hotspot…"))
+
+            # ── Step 2: kpi hotspot create + findhotspots + review (30 → 75%) ──
+            # Identical to ContourOptionDialog._on_find_hotspot → hotspot_find.
+            ok = self.orchestrator.hotspot_find(hotspot_name)
+            if not ok:
+                self.after(0, lambda: self._on_read_failed("Step 2 failed — hotspot find error."))
+                return
+            self.after(0, lambda: self._set_progress(75, "Step 3/3 — Exporting CSV…"))
+
+            # ── Step 3: show/hide components + kpi hotspot export (75 → 100%) ──
+            result = self.orchestrator.export_hotspot_csv(hotspot_name, csv_path)
+            if not result:
+                self.after(0, lambda: self._on_read_failed("Step 3 failed — CSV export error."))
+                return
+            self.after(0, lambda: self._set_progress(100, "Parsing results…"))
+            self.after(0, lambda: self._on_read_done(csv_path))
 
         threading.Thread(target=run, daemon=True).start()
 
-    def _on_read_done(self, result, csv_path):
-        self._progress.stop()
+    def _on_read_failed(self, msg: str):
         self._progress.pack_forget()
+        self._progress['value'] = 0
+        self._read_btn.config(state=tk.NORMAL)
+        self._status_var.set(msg)
+
+    def _on_read_done(self, csv_path):
+        self._progress.pack_forget()
+        self._progress['value'] = 0
         self._read_btn.config(state=tk.NORMAL)
 
-        if not result:
-            self._status_var.set("Read failed — check Logs tab.")
-            return
+        # result is always truthy here (failures handled in _on_read_failed)
 
         peak_value, entity_id = self._parse_csv(csv_path)
         if peak_value is None:

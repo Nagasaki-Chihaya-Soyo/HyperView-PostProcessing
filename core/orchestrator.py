@@ -544,6 +544,37 @@ proc process_job {job_file} {
                 puts "hotspot_display_viewmode completed"
                 write_result $job_id {{"success":true}}
             }
+            "plot_contour_only" {
+                puts "Executing plot_contour_only: type=$result_type component=$result_component"
+                if { [catch {
+                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
+                    hwc result scalar plot "Current Contour"
+                } err] } {
+                    puts "plot_contour_only error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "plot_contour_only completed"
+                write_result $job_id {{"success":true}}
+            }
+            "export_hotspot_csv" {
+                puts "Executing export_hotspot_csv: hotspot_name=$hotspot_name csv_path=$csv_path"
+                if { [catch {
+                    hwc show component all
+                    hwc hide component all
+                    hwc show element all
+                    hwc kpi hotspot $hotspot_name export $csv_path
+                } err] } {
+                    puts "export_hotspot_csv error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "export_hotspot_csv completed"
+                set escaped_csv [escape_json_string $csv_path]
+                write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]
+            }
             "read_max_value" {
                 puts "Executing read_max_value"
                 puts "result_type=$result_type result_component=$result_component"
@@ -939,6 +970,52 @@ after 4000 listen
         else:
             self._log(f"Load failed:{result.get('error', 'Unknown')}")
             return False
+
+    def plot_contour_only(self, result_type: str, component: str) -> bool:
+        """hwc result scalar edit + plot — no report slide."""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView NOT Ready")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"plot_contour_only: {result_type}/{component}")
+            result = self.bridge.send_job(cmd="plot_contour_only", params={
+                "result_type": result_type,
+                "result_component": component,
+            })
+            if result.get('success', False):
+                self._log("Contour plotted")
+                return True
+            self._log(f"plot_contour_only failed: {result.get('error', 'Unknown')}")
+            return False
+        except Exception as e:
+            self._log(f"plot_contour_only error: {e}")
+            return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def export_hotspot_csv(self, hotspot_name: str, csv_path: str) -> Optional[Dict[str, Any]]:
+        """hwc show/hide components + kpi hotspot export CSV."""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView NOT Ready")
+            return None
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"export_hotspot_csv: {hotspot_name} → {csv_path}")
+            result = self.bridge.send_job(cmd="export_hotspot_csv", params={
+                "hotspot_name": hotspot_name,
+                "csv_path": csv_path.replace('\\', '/'),
+            })
+            if result.get('success', False):
+                self._log(f"CSV exported: {csv_path}")
+                return {'success': True, 'csv_path': result.get('csv_path', csv_path)}
+            self._log(f"export_hotspot_csv failed: {result.get('error', 'Unknown')}")
+            return None
+        except Exception as e:
+            self._log(f"export_hotspot_csv error: {e}")
+            return None
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def read_max_value(self, result_type: str, component: str,
                        hotspot_name: str, csv_path: str) -> Optional[Dict[str, Any]]:
