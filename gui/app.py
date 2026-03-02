@@ -83,10 +83,6 @@ class Application(tk.Tk):
         self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis, state=tk.DISABLED)
         self.run_btn.pack(side=tk.LEFT, padx=20)
 
-        self.read_max_btn = ttk.Button(btn_frame, text="Read Max Value", padding=10,
-                                       command=self._read_max_value, state=tk.DISABLED)
-        self.read_max_btn.pack(side=tk.LEFT, padx=5)
-
         self.progress = ttk.Progressbar(btn_frame, mode='determinate', length=200, maximum=100)
         self.progress.pack(side=tk.LEFT, padx=20)
         self._progress_running = False
@@ -196,15 +192,9 @@ class Application(tk.Tk):
         self.load_btn.config(state=tk.NORMAL)
         if success:
             self.run_btn.config(state=tk.NORMAL)
-            self.read_max_btn.config(state=tk.NORMAL)
         else:
             messagebox.showerror(title="ERROR", message="Failed to load model. Check log for details.")
 
-    def _read_max_value(self):
-        """Placeholder: read max value from HWC (implementation to be added)."""
-        messagebox.showinfo(title="Read Max Value",
-                            message="Read Max Value feature coming soon.\n"
-                                    "HWC code will be connected here.")
 
     def _show_result(self, result):
         self.progress.stop()
@@ -1281,6 +1271,8 @@ class CompareOptionDialog(tk.Toplevel):
                                    command=self._run, width=14,
                                    state=tk.NORMAL if can_run else tk.DISABLED)
         self._run_btn.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(btn_frame, text="Read Max Value",
+                   command=self._read_max_value, width=16).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(btn_frame, text="Close",
                    command=self.destroy, width=10).pack(side=tk.LEFT)
 
@@ -1412,6 +1404,13 @@ class CompareOptionDialog(tk.Toplevel):
             self.db.delete_mapping(values[0], values[1])
             self._refresh_map()
             self._update_run_btn()
+
+    def _read_max_value(self):
+        """Placeholder: read max value from HWC (implementation to be added)."""
+        messagebox.showinfo(title="Read Max Value",
+                            message="Read Max Value feature coming soon.\n"
+                                    "HWC code will be connected here.",
+                            parent=self)
 
     def _update_run_btn(self):
         parts = self.db.get_all_parts()
