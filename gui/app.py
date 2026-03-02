@@ -1373,6 +1373,9 @@ class ReadMaxValueDialog(tk.Toplevel):
                         "Step 3 failed — CSV export error. Check Logs."))
                     return
                 # CSV exists despite the timeout — proceed to parse it.
+            # Wait 1 s for HyperView to release the file handle before Python reads it.
+            import time as _time
+            _time.sleep(1.0)
             self.after(0, lambda: self._set_progress(100, "Parsing results…"))
             self.after(0, lambda: self._on_read_done(csv_path))
 
