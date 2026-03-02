@@ -1005,7 +1005,7 @@ after 4000 listen
             result = self.bridge.send_job(cmd="export_hotspot_csv", params={
                 "hotspot_name": hotspot_name,
                 "csv_path": csv_path.replace('\\', '/'),
-            }, timeout=30)
+            }, timeout=5)
             if result.get('success', False):
                 self._log(f"CSV exported: {csv_path}")
                 return {'success': True, 'csv_path': result.get('csv_path', csv_path)}
