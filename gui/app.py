@@ -83,6 +83,10 @@ class Application(tk.Tk):
         self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis, state=tk.DISABLED)
         self.run_btn.pack(side=tk.LEFT, padx=20)
 
+        self.read_max_btn = ttk.Button(btn_frame, text="Read Max Value", padding=10,
+                                       command=self._read_max_value, state=tk.DISABLED)
+        self.read_max_btn.pack(side=tk.LEFT, padx=5)
+
         self.progress = ttk.Progressbar(btn_frame, mode='determinate', length=200, maximum=100)
         self.progress.pack(side=tk.LEFT, padx=20)
         self._progress_running = False
@@ -192,8 +196,15 @@ class Application(tk.Tk):
         self.load_btn.config(state=tk.NORMAL)
         if success:
             self.run_btn.config(state=tk.NORMAL)
+            self.read_max_btn.config(state=tk.NORMAL)
         else:
             messagebox.showerror(title="ERROR", message="Failed to load model. Check log for details.")
+
+    def _read_max_value(self):
+        """Placeholder: read max value from HWC (implementation to be added)."""
+        messagebox.showinfo(title="Read Max Value",
+                            message="Read Max Value feature coming soon.\n"
+                                    "HWC code will be connected here.")
 
     def _show_result(self, result):
         self.progress.stop()
@@ -1143,9 +1154,9 @@ class CompareOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator, db, model_path, result_path="", on_complete=None):
         super().__init__(parent)
         self.title("Compare with Material Standards")
-        self.geometry("620x560")
+        self.geometry("660x780")
         self.resizable(True, True)
-        self.minsize(500, 480)
+        self.minsize(520, 600)
         self.transient(parent)
         self.grab_set()
 
@@ -1159,74 +1170,94 @@ class CompareOptionDialog(tk.Toplevel):
         self.wait_window()
 
     def _create_ui(self):
-        # ── Standards Overview ──
-        std_frame = ttk.LabelFrame(self, text="Standards Overview", padding=8)
-        std_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 4))
+        # ── Standards Overview with CRUD toolbar ──
+        std_outer = ttk.LabelFrame(self, text="Standards Overview", padding=8)
+        std_outer.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 4))
+
+        std_toolbar = ttk.Frame(std_outer)
+        std_toolbar.pack(fill=tk.X, pady=(0, 4))
+        ttk.Button(std_toolbar, text="Add",    width=6,
+                   command=self._std_add).pack(side=tk.LEFT, padx=2)
+        ttk.Button(std_toolbar, text="Edit",   width=6,
+                   command=self._std_edit).pack(side=tk.LEFT, padx=2)
+        ttk.Button(std_toolbar, text="Delete", width=6,
+                   command=self._std_delete).pack(side=tk.LEFT, padx=2)
+        ttk.Separator(std_toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+        ttk.Button(std_toolbar, text="Import CSV", width=10,
+                   command=self._std_import_csv).pack(side=tk.LEFT, padx=2)
+        ttk.Button(std_toolbar, text="Export CSV", width=10,
+                   command=self._std_export_csv).pack(side=tk.LEFT, padx=2)
+
+        std_tree_frame = ttk.Frame(std_outer)
+        std_tree_frame.pack(fill=tk.BOTH, expand=True)
 
         columns = ('part_no', 'name', 'allowable_vm', 'safety_factor', 'effective', 'units')
-        std_tree = ttk.Treeview(std_frame, columns=columns, show='headings',
-                                selectmode='none', height=6)
+        self._std_tree = ttk.Treeview(std_tree_frame, columns=columns, show='headings',
+                                      selectmode='browse', height=5)
         for col, text, w in [
-            ('part_no',       'ID',             50),
-            ('name',          'Name',          140),
-            ('allowable_vm',  'Allowable',      90),
-            ('safety_factor', 'SF',             55),
+            ('part_no',       'ID',              50),
+            ('name',          'Name',           130),
+            ('allowable_vm',  'Allowable',       90),
+            ('safety_factor', 'SF',              55),
             ('effective',     'Effective (÷SF)', 110),
-            ('units',         'Unit',            55),
+            ('units',         'Unit',             55),
         ]:
-            std_tree.heading(col, text=text, anchor='center')
-            std_tree.column(col, width=w, minwidth=40, anchor='center')
-        std_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
-        std_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
+            self._std_tree.heading(col, text=text, anchor='center')
+            self._std_tree.column(col, width=w, minwidth=40, anchor='center')
+        self._std_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        self._std_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
+        self._std_tree.bind('<Double-1>', lambda e: self._std_edit())
 
-        std_sb = ttk.Scrollbar(std_frame, orient=tk.VERTICAL, command=std_tree.yview)
-        std_tree.configure(yscrollcommand=std_sb.set)
-        std_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        std_sb = ttk.Scrollbar(std_tree_frame, orient=tk.VERTICAL,
+                               command=self._std_tree.yview)
+        self._std_tree.configure(yscrollcommand=std_sb.set)
+        self._std_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         std_sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        parts = self.db.get_all_parts()
-        for i, p in enumerate(parts):
-            tag = 'odd' if i % 2 else 'even'
-            try:
-                eff = f"{p['allowable_vm'] / p['safety_factor']:.2f}"
-            except (TypeError, ZeroDivisionError):
-                eff = '-'
-            std_tree.insert('', tk.END, values=(
-                p['part_no'], p['name'] or '-', p['allowable_vm'],
-                p['safety_factor'], eff, p['units']
-            ), tags=(tag,))
+        self._refresh_std()
 
-        # ── Mapping Summary ──
-        map_frame = ttk.LabelFrame(self, text="Mapping Configuration", padding=8)
-        map_frame.pack(fill=tk.X, padx=10, pady=4)
+        # ── Mapping Configuration (interactive mini-map) ──
+        map_outer = ttk.LabelFrame(self, text="Mapping Configuration", padding=8)
+        map_outer.pack(fill=tk.X, padx=10, pady=4)
 
-        mappings = self.db.get_all_mappings()
-        counts = {'component': 0, 'part': 0, 'property': 0}
-        for m in mappings:
-            counts[m['map_type']] = counts.get(m['map_type'], 0) + 1
-        total_maps = sum(counts.values())
+        map_toolbar = ttk.Frame(map_outer)
+        map_toolbar.pack(fill=tk.X, pady=(0, 4))
+        ttk.Button(map_toolbar, text="Add",    width=6,
+                   command=self._map_add).pack(side=tk.LEFT, padx=2)
+        ttk.Button(map_toolbar, text="Delete", width=6,
+                   command=self._map_delete).pack(side=tk.LEFT, padx=2)
+        ttk.Button(map_toolbar, text="Refresh", width=8,
+                   command=self._refresh_map).pack(side=tk.RIGHT, padx=2)
 
-        cnt_row = ttk.Frame(map_frame)
-        cnt_row.pack(fill=tk.X)
-        for mtype, cnt in counts.items():
-            color = '#1e3a5f' if cnt > 0 else 'gray'
-            ttk.Label(cnt_row, text=f"{mtype.capitalize()}: {cnt}",
-                      foreground=color).pack(side=tk.LEFT, padx=12)
+        map_tree_frame = ttk.Frame(map_outer)
+        map_tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        if total_maps == 0:
-            ttk.Label(map_frame,
-                      text="  No mappings configured — peak stress may not match any standard.",
-                      foreground='#b91c1c').pack(anchor=tk.W, pady=(4, 0))
-        elif not parts:
-            ttk.Label(map_frame,
-                      text="  No parts in standards database.",
-                      foreground='#b91c1c').pack(anchor=tk.W, pady=(4, 0))
+        map_cols = ('map_type', 'map_value', 'part_no')
+        self._map_tree = ttk.Treeview(map_tree_frame, columns=map_cols, show='headings',
+                                      selectmode='browse', height=4)
+        for col, text, w in [
+            ('map_type',  'Map Type',    100),
+            ('map_value', 'Map Value',   220),
+            ('part_no',   'Part Number', 110),
+        ]:
+            self._map_tree.heading(col, text=text, anchor='center')
+            self._map_tree.column(col, width=w, minwidth=50, anchor='center')
+        self._map_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        self._map_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
+
+        map_sb = ttk.Scrollbar(map_tree_frame, orient=tk.VERTICAL,
+                               command=self._map_tree.yview)
+        self._map_tree.configure(yscrollcommand=map_sb.set)
+        self._map_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        map_sb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self._refresh_map()
 
         # ── Analysis Result ──
         result_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
         result_frame.pack(fill=tk.X, padx=10, pady=4)
 
-        self._result_text = tk.Text(result_frame, height=7, state=tk.DISABLED,
+        self._result_text = tk.Text(result_frame, height=5, state=tk.DISABLED,
                                     wrap=tk.WORD, font=('Courier', 9))
         self._result_text.tag_configure('pass', foreground='#166534',
                                         font=('Courier', 9, 'bold'))
@@ -1236,14 +1267,16 @@ class CompareOptionDialog(tk.Toplevel):
         self._result_text.tag_configure('dim',  foreground='gray')
         self._result_text.pack(fill=tk.X)
 
-        # ── Progress bar ──
+        # ── Progress bar (hidden until analysis is running) ──
         self._progress = ttk.Progressbar(self, mode='indeterminate')
-        self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
+        # do not pack now; shown only while running
 
         # ── Buttons ──
         btn_frame = ttk.Frame(self, padding=(10, 6))
         btn_frame.pack(fill=tk.X)
-        can_run = bool(parts) and total_maps > 0
+        parts = self.db.get_all_parts()
+        mappings = self.db.get_all_mappings()
+        can_run = bool(parts) and bool(mappings)
         self._run_btn = ttk.Button(btn_frame, text="Run Analysis",
                                    command=self._run, width=14,
                                    state=tk.NORMAL if can_run else tk.DISABLED)
@@ -1252,8 +1285,141 @@ class CompareOptionDialog(tk.Toplevel):
                    command=self.destroy, width=10).pack(side=tk.LEFT)
 
         if not can_run:
-            hint = "Configure standards and mappings in the Standard Repository and Map tabs first."
+            hint = "Configure standards and mappings above, then click Run Analysis."
             self._set_result("  " + hint, 'dim')
+
+    # ── Standards helpers ──
+
+    def _refresh_std(self):
+        for item in self._std_tree.get_children():
+            self._std_tree.delete(item)
+        parts = self.db.get_all_parts()
+        for i, p in enumerate(parts):
+            tag = 'odd' if i % 2 else 'even'
+            try:
+                eff = f"{p['allowable_vm'] / p['safety_factor']:.2f}"
+            except (TypeError, ZeroDivisionError):
+                eff = '-'
+            self._std_tree.insert('', tk.END, values=(
+                p['part_no'], p['name'] or '-', p['allowable_vm'],
+                p['safety_factor'], eff, p['units']
+            ), tags=(tag,))
+
+    def _std_add(self):
+        dialog = PartDialog(self, title="Add Material")
+        if dialog.result:
+            self.db.add_part(part_no=self.db.get_next_part_no(), **dialog.result)
+            self._refresh_std()
+            self._update_run_btn()
+
+    def _std_edit(self):
+        sel = self._std_tree.selection()
+        if not sel:
+            messagebox.showwarning(title="WARNING", message="Select a standard first", parent=self)
+            return
+        values = self._std_tree.item(sel[0])['values']
+        part_no = str(values[0])
+        data = {
+            'allowable_vm': values[2],
+            'safety_factor': values[3],
+            'units': values[5],
+            'name': values[1] if values[1] != '-' else '',
+            'notes': '',
+        }
+        part = self.db.get_part(part_no)
+        if part:
+            data['notes'] = part.get('notes', '')
+        dialog = PartDialog(self, title="Edit Material", data=data)
+        if dialog.result:
+            self.db.update_part(part_no=part_no, **dialog.result)
+            self._refresh_std()
+
+    def _std_delete(self):
+        sel = self._std_tree.selection()
+        if not sel:
+            messagebox.showwarning(title="WARNING", message="Select a standard first", parent=self)
+            return
+        if messagebox.askyesno(title="Confirm",
+                               message="Delete selected standard? This cannot be undone.",
+                               parent=self):
+            part_no = str(self._std_tree.item(sel[0])['values'][0])
+            self.db.delete_part(part_no)
+            remaining = [p['part_no'] for p in self.db.get_all_parts()]
+            if remaining:
+                self.db.renumber_parts(remaining)
+            self._refresh_std()
+            self._refresh_map()
+            self._update_run_btn()
+
+    def _std_import_csv(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="Select CSV File",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+            parent=self)
+        if path:
+            count = self.db.import_parts_csv(path)
+            messagebox.showinfo(title="Complete",
+                                message=f"Imported {count} parts successfully", parent=self)
+            self._refresh_std()
+            self._update_run_btn()
+
+    def _std_export_csv(self):
+        from tkinter import filedialog
+        path = filedialog.asksaveasfilename(
+            title="Save CSV File",
+            defaultextension=".csv",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+            parent=self)
+        if path:
+            self.db.export_parts_csv(path)
+            messagebox.showinfo(title="Complete",
+                                message=f"Exported to {path} successfully", parent=self)
+
+    # ── Mapping helpers ──
+
+    def _refresh_map(self):
+        for item in self._map_tree.get_children():
+            self._map_tree.delete(item)
+        mappings = self.db.get_all_mappings()
+        for i, m in enumerate(mappings):
+            tag = 'odd' if i % 2 else 'even'
+            self._map_tree.insert('', tk.END, values=(
+                m['map_type'], m['map_value'], m['part_no']
+            ), tags=(tag,))
+
+    def _map_add(self):
+        parts = self.db.get_all_parts()
+        if not parts:
+            messagebox.showwarning(title="WARNING",
+                                   message="Add material standards first", parent=self)
+            return
+        dialog = MappingDialog(self, title="Add Mapping", parts=parts)
+        if dialog.result:
+            self.db.add_mapping(**dialog.result)
+            self._refresh_map()
+            self._update_run_btn()
+
+    def _map_delete(self):
+        sel = self._map_tree.selection()
+        if not sel:
+            messagebox.showwarning(title="WARNING", message="Select a mapping first", parent=self)
+            return
+        if messagebox.askyesno(title="Confirm",
+                               message="Delete selected mapping? This cannot be undone.",
+                               parent=self):
+            values = self._map_tree.item(sel[0])['values']
+            self.db.delete_mapping(values[0], values[1])
+            self._refresh_map()
+            self._update_run_btn()
+
+    def _update_run_btn(self):
+        parts = self.db.get_all_parts()
+        mappings = self.db.get_all_mappings()
+        can_run = bool(parts) and bool(mappings)
+        self._run_btn.config(state=tk.NORMAL if can_run else tk.DISABLED)
+        if not can_run:
+            self._set_result("  Configure standards and mappings above, then click Run Analysis.", 'dim')
 
     # ── Helpers ──
 
@@ -1267,6 +1433,7 @@ class CompareOptionDialog(tk.Toplevel):
 
     def _run(self):
         self._run_btn.config(state=tk.DISABLED)
+        self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
         self._progress.start(10)
         self._set_result("Running analysis, please wait...", 'info')
 
@@ -1278,6 +1445,7 @@ class CompareOptionDialog(tk.Toplevel):
 
     def _on_done(self, result):
         self._progress.stop()
+        self._progress.pack_forget()
         self._run_btn.config(state=tk.NORMAL)
 
         if not result or not result.get('success'):
