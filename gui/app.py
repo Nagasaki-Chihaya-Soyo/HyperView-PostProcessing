@@ -1366,8 +1366,13 @@ class ReadMaxValueDialog(tk.Toplevel):
             # ── Step 3: show/hide components + kpi hotspot export (75 → 100%) ──
             result = self.orchestrator.export_hotspot_csv(hotspot_name, csv_path)
             if not result:
-                self.after(0, lambda: self._on_read_failed("Step 3 failed — CSV export error."))
-                return
+                # Bridge may have timed out while HyperView was still writing the file.
+                # Check whether the CSV landed on disk before giving up.
+                if not os.path.exists(csv_path):
+                    self.after(0, lambda: self._on_read_failed(
+                        "Step 3 failed — CSV export error. Check Logs."))
+                    return
+                # CSV exists despite the timeout — proceed to parse it.
             self.after(0, lambda: self._set_progress(100, "Parsing results…"))
             self.after(0, lambda: self._on_read_done(csv_path))
 
@@ -1434,23 +1439,15 @@ class ReadMaxValueDialog(tk.Toplevel):
                      if any(k in h.lower() for k in ('value', 'stress', 'result', 'data'))),
                     None
                 )
+            if contour_col is None:
+                print(f"[_parse_csv] No contour column found. Headers: {headers}")
+                return None, ""
 
-            # --- Find row with maximum value ---
+            # --- Find row with maximum value in the contour column ---
             best_value = None
             best_row = None
             for row in rows:
-                if contour_col:
-                    raw = row.get(contour_col, "")
-                else:
-                    # No suitable column found — take largest float across all fields
-                    raw = max(
-                        (v for v in row.values() if v.strip()),
-                        key=lambda v: (lambda x: x if x is not None else float('-inf'))(
-                            _safe_float(v)
-                        ),
-                        default="",
-                    )
-                v = _safe_float(raw)
+                v = _safe_float(row.get(contour_col, ""))
                 if v is not None and (best_value is None or v > best_value):
                     best_value = v
                     best_row = row
