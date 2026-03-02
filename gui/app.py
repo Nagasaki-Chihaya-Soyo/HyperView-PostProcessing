@@ -1410,14 +1410,8 @@ class ReadMaxValueDialog(tk.Toplevel):
 
     @staticmethod
     def _parse_csv(csv_path: str):
-        """Parse kpi hotspot export CSV.
-
-        Finds the column whose header contains 'contour' (case-insensitive),
-        scans every row for the maximum value in that column, and returns the
-        row's entity ID alongside it.
-
-        Returns (peak_value, entity_id) — both None/"" on failure.
-        """
+        """Find the column whose header contains 'Contour' (case-insensitive),
+        return (max_value, entity_id_of_that_row)."""
         import csv as csv_mod
         try:
             with open(csv_path, 'r', encoding='utf-8-sig') as f:
@@ -1427,23 +1421,11 @@ class ReadMaxValueDialog(tk.Toplevel):
                 return None, ""
 
             headers = list(rows[0].keys())
-
-            # --- Locate the contour column ---
-            contour_col = next(
-                (h for h in headers if 'contour' in h.lower()), None
-            )
+            contour_col = next((h for h in headers if 'contour' in h.lower()), None)
             if contour_col is None:
-                # Fallback: try common stress-value names
-                contour_col = next(
-                    (h for h in headers
-                     if any(k in h.lower() for k in ('value', 'stress', 'result', 'data'))),
-                    None
-                )
-            if contour_col is None:
-                print(f"[_parse_csv] No contour column found. Headers: {headers}")
+                print(f"[_parse_csv] No 'Contour' column found. Headers: {headers}")
                 return None, ""
 
-            # --- Find row with maximum value in the contour column ---
             best_value = None
             best_row = None
             for row in rows:
@@ -1455,7 +1437,6 @@ class ReadMaxValueDialog(tk.Toplevel):
             if best_row is None:
                 return None, ""
 
-            # --- Entity ID from the best row ---
             entity_id = ""
             for col in ('ID', 'id', 'Entity ID', 'EntityID',
                         'Element', 'Element ID', 'ElementID',
@@ -1468,7 +1449,7 @@ class ReadMaxValueDialog(tk.Toplevel):
 
             return best_value, entity_id
         except Exception as e:
-            print(f"[ReadMaxValueDialog._parse_csv] {e}")
+            print(f"[_parse_csv] {e}")
             return None, ""
 
     # ── Add mapping & direct analysis ──
