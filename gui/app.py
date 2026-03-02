@@ -1346,10 +1346,15 @@ class ReadMaxValueDialog(tk.Toplevel):
         csv_path = os.path.join(csv_dir, "result.csv").replace('\\', '/')
 
         def run():
+            import time as _time
+            _t0 = _time.time()
+
             # ── Step 1: result scalar edit + plot (0 → 30%) ──
             # Matches ContourOptionDialog._on_find_hotspot → apply_contour,
             # but WITHOUT the 'hwc report Report add slide' PPT command.
             ok = self.orchestrator.plot_contour_only(result_type, component)
+            _t1 = _time.time()
+            print(f"[timing] Step 1 plot_contour_only: {_t1 - _t0:.1f}s")
             if not ok:
                 self.after(0, lambda: self._on_read_failed("Step 1 failed — contour plot error."))
                 return
@@ -1358,6 +1363,8 @@ class ReadMaxValueDialog(tk.Toplevel):
             # ── Step 2: kpi hotspot create + findhotspots + review (30 → 75%) ──
             # Identical to ContourOptionDialog._on_find_hotspot → hotspot_find.
             ok = self.orchestrator.hotspot_find(hotspot_name)
+            _t2 = _time.time()
+            print(f"[timing] Step 2 hotspot_find: {_t2 - _t1:.1f}s")
             if not ok:
                 self.after(0, lambda: self._on_read_failed("Step 2 failed — hotspot find error."))
                 return
@@ -1365,6 +1372,8 @@ class ReadMaxValueDialog(tk.Toplevel):
 
             # ── Step 3: show/hide components + kpi hotspot export (75 → 100%) ──
             result = self.orchestrator.export_hotspot_csv(hotspot_name, csv_path)
+            _t3 = _time.time()
+            print(f"[timing] Step 3 export_hotspot_csv: {_t3 - _t2:.1f}s  total: {_t3 - _t0:.1f}s")
             if not result:
                 # Bridge may have timed out while HyperView was still writing the file.
                 # Check whether the CSV landed on disk before giving up.
@@ -1373,9 +1382,6 @@ class ReadMaxValueDialog(tk.Toplevel):
                         "Step 3 failed — CSV export error. Check Logs."))
                     return
                 # CSV exists despite the timeout — proceed to parse it.
-            # Wait 1 s for HyperView to release the file handle before Python reads it.
-            import time as _time
-            _time.sleep(1.0)
             self.after(0, lambda: self._set_progress(100, "Parsing results…"))
             self.after(0, lambda: self._on_read_done(csv_path))
 

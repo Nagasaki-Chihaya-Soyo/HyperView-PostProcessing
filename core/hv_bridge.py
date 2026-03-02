@@ -34,14 +34,6 @@ class HVBridge:
 
         deadline = time.time() + self.timeout
         while time.time() < deadline:
-            # 列出outbox目录中的所有文件用于调试
-            try:
-                files = os.listdir(self.outbox_dir)
-                if files:
-                    log_debug(f"outbox目录文件: {files}")
-            except:
-                pass
-
             if os.path.exists(result_file):
                 time.sleep(0.1)
                 with open(result_file, 'r', encoding='utf-8') as f:
