@@ -10,6 +10,14 @@ from core.orchestrator import Orchestrator, State
 from core.db_store import DBStore
 
 
+def _safe_float(value):
+    """Return float(value) or None if conversion fails."""
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
 class Application(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -1367,7 +1375,14 @@ class ReadMaxValueDialog(tk.Toplevel):
 
     @staticmethod
     def _parse_csv(csv_path: str):
-        """Parse kpi hotspot export CSV. Returns (peak_value, entity_id)."""
+        """Parse kpi hotspot export CSV.
+
+        Finds the column whose header contains 'contour' (case-insensitive),
+        scans every row for the maximum value in that column, and returns the
+        row's entity ID alongside it.
+
+        Returns (peak_value, entity_id) — both None/"" on failure.
+        """
         import csv as csv_mod
         try:
             with open(csv_path, 'r', encoding='utf-8-sig') as f:
@@ -1376,43 +1391,55 @@ class ReadMaxValueDialog(tk.Toplevel):
             if not rows:
                 return None, ""
 
-            # First row = rank-1 hotspot (highest value)
-            row = rows[0]
+            headers = list(rows[0].keys())
 
-            # --- Find the value column ---
-            peak_value = None
-            for col in ('Value', 'value', 'Stress', 'stress', 'Result', 'result',
-                        'Max', 'max', 'Data', 'data'):
-                if col in row:
-                    try:
-                        peak_value = float(row[col])
-                        break
-                    except (ValueError, TypeError):
-                        pass
-            if peak_value is None:
-                # Fallback: largest float across all columns
-                best = None
-                for val in row.values():
-                    try:
-                        v = float(val)
-                        if best is None or v > best:
-                            best = v
-                    except (ValueError, TypeError):
-                        pass
-                peak_value = best
+            # --- Locate the contour column ---
+            contour_col = next(
+                (h for h in headers if 'contour' in h.lower()), None
+            )
+            if contour_col is None:
+                # Fallback: try common stress-value names
+                contour_col = next(
+                    (h for h in headers
+                     if any(k in h.lower() for k in ('value', 'stress', 'result', 'data'))),
+                    None
+                )
 
-            # --- Find the entity ID column ---
+            # --- Find row with maximum value ---
+            best_value = None
+            best_row = None
+            for row in rows:
+                if contour_col:
+                    raw = row.get(contour_col, "")
+                else:
+                    # No suitable column found — take largest float across all fields
+                    raw = max(
+                        (v for v in row.values() if v.strip()),
+                        key=lambda v: (lambda x: x if x is not None else float('-inf'))(
+                            _safe_float(v)
+                        ),
+                        default="",
+                    )
+                v = _safe_float(raw)
+                if v is not None and (best_value is None or v > best_value):
+                    best_value = v
+                    best_row = row
+
+            if best_row is None:
+                return None, ""
+
+            # --- Entity ID from the best row ---
             entity_id = ""
-            for col in ('ID', 'id', 'Entity ID', 'EntityID', 'Element',
-                        'Element ID', 'ElementID', 'Rank', 'rank', 'Index'):
-                if col in row:
-                    entity_id = str(row[col])
+            for col in ('ID', 'id', 'Entity ID', 'EntityID',
+                        'Element', 'Element ID', 'ElementID',
+                        'Rank', 'rank', 'Index', 'index'):
+                if col in best_row and best_row[col].strip():
+                    entity_id = best_row[col].strip()
                     break
             if not entity_id:
-                # Use value of the first column
-                entity_id = str(next(iter(row.values()), ""))
+                entity_id = str(next(iter(best_row.values()), ""))
 
-            return peak_value, entity_id
+            return best_value, entity_id
         except Exception as e:
             print(f"[ReadMaxValueDialog._parse_csv] {e}")
             return None, ""
