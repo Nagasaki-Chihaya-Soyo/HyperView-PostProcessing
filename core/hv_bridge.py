@@ -27,12 +27,12 @@ class HVBridge:
         log_debug(f"写入任务:{job_file}")
         return job_file
 
-    def _wait_result(self, job_id: str) -> Optional[Dict]:
+    def _wait_result(self, job_id: str, timeout: float = None) -> Optional[Dict]:
         result_file = os.path.join(self.outbox_dir, f"job_{job_id}.result.json")
         error_file = os.path.join(self.outbox_dir, f"job_{job_id}.error.json")
         log_debug(f"等待结果文件: {result_file}")
 
-        deadline = time.time() + self.timeout
+        deadline = time.time() + (timeout if timeout is not None else self.timeout)
         while time.time() < deadline:
             if os.path.exists(result_file):
                 time.sleep(0.1)
@@ -59,7 +59,7 @@ class HVBridge:
         log_error(f"任务超时：job_{job_id}")
         return {'success': False, 'error': 'Timeout'}
 
-    def send_job(self, cmd: str, params: Dict = None) -> Dict:
+    def send_job(self, cmd: str, params: Dict = None, timeout: float = None) -> Dict:
         job_id = self._generate_job_id()
         job_data = {
             'id': job_id,
@@ -71,7 +71,7 @@ class HVBridge:
         log_info(f"发送任务:{cmd} (job_{job_id})")
         self._write_job(job_id, job_data)
         log_info(f"等待结果:job_{job_id}")
-        result = self._wait_result(job_id)
+        result = self._wait_result(job_id, timeout=timeout)
         log_debug(f"收到原始结果: {result}")
         return result if result else {'success': False, 'error': 'No response'}
 

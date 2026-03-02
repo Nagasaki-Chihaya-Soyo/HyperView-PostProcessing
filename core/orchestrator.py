@@ -1005,10 +1005,15 @@ after 4000 listen
             result = self.bridge.send_job(cmd="export_hotspot_csv", params={
                 "hotspot_name": hotspot_name,
                 "csv_path": csv_path.replace('\\', '/'),
-            })
+            }, timeout=30)
             if result.get('success', False):
                 self._log(f"CSV exported: {csv_path}")
                 return {'success': True, 'csv_path': result.get('csv_path', csv_path)}
+            # TCL端写完CSV后可能卡在show/hide操作上，不返回ACK。
+            # 只要文件已落盘即视为成功，不再等满超时。
+            if os.path.exists(csv_path):
+                self._log(f"bridge timeout but CSV on disk — treating as success: {csv_path}")
+                return {'success': True, 'csv_path': csv_path}
             self._log(f"export_hotspot_csv failed: {result.get('error', 'Unknown')}")
             return None
         except Exception as e:
