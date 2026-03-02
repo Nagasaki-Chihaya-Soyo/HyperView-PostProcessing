@@ -1414,9 +1414,9 @@ class ReadMaxValueDialog(tk.Toplevel):
         self._entity_var.set(str(entity_id))
         self._map_val_var.set(str(entity_id))
 
-        img_path = self._save_table_image(csv_path, rows, headers, peak_value)
-        if img_path:
-            print(f"[table image] {img_path}")
+        html_path = self._save_table_html(csv_path, rows, headers, peak_value)
+        if html_path:
+            print(f"[table html] {html_path}")
 
         self._status_var.set("Done. Select material and click Add to Mapping & Run Analysis.")
         self._add_run_btn.config(state=tk.NORMAL)
@@ -1466,77 +1466,65 @@ class ReadMaxValueDialog(tk.Toplevel):
             return None, "", [], []
 
     @staticmethod
-    def _save_table_image(csv_path: str, rows: list, headers: list, peak_value: float) -> str:
-        """Render the hotspot CSV rows as a styled PNG table saved next to the CSV."""
+    def _save_table_html(csv_path: str, rows: list, headers: list, peak_value: float) -> str:
+        """Write the hotspot CSV rows as a self-contained styled HTML table next to the CSV."""
+        import html as html_mod
         try:
-            import matplotlib
-            matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
-
             if not rows or not headers:
                 return ""
 
-            display_rows = rows[:20]  # cap at 20 rows so the image stays readable
-
-            # locate the peak row index within the displayed slice
             contour_col = next((h for h in headers if 'contour' in h.lower()), None)
             peak_row_idx = None
             if contour_col is not None:
                 best_v = None
-                for i, row in enumerate(display_rows):
+                for i, row in enumerate(rows):
                     v = _safe_float(row.get(contour_col, ""))
                     if v is not None and (best_v is None or v > best_v):
                         best_v = v
                         peak_row_idx = i
 
-            cell_data = [[row.get(h, '') for h in headers] for row in display_rows]
+            def td(val, bold=False):
+                escaped = html_mod.escape(str(val))
+                return f'<td style="font-weight:{"bold" if bold else "normal"}">{escaped}</td>'
 
-            col_count = len(headers)
-            row_count = len(display_rows)
-            fig_w = max(8, col_count * 2.0)
-            fig_h = max(2, row_count * 0.38 + 1.2)
+            header_cells = ''.join(f'<th>{html_mod.escape(h)}</th>' for h in headers)
+            data_rows = []
+            for i, row in enumerate(rows):
+                if i == peak_row_idx:
+                    bg = '#ffd966'
+                    bold = True
+                elif i % 2 == 0:
+                    bg = '#f2f2f2'
+                    bold = False
+                else:
+                    bg = '#ffffff'
+                    bold = False
+                cells = ''.join(td(row.get(h, ''), bold) for h in headers)
+                data_rows.append(f'<tr style="background:{bg}">{cells}</tr>')
 
-            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-            ax.axis('off')
+            html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Hotspot KPI Table</title>
+<style>
+  body {{font-family:Arial,sans-serif;padding:20px;}}
+  h2 {{color:#1f3864;}}
+  table {{border-collapse:collapse;width:100%;font-size:13px;}}
+  th {{background:#1f3864;color:#fff;padding:6px 10px;text-align:center;}}
+  td {{padding:5px 10px;text-align:center;border-bottom:1px solid #ddd;}}
+</style></head><body>
+<h2>Hotspot KPI Table</h2>
+<p>Peak value: <b>{peak_value}</b> &nbsp;|&nbsp; Total rows: {len(rows)}</p>
+<table>
+<thead><tr>{header_cells}</tr></thead>
+<tbody>{''.join(data_rows)}</tbody>
+</table></body></html>"""
 
-            tbl = ax.table(
-                cellText=cell_data,
-                colLabels=headers,
-                loc='center',
-                cellLoc='center',
-            )
-            tbl.auto_set_font_size(False)
-            tbl.set_fontsize(9)
-            tbl.auto_set_column_width(range(col_count))
-
-            HEADER_BG = '#1f3864'
-            PEAK_BG   = '#ffd966'
-            ALT_BG    = '#f2f2f2'
-
-            for col in range(col_count):
-                cell = tbl[0, col]
-                cell.set_facecolor(HEADER_BG)
-                cell.set_text_props(color='white', fontweight='bold')
-
-            for row in range(row_count):
-                for col in range(col_count):
-                    cell = tbl[row + 1, col]
-                    if row == peak_row_idx:
-                        cell.set_facecolor(PEAK_BG)
-                        cell.set_text_props(fontweight='bold')
-                    elif row % 2 == 0:
-                        cell.set_facecolor(ALT_BG)
-                    else:
-                        cell.set_facecolor('white')
-
-            ax.set_title('Hotspot KPI Table', fontsize=11, fontweight='bold', pad=10)
-
-            img_path = os.path.splitext(csv_path)[0] + '_table.png'
-            fig.savefig(img_path, dpi=150, bbox_inches='tight', facecolor='white')
-            plt.close(fig)
-            return img_path
+            html_path = os.path.splitext(csv_path)[0] + '_table.html'
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html)
+            return html_path
         except Exception as e:
-            print(f"[_save_table_image] {e}")
+            print(f"[_save_table_html] {e}")
             return ""
 
     # ── Add mapping & direct analysis ──
