@@ -1414,9 +1414,9 @@ class ReadMaxValueDialog(tk.Toplevel):
         self._entity_var.set(str(entity_id))
         self._map_val_var.set(str(entity_id))
 
-        html_path = self._save_table_html(csv_path, rows, headers, peak_value)
-        if html_path:
-            print(f"[table html] {html_path}")
+        img_path = self._save_table_image(csv_path, rows, headers, peak_value)
+        if img_path:
+            print(f"[table image] {img_path}")
 
         self._status_var.set("Done. Select material and click Add to Mapping & Run Analysis.")
         self._add_run_btn.config(state=tk.NORMAL)
@@ -1466,65 +1466,141 @@ class ReadMaxValueDialog(tk.Toplevel):
             return None, "", [], []
 
     @staticmethod
-    def _save_table_html(csv_path: str, rows: list, headers: list, peak_value: float) -> str:
-        """Write the hotspot CSV rows as a self-contained styled HTML table next to the CSV."""
-        import html as html_mod
+    def _save_table_image(csv_path: str, rows: list, headers: list, peak_value: float) -> str:
+        """Generate a PNG table image via PowerShell + System.Drawing (no pip required)."""
+        import subprocess
         try:
             if not rows or not headers:
                 return ""
 
+            display_rows = rows[:50]  # cap to keep image size reasonable
+
             contour_col = next((h for h in headers if 'contour' in h.lower()), None)
-            peak_row_idx = None
+            peak_row_idx = -1
             if contour_col is not None:
                 best_v = None
-                for i, row in enumerate(rows):
+                for i, row in enumerate(display_rows):
                     v = _safe_float(row.get(contour_col, ""))
                     if v is not None and (best_v is None or v > best_v):
                         best_v = v
                         peak_row_idx = i
 
-            def td(val, bold=False):
-                escaped = html_mod.escape(str(val))
-                return f'<td style="font-weight:{"bold" if bold else "normal"}">{escaped}</td>'
+            def ps_str(s):
+                """Escape value for a PowerShell single-quoted string literal."""
+                return "'" + str(s).replace("'", "''").replace('\r', '').replace('\n', ' ') + "'"
 
-            header_cells = ''.join(f'<th>{html_mod.escape(h)}</th>' for h in headers)
-            data_rows = []
-            for i, row in enumerate(rows):
-                if i == peak_row_idx:
-                    bg = '#ffd966'
-                    bold = True
-                elif i % 2 == 0:
-                    bg = '#f2f2f2'
-                    bold = False
-                else:
-                    bg = '#ffffff'
-                    bold = False
-                cells = ''.join(td(row.get(h, ''), bold) for h in headers)
-                data_rows.append(f'<tr style="background:{bg}">{cells}</tr>')
+            header_ps = '@(' + ', '.join(ps_str(h) for h in headers) + ')'
+            row_lines = []
+            for row in display_rows:
+                cells = ', '.join(ps_str(row.get(h, '')) for h in headers)
+                row_lines.append(f'    @({cells})')
+            rows_ps = '@(\n' + ',\n'.join(row_lines) + '\n)'
 
-            html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<title>Hotspot KPI Table</title>
-<style>
-  body {{font-family:Arial,sans-serif;padding:20px;}}
-  h2 {{color:#1f3864;}}
-  table {{border-collapse:collapse;width:100%;font-size:13px;}}
-  th {{background:#1f3864;color:#fff;padding:6px 10px;text-align:center;}}
-  td {{padding:5px 10px;text-align:center;border-bottom:1px solid #ddd;}}
-</style></head><body>
-<h2>Hotspot KPI Table</h2>
-<p>Peak value: <b>{peak_value}</b> &nbsp;|&nbsp; Total rows: {len(rows)}</p>
-<table>
-<thead><tr>{header_cells}</tr></thead>
-<tbody>{''.join(data_rows)}</tbody>
-</table></body></html>"""
+            img_path = os.path.splitext(csv_path)[0] + '_table.png'
+            # ps_str wraps in quotes; strip them — the content is safe for single-quote embedding
+            out_ps = ps_str(img_path)[1:-1]
 
-            html_path = os.path.splitext(csv_path)[0] + '_table.html'
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(html)
-            return html_path
+            ps_script = f"""
+Add-Type -AssemblyName System.Drawing
+
+$headers  = {header_ps}
+$rows     = {rows_ps}
+$peakIdx  = {peak_row_idx}
+$outPath  = '{out_ps}'
+
+$font      = New-Object System.Drawing.Font('Arial', 9)
+$boldFont  = New-Object System.Drawing.Font('Arial', 9,  [System.Drawing.FontStyle]::Bold)
+$titleFont = New-Object System.Drawing.Font('Arial', 11, [System.Drawing.FontStyle]::Bold)
+
+# Measure column widths from content
+$tmp = New-Object System.Drawing.Bitmap(1, 1)
+$tg  = [System.Drawing.Graphics]::FromImage($tmp)
+$colW = @()
+foreach ($h in $headers) {{
+    $colW += [int]($tg.MeasureString($h, $boldFont).Width) + 20
+}}
+for ($r = 0; $r -lt $rows.Count; $r++) {{
+    for ($c = 0; $c -lt $headers.Count; $c++) {{
+        $w = [int]($tg.MeasureString($rows[$r][$c], $font).Width) + 20
+        if ($w -gt $colW[$c]) {{ $colW[$c] = $w }}
+    }}
+}}
+$tg.Dispose(); $tmp.Dispose()
+
+$cellH  = 24
+$totalW = ($colW | Measure-Object -Sum).Sum
+$totalH = ($rows.Count + 1) * $cellH + 40
+
+$bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
+$g   = [System.Drawing.Graphics]::FromImage($bmp)
+$g.Clear([System.Drawing.Color]::White)
+$g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+
+$sf = New-Object System.Drawing.StringFormat
+$sf.Alignment     = [System.Drawing.StringAlignment]::Center
+$sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+# Title
+$titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
+$g.DrawString('Hotspot KPI Table', $titleFont, $titleBrush, 5, 8)
+
+# Header row
+$y = 34; $x = 0
+$hdrBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
+$hdrFg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+for ($c = 0; $c -lt $headers.Count; $c++) {{
+    $g.FillRectangle($hdrBg, $x, $y, $colW[$c], $cellH)
+    $g.DrawRectangle([System.Drawing.Pens]::DarkGray, $x, $y, $colW[$c], $cellH)
+    $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+    $g.DrawString($headers[$c], $boldFont, $hdrFg, $rect, $sf)
+    $x += $colW[$c]
+}}
+$y += $cellH
+
+# Data rows
+$peakBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 217, 102))
+$altBg  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(242, 242, 242))
+$whtBg  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+$blkFg  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
+
+for ($r = 0; $r -lt $rows.Count; $r++) {{
+    if      ($r -eq $peakIdx)   {{ $bg = $peakBg; $f = $boldFont }}
+    elseif  ($r % 2 -eq 0)     {{ $bg = $altBg;  $f = $font }}
+    else                        {{ $bg = $whtBg;  $f = $font }}
+    $x = 0
+    for ($c = 0; $c -lt $headers.Count; $c++) {{
+        $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
+        $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
+        $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+        $g.DrawString($rows[$r][$c], $f, $blkFg, $rect, $sf)
+        $x += $colW[$c]
+    }}
+    $y += $cellH
+}}
+
+$bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose(); $bmp.Dispose()
+Write-Host "Saved: $outPath"
+"""
+            ps_file = img_path + '.ps1'
+            try:
+                with open(ps_file, 'w', encoding='utf-8') as f:
+                    f.write(ps_script)
+                proc = subprocess.run(
+                    ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
+                )
+                if proc.returncode != 0:
+                    print(f"[_save_table_image] PS error: {proc.stderr.decode(errors='replace').strip()}")
+                return img_path if os.path.exists(img_path) else ""
+            finally:
+                try:
+                    os.remove(ps_file)
+                except OSError:
+                    pass
         except Exception as e:
-            print(f"[_save_table_html] {e}")
+            print(f"[_save_table_image] {e}")
+            return ""
             return ""
 
     # ── Add mapping & direct analysis ──
