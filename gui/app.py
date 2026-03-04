@@ -1675,10 +1675,6 @@ Write-Host "Saved: $outPath"
                                    message="Max Value is empty. Click Read first.", parent=self)
             return
 
-        # Compare: peak_value vs selected material's effective allowable
-        a = self.orchestrator.analyzer.analyze_direct(
-            self._peak_value, self._entity_id, part
-        )
         # Compare peak_value against ALL parts in database → PNG table
         dtype = self.type_var.get()
         unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
