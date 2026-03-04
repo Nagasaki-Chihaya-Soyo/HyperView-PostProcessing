@@ -1448,7 +1448,7 @@ Write-Host "Saved: $outPath"
 """
             ps_file = img_path + '.ps1'
             try:
-                with open(ps_file, 'w', encoding='utf-8') as f:
+                with open(ps_file, 'w', encoding='utf-8-sig') as f:
                     f.write(ps_script)
                 proc = subprocess.run(
                     ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
@@ -1612,7 +1612,7 @@ Write-Host "Saved: $outPath"
 """
         ps_file = img_path + '.ps1'
         try:
-            with open(ps_file, 'w', encoding='utf-8') as f:
+            with open(ps_file, 'w', encoding='utf-8-sig') as f:
                 f.write(ps_script)
             proc = subprocess.run(
                 ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
@@ -2045,12 +2045,14 @@ class CompareOptionDialog(tk.Toplevel):
         )
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html)
-        print(f"[analysis HTML] {html_path}")
+        print(f"[analysis HTML] OK → {html_path}")
 
         # ── 2. PNG via PowerShell System.Drawing ──
         png = self._save_analysis_image(report_rows, img_path)
         if png:
-            print(f"[analysis PNG]  {png}")
+            print(f"[analysis PNG]  OK → {png}")
+        else:
+            print("[analysis PNG]  FAILED — check PS error above")
 
     @staticmethod
     def _save_analysis_image(report_rows, img_path):
@@ -2157,7 +2159,7 @@ Write-Host "Saved: $outPath"
 """
         ps_file = img_path + '.ps1'
         try:
-            with open(ps_file, 'w', encoding='utf-8') as f:
+            with open(ps_file, 'w', encoding='utf-8-sig') as f:
                 f.write(ps_script)
             proc = subprocess.run(
                 ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
