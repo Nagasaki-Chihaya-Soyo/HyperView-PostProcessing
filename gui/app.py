@@ -1527,8 +1527,8 @@ Write-Host "Saved: $outPath"
         ps_script = f"""
 Add-Type -AssemblyName System.Drawing
 $d       = Get-Content -Path '{data_ps}' -Raw -Encoding UTF8 | ConvertFrom-Json
-$headers = $d.headers
-$rows    = $d.rows
+$headers = @($d.headers)
+$rows    = @($d.rows)
 $nCols   = {n_cols}
 $outPath = '{img_ps}'
 $font      = New-Object System.Drawing.Font('Arial', 9)
@@ -1541,8 +1541,9 @@ foreach ($h in $headers) {{
     $colW += [int]($tg.MeasureString($h, $boldFont).Width) + 20
 }}
 for ($r = 0; $r -lt $rows.Count; $r++) {{
+    $cells = @($rows[$r].cells)
     for ($c = 0; $c -lt $nCols; $c++) {{
-        $w = [int]($tg.MeasureString($rows[$r].cells[$c], $font).Width) + 20
+        $w = [int]($tg.MeasureString($cells[$c], $font).Width) + 20
         if ($w -gt $colW[$c]) {{ $colW[$c] = $w }}
     }}
 }}
@@ -1580,12 +1581,13 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
     if ($code -eq 2) {{ $bg = $yellowBg; $f = $boldFont }}
     elseif ($code -eq 1) {{ $bg = $redBg; $f = $font }}
     else {{ $bg = $greenBg; $f = $font }}
+    $cells = @($rows[$r].cells)
     $x = 0
     for ($c = 0; $c -lt $nCols; $c++) {{
         $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
         $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
         $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
-        $g.DrawString($rows[$r].cells[$c], $f, $blkFg, $rect, $sf)
+        $g.DrawString($cells[$c], $f, $blkFg, $rect, $sf)
         $x += $colW[$c]
     }}
     $y += $cellH
@@ -2032,15 +2034,32 @@ class CompareOptionDialog(tk.Toplevel):
         print(f"[analysis HTML] OK → {html_path}")
 
         # ── 2. PNG via PowerShell System.Drawing ──
-        png = self._save_analysis_image(report_rows, img_path)
+        png, ps_err = self._save_analysis_image(report_rows, img_path)
         if png:
             print(f"[analysis PNG]  OK → {png}")
         else:
-            print("[analysis PNG]  FAILED — check PS error above")
+            print("[analysis PNG]  FAILED")
+
+        # ── 3. Append paths to Analysis Result box ──
+        self._result_text.config(state=tk.NORMAL)
+        self._result_text.insert(tk.END, f"\n  HTML: {html_path}\n", 'dim')
+        if png:
+            self._result_text.insert(tk.END, f"  PNG:  {png}\n", 'dim')
+        else:
+            self._result_text.insert(tk.END, "  PNG:  export failed\n", 'fail')
+        self._result_text.config(state=tk.DISABLED)
+
+        if ps_err:
+            messagebox.showerror(
+                title="PNG Export Failed",
+                message=f"PowerShell error:\n\n{ps_err}",
+                parent=self,
+            )
 
     @staticmethod
     def _save_analysis_image(report_rows, img_path):
         """Render analysis comparison table to PNG.
+        Returns (img_path_or_empty, error_str_or_empty).
         Data (including Chinese) is written to a JSON file (utf-8-sig).
         PS script is pure ASCII and reads the JSON at runtime.
         """
@@ -2082,8 +2101,8 @@ class CompareOptionDialog(tk.Toplevel):
         ps_script = f"""
 Add-Type -AssemblyName System.Drawing
 $d       = Get-Content -Path '{data_ps}' -Raw -Encoding UTF8 | ConvertFrom-Json
-$headers = $d.headers
-$rows    = $d.rows
+$headers = @($d.headers)
+$rows    = @($d.rows)
 $nCols   = {n_cols}
 $outPath = '{img_ps}'
 $font      = New-Object System.Drawing.Font('Arial', 9)
@@ -2096,8 +2115,9 @@ foreach ($h in $headers) {{
     $colW += [int]($tg.MeasureString($h, $boldFont).Width) + 24
 }}
 for ($r = 0; $r -lt $rows.Count; $r++) {{
+    $cells = @($rows[$r].cells)
     for ($c = 0; $c -lt $nCols; $c++) {{
-        $w = [int]($tg.MeasureString($rows[$r].cells[$c], $font).Width) + 24
+        $w = [int]($tg.MeasureString($cells[$c], $font).Width) + 24
         if ($w -gt $colW[$c]) {{ $colW[$c] = $w }}
     }}
 }}
@@ -2130,12 +2150,13 @@ $redBg   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb
 $blkFg   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
 for ($r = 0; $r -lt $rows.Count; $r++) {{
     if ([int]$rows[$r].color -eq 1) {{ $bg = $redBg }} else {{ $bg = $greenBg }}
+    $cells = @($rows[$r].cells)
     $x = 0
     for ($c = 0; $c -lt $nCols; $c++) {{
         $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
         $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
         $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
-        $g.DrawString($rows[$r].cells[$c], $font, $blkFg, $rect, $sf)
+        $g.DrawString($cells[$c], $font, $blkFg, $rect, $sf)
         $x += $colW[$c]
     }}
     $y += $cellH
@@ -2144,6 +2165,7 @@ $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host 'Saved'
 """
+        err_msg = ""
         try:
             with open(ps_file, 'w', encoding='ascii') as f:
                 f.write(ps_script)
@@ -2152,12 +2174,14 @@ Write-Host 'Saved'
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
             )
             if proc.returncode != 0:
-                print(f"[_save_analysis_image] PS error: "
-                      f"{proc.stderr.decode(errors='replace').strip()}")
-            return img_path if os.path.exists(img_path) else ""
+                err_msg = proc.stderr.decode(errors='replace').strip()
+                print(f"[_save_analysis_image] PS error:\n{err_msg}")
+            path = img_path if os.path.exists(img_path) else ""
+            return path, err_msg
         except Exception as e:
-            print(f"[_save_analysis_image] {e}")
-            return ""
+            err_msg = str(e)
+            print(f"[_save_analysis_image] {err_msg}")
+            return "", err_msg
         finally:
             for path in [ps_file, data_file]:
                 try:
