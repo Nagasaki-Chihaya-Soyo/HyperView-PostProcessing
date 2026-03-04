@@ -1469,76 +1469,71 @@ Write-Host "Saved: $outPath"
     @staticmethod
     def _save_comparison_image(peak_value: float, unit: str,
                                parts: list, selected_part_no: str = "") -> str:
-        """Generate a PNG that compares peak_value against every part in the database.
-
-        Row colours:
-          yellow  (#FFD966) – the material the user selected (bold)
-          red     (#FFC7CE) – peak exceeds this material's effective allowable
-          green   (#C6EFCE) – peak is within this material's effective allowable
+        """Generate a PNG comparing peak_value against every part.
+        Data is written to a JSON file (utf-8-sig); PS script is pure ASCII.
+        Row colours: yellow=selected, red=exceeded, green=ok.
         """
-        import subprocess, os, datetime
+        import subprocess, os, datetime, json
 
         if not parts:
             return ""
 
-        def ps_str(s):
-            return "'" + str(s).replace("'", "''").replace('\r', '').replace('\n', ' ') + "'"
-
-        # Build comparison rows
-        col_keys = ('part_no', 'name', 'allowable_vm', 'safety_factor',
-                    'effective', 'peak', 'result', 'margin')
-        headers = ['编号', '材料名称',
-                   f'许用值({unit})', '安全系数',
-                   f'有效许用值({unit})', f'峰值({unit})',
-                   '比较结果', f'差值({unit})']
-
-        row_lines = []
-        for idx, p in enumerate(parts):
-            sf = p.get('safety_factor') or 1.0
-            eff = p['allowable_vm'] / sf
-            exceeded = peak_value > eff
-            margin = eff - peak_value
-            is_selected = (str(p['part_no']) == str(selected_part_no))
-            # color code: 2=yellow(selected), 1=red(exceeded), 0=green(ok)
-            color = 2 if is_selected else (1 if exceeded else 0)
-            cells_ps = ', '.join([
-                ps_str(str(idx + 1)),
-                ps_str(p.get('name') or '—'),
-                ps_str(f"{p['allowable_vm']:.2f}"),
-                ps_str(f"{sf:.2f}"),
-                ps_str(f"{eff:.2f}"),
-                ps_str(f"{peak_value:.4f}"),
-                ps_str('超出' if exceeded else '未超出'),
-                ps_str(f"{margin:.2f}"),
-            ])
-            row_lines.append(f"    @({cells_ps}, {color})")
-
-        header_ps = '@(' + ', '.join(ps_str(h) for h in headers) + ')'
-        rows_ps = '@(\n' + ',\n'.join(row_lines) + '\n)'
-
-        # Save location: project root (parent of gui/)
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        img_path = os.path.join(app_dir, f'comparison_{ts}.png')
+        img_path  = os.path.join(app_dir, f'comparison_{ts}.png')
+        ps_file   = img_path + '.ps1'
+        data_file = img_path + '.json'
 
-        out_ps = ps_str(img_path)[1:-1]
-        peak_label_ps = ps_str(f"峰值: {peak_value:.4f} {unit}")[1:-1]
-        ncols = len(headers)
+        rows_data = []
+        for idx, p in enumerate(parts):
+            sf          = p.get('safety_factor') or 1.0
+            eff         = p['allowable_vm'] / sf
+            exceeded    = peak_value > eff
+            margin      = eff - peak_value
+            is_selected = str(p['part_no']) == str(selected_part_no)
+            color = 2 if is_selected else (1 if exceeded else 0)
+            rows_data.append({
+                'cells': [
+                    str(idx + 1),
+                    p.get('name') or '-',
+                    f"{p['allowable_vm']:.2f}",
+                    f"{sf:.2f}",
+                    f"{eff:.2f}",
+                    f"{peak_value:.4f}",
+                    '\u8d85\u51fa' if exceeded else '\u672a\u8d85\u51fa',
+                    f"{margin:.2f}",
+                ],
+                'color': color,
+            })
+
+        data = {
+            'title':    '\u5cf0\u503c\u4e0e\u6750\u6599\u8bb8\u7528\u503c\u6bd4\u8f83',
+            'subtitle': f'\u5cf0\u503c: {peak_value:.4f} {unit}',
+            'headers':  [
+                '\u7f16\u53f7', '\u6750\u6599\u540d\u79f0',
+                f'\u8bb8\u7528\u503c({unit})', '\u5b89\u5168\u7cfb\u6570',
+                f'\u6709\u6548\u8bb8\u7528\u503c({unit})', f'\u5cf0\u503c({unit})',
+                '\u6bd4\u8f83\u7ed3\u679c', f'\u5dee\u503c({unit})',
+            ],
+            'rows': rows_data,
+        }
+        with open(data_file, 'w', encoding='utf-8-sig') as f:
+            json.dump(data, f, ensure_ascii=False)
+
+        n_cols  = len(data['headers'])
+        img_ps  = img_path.replace("'", "''")
+        data_ps = data_file.replace("'", "''")
 
         ps_script = f"""
 Add-Type -AssemblyName System.Drawing
-
-$headers   = {header_ps}
-$rows      = {rows_ps}
-$peakLabel = '{peak_label_ps}'
-$outPath   = '{out_ps}'
-$nCols     = {ncols}
-
+$d       = Get-Content -Path '{data_ps}' -Raw -Encoding UTF8 | ConvertFrom-Json
+$headers = $d.headers
+$rows    = $d.rows
+$nCols   = {n_cols}
+$outPath = '{img_ps}'
 $font      = New-Object System.Drawing.Font('Arial', 9)
 $boldFont  = New-Object System.Drawing.Font('Arial', 9,  [System.Drawing.FontStyle]::Bold)
 $titleFont = New-Object System.Drawing.Font('Arial', 11, [System.Drawing.FontStyle]::Bold)
-
-# Measure column widths from content
 $tmp = New-Object System.Drawing.Bitmap(1, 1)
 $tg  = [System.Drawing.Graphics]::FromImage($tmp)
 $colW = @()
@@ -1547,31 +1542,24 @@ foreach ($h in $headers) {{
 }}
 for ($r = 0; $r -lt $rows.Count; $r++) {{
     for ($c = 0; $c -lt $nCols; $c++) {{
-        $w = [int]($tg.MeasureString($rows[$r][$c], $font).Width) + 20
+        $w = [int]($tg.MeasureString($rows[$r].cells[$c], $font).Width) + 20
         if ($w -gt $colW[$c]) {{ $colW[$c] = $w }}
     }}
 }}
 $tg.Dispose(); $tmp.Dispose()
-
 $cellH  = 24
 $totalW = ($colW | Measure-Object -Sum).Sum
 $totalH = ($rows.Count + 1) * $cellH + 50
-
 $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
 $g   = [System.Drawing.Graphics]::FromImage($bmp)
 $g.Clear([System.Drawing.Color]::White)
 $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-
 $sf = New-Object System.Drawing.StringFormat
 $sf.Alignment     = [System.Drawing.StringAlignment]::Center
 $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-
-# Title + peak label
 $titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
-$g.DrawString('峰值与材料许用值比较', $titleFont, $titleBrush, 5, 5)
-$g.DrawString($peakLabel, $font, $titleBrush, 5, 28)
-
-# Header row
+$g.DrawString($d.title,    $titleFont, $titleBrush, 5, 5)
+$g.DrawString($d.subtitle, $font,      $titleBrush, 5, 28)
 $y = 50; $x = 0
 $hdrBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
 $hdrFg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
@@ -1583,36 +1571,31 @@ for ($c = 0; $c -lt $nCols; $c++) {{
     $x += $colW[$c]
 }}
 $y += $cellH
-
-# Data rows
 $greenBg  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(198, 239, 206))
 $redBg    = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 199, 206))
 $yellowBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 217, 102))
 $blkFg    = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
-
 for ($r = 0; $r -lt $rows.Count; $r++) {{
-    $code = [int]$rows[$r][$nCols]
-    if      ($code -eq 2) {{ $bg = $yellowBg; $f = $boldFont }}
-    elseif  ($code -eq 1) {{ $bg = $redBg;    $f = $font }}
-    else                  {{ $bg = $greenBg;  $f = $font }}
+    $code = [int]$rows[$r].color
+    if ($code -eq 2) {{ $bg = $yellowBg; $f = $boldFont }}
+    elseif ($code -eq 1) {{ $bg = $redBg; $f = $font }}
+    else {{ $bg = $greenBg; $f = $font }}
     $x = 0
     for ($c = 0; $c -lt $nCols; $c++) {{
         $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
         $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
         $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
-        $g.DrawString($rows[$r][$c], $f, $blkFg, $rect, $sf)
+        $g.DrawString($rows[$r].cells[$c], $f, $blkFg, $rect, $sf)
         $x += $colW[$c]
     }}
     $y += $cellH
 }}
-
 $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
-Write-Host "Saved: $outPath"
+Write-Host 'Saved'
 """
-        ps_file = img_path + '.ps1'
         try:
-            with open(ps_file, 'w', encoding='utf-8-sig') as f:
+            with open(ps_file, 'w', encoding='ascii') as f:
                 f.write(ps_script)
             proc = subprocess.run(
                 ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
@@ -1626,10 +1609,11 @@ Write-Host "Saved: $outPath"
             print(f"[_save_comparison_image] {e}")
             return ""
         finally:
-            try:
-                os.remove(ps_file)
-            except OSError:
-                pass
+            for path in [ps_file, data_file]:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
     # ── Add mapping & direct analysis ──
 
@@ -2056,43 +2040,55 @@ class CompareOptionDialog(tk.Toplevel):
 
     @staticmethod
     def _save_analysis_image(report_rows, img_path):
-        """Render analysis comparison table to PNG using PowerShell System.Drawing."""
-        import subprocess
+        """Render analysis comparison table to PNG.
+        Data (including Chinese) is written to a JSON file (utf-8-sig).
+        PS script is pure ASCII and reads the JSON at runtime.
+        """
+        import subprocess, json
 
-        def ps_str(s):
-            return "'" + str(s).replace("'", "''").replace('\r', '').replace('\n', ' ') + "'"
+        ps_file   = img_path + '.ps1'
+        data_file = img_path + '.json'
 
-        headers = ['材料名称', '允许值', '安全因子', '实际值', '超出/不足占比']
-        n_cols = len(headers)
+        data = {
+            'title':   '\u5206\u6790\u7ed3\u679c',
+            'headers': [
+                '\u6750\u6599\u540d\u79f0',
+                '\u5141\u8bb8\u503c',
+                '\u5b89\u5168\u56e0\u5b50',
+                '\u5b9e\u9645\u503c',
+                '\u8d85\u51fa/\u4e0d\u8db3\u5360\u6bd4',
+            ],
+            'rows': [
+                {
+                    'cells': [
+                        r['material'],
+                        f"{r['allowable_vm']:.2f}",
+                        f"{r['safety_factor']:.2f}",
+                        f"{r['value']:.4f} {r['unit']}",
+                        r['pct_str'],
+                    ],
+                    'color': 0 if r['passed'] else 1,
+                }
+                for r in report_rows
+            ],
+        }
+        with open(data_file, 'w', encoding='utf-8-sig') as f:
+            json.dump(data, f, ensure_ascii=False)
 
-        row_lines = []
-        for r in report_rows:
-            color_code = 0 if r['passed'] else 1   # 0=green, 1=red
-            cells = ', '.join([
-                ps_str(r['material']),
-                ps_str(f"{r['allowable_vm']:.2f}"),
-                ps_str(f"{r['safety_factor']:.2f}"),
-                ps_str(f"{r['value']:.4f} {r['unit']}"),
-                ps_str(r['pct_str']),
-            ])
-            row_lines.append(f"    @({cells}, {color_code})")
-
-        header_ps = '@(' + ', '.join(ps_str(h) for h in headers) + ')'
-        rows_ps    = '@(\n' + ',\n'.join(row_lines) + '\n)'
-        out_ps     = ps_str(img_path)[1:-1]
+        n_cols  = len(data['headers'])
+        img_ps  = img_path.replace("'", "''")
+        data_ps = data_file.replace("'", "''")
 
         ps_script = f"""
 Add-Type -AssemblyName System.Drawing
-
-$headers = {header_ps}
-$rows    = {rows_ps}
+$d       = Get-Content -Path '{data_ps}' -Raw -Encoding UTF8 | ConvertFrom-Json
+$headers = $d.headers
+$rows    = $d.rows
 $nCols   = {n_cols}
-$outPath = '{out_ps}'
-
+$outPath = '{img_ps}'
 $font      = New-Object System.Drawing.Font('Arial', 9)
 $boldFont  = New-Object System.Drawing.Font('Arial', 9,  [System.Drawing.FontStyle]::Bold)
 $titleFont = New-Object System.Drawing.Font('Arial', 11, [System.Drawing.FontStyle]::Bold)
-
 $tmp = New-Object System.Drawing.Bitmap(1, 1)
 $tg  = [System.Drawing.Graphics]::FromImage($tmp)
 $colW = @()
@@ -2101,28 +2097,23 @@ foreach ($h in $headers) {{
 }}
 for ($r = 0; $r -lt $rows.Count; $r++) {{
     for ($c = 0; $c -lt $nCols; $c++) {{
-        $w = [int]($tg.MeasureString($rows[$r][$c], $font).Width) + 24
+        $w = [int]($tg.MeasureString($rows[$r].cells[$c], $font).Width) + 24
         if ($w -gt $colW[$c]) {{ $colW[$c] = $w }}
     }}
 }}
 $tg.Dispose(); $tmp.Dispose()
-
 $cellH  = 26
 $totalW = ($colW | Measure-Object -Sum).Sum
 $totalH = ($rows.Count + 1) * $cellH + 46
-
 $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
 $g   = [System.Drawing.Graphics]::FromImage($bmp)
 $g.Clear([System.Drawing.Color]::White)
 $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-
 $sf = New-Object System.Drawing.StringFormat
 $sf.Alignment     = [System.Drawing.StringAlignment]::Center
 $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-
 $titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
-$g.DrawString('分析结果', $titleFont, $titleBrush, 5, 8)
-
+$g.DrawString($d.title, $titleFont, $titleBrush, 5, 8)
 $y = 38; $x = 0
 $hdrBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
 $hdrFg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
@@ -2134,32 +2125,27 @@ for ($c = 0; $c -lt $nCols; $c++) {{
     $x += $colW[$c]
 }}
 $y += $cellH
-
 $greenBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(198, 239, 206))
 $redBg   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 199, 206))
 $blkFg   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
-
 for ($r = 0; $r -lt $rows.Count; $r++) {{
-    $code = [int]$rows[$r][$nCols]
-    $bg   = if ($code -eq 1) {{ $redBg }} else {{ $greenBg }}
+    if ([int]$rows[$r].color -eq 1) {{ $bg = $redBg }} else {{ $bg = $greenBg }}
     $x = 0
     for ($c = 0; $c -lt $nCols; $c++) {{
-        $g.FillRectangle($bg,  $x, $y, $colW[$c], $cellH)
+        $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
         $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
         $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
-        $g.DrawString($rows[$r][$c], $font, $blkFg, $rect, $sf)
+        $g.DrawString($rows[$r].cells[$c], $font, $blkFg, $rect, $sf)
         $x += $colW[$c]
     }}
     $y += $cellH
 }}
-
 $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
-Write-Host "Saved: $outPath"
+Write-Host 'Saved'
 """
-        ps_file = img_path + '.ps1'
         try:
-            with open(ps_file, 'w', encoding='utf-8-sig') as f:
+            with open(ps_file, 'w', encoding='ascii') as f:
                 f.write(ps_script)
             proc = subprocess.run(
                 ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
@@ -2173,10 +2159,11 @@ Write-Host "Saved: $outPath"
             print(f"[_save_analysis_image] {e}")
             return ""
         finally:
-            try:
-                os.remove(ps_file)
-            except OSError:
-                pass
+            for path in [ps_file, data_file]:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
 class AnalysisDialog(tk.Toplevel):
