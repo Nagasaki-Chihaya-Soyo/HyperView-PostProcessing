@@ -52,7 +52,6 @@ class Application(tk.Tk):
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         self._create_run_tab()
         self._create_parts_tab()
-        self._create_mapping_tab()
         self._create_log_tab()
 
     def _create_status_bar(self):
@@ -436,69 +435,6 @@ Report Path:{result['report_path']}
             self.db.export_parts_csv(path)
             messagebox.showinfo(title="Complete", message=f"Export Files {path} Successfully")
 
-    def _create_mapping_tab(self):
-        tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="Map")
-        toolbar = ttk.Frame(tab)
-        toolbar.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(toolbar, text="Add", command=self._add_mapping).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Delete", command=self._delete_mapping).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Refresh", command=self._refresh_mappings).pack(side=tk.RIGHT, padx=2)
-
-        columns = ('map_type', 'map_value', 'part_no')
-        self.mapping_tree = ttk.Treeview(tab, columns=columns, show='headings',
-                                         selectmode='browse')
-        for col, text, w in [
-            ('map_type',  'Map Type',    120),
-            ('map_value', 'Map Value',   280),
-            ('part_no',   'Part Number', 160),
-        ]:
-            self.mapping_tree.heading(col, text=text, anchor='center')
-            self.mapping_tree.column(col, width=w, minwidth=60, anchor='center')
-
-        self.mapping_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
-        self.mapping_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
-
-        scrollbar = ttk.Scrollbar(tab, orient=tk.VERTICAL, command=self.mapping_tree.yview)
-        self.mapping_tree.configure(yscrollcommand=scrollbar.set)
-
-        self.mapping_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0), pady=10)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=10)
-
-        self._refresh_mappings()
-
-    def _refresh_mappings(self):
-        for item in self.mapping_tree.get_children():
-            self.mapping_tree.delete(item)
-        mappings = self.db.get_all_mappings()
-        for i, m in enumerate(mappings):
-            tag = 'odd' if i % 2 else 'even'
-            self.mapping_tree.insert('', tk.END, values=(
-                m['map_type'], m['map_value'], m['part_no']
-            ), tags=(tag,))
-
-    def _add_mapping(self):
-        parts = self.db.get_all_parts()
-        if not parts:
-            messagebox.showwarning(title="WARNING", message="Add Parts Specification")
-            return
-        dialog = MappingDialog(self, title="Add Map", parts=parts)
-
-        if dialog.result:
-            self.db.add_mapping(**dialog.result)
-            self._refresh_mappings()
-
-    def _delete_mapping(self):
-        selection = self.mapping_tree.selection()
-        if not selection:
-            messagebox.showwarning(title="WARNING", message="Select Map First")
-            return
-        if messagebox.askyesno(title="Confirm", message="Are you sure you want to delete the selected parts?This action can not be undone"):
-            for sel in selection:
-                values = self.mapping_tree.item(sel)['values']
-                self.db.delete_mapping(values[0], values[1])
-            self._refresh_mappings()
-
     def _create_log_tab(self):
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="Logs")
@@ -712,58 +648,6 @@ class PartDialog(tk.Toplevel):
             self.destroy()
         except ValueError as e:
             messagebox.showerror(title="Error", message=str(e))
-
-
-class MappingDialog(tk.Toplevel):
-
-    def __init__(self, parent, title, parts):
-        super().__init__(parent)
-        self.title(title)
-        self.geometry("400x200")
-        self.resizable(width=False, height=False)
-        self.transient(parent)
-        self.grab_set()
-
-        self.result = None
-        self.parts = parts
-        self._create_ui()
-        self.wait_window()
-
-    def _create_ui(self):
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(frame, text="Mapping Type").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.type_combo = ttk.Combobox(frame, values=['component', 'part', 'property'], width=27)
-        self.type_combo.grid(row=0, column=1, pady=5)
-        self.type_combo.current(0)
-
-        ttk.Label(frame, text="Mapping Value:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.value_entry = ttk.Entry(frame, width=30)
-        self.value_entry.grid(row=1, column=1, pady=5)
-
-        ttk.Label(frame, text="Part Number:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        part_nos = [p['part_no'] for p in self.parts]
-        self.part_combo = ttk.Combobox(frame, values=part_nos, width=27)
-        self.part_combo.grid(row=2, column=1, pady=5)
-
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=20)
-        ttk.Button(btn_frame, text="Confirm", command=self._ok).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
-
-    def _ok(self):
-        map_type = self.type_combo.get()
-        map_value = self.value_entry.get().strip()
-        part_no = self.part_combo.get().strip()
-        if not map_value or not part_no:
-            messagebox.showerror(title="Error", message="Enter Full Details")
-            return
-        self.result = {
-            'map_type': map_type,
-            'map_value': map_value,
-            'part_no': part_no
-        }
-        self.destroy()
 
 
 class ContourOptionDialog(tk.Toplevel):
@@ -1153,8 +1037,7 @@ class ReadMaxValueDialog(tk.Toplevel):
     CATEGORIES = ContourOptionDialog.CATEGORIES
     COMPONENTS = ContourOptionDialog.COMPONENTS
 
-    def __init__(self, parent, orchestrator, db, model_path, result_path="",
-                 on_mapping_added=None):
+    def __init__(self, parent, orchestrator, db, model_path, result_path=""):
         super().__init__(parent)
         self.title("Read Max Value")
         self.geometry("560x680")
@@ -1167,7 +1050,6 @@ class ReadMaxValueDialog(tk.Toplevel):
         self.db = db
         self.model_path = model_path
         self.result_path = result_path
-        self.on_mapping_added = on_mapping_added
         self._hotspot_counter = 0
         self._peak_value = None
         self._entity_id = ""
@@ -1268,7 +1150,7 @@ class ReadMaxValueDialog(tk.Toplevel):
         # ── Bottom buttons ──
         btn_frame = ttk.Frame(self, padding=(10, 6))
         btn_frame.pack(fill=tk.X)
-        self._add_run_btn = ttk.Button(btn_frame, text="Add to Mapping & Run Analysis",
+        self._add_run_btn = ttk.Button(btn_frame, text="Run Analysis",
                                        command=self._add_and_run, width=30,
                                        state=tk.DISABLED)
         self._add_run_btn.pack(side=tk.LEFT, padx=(0, 6))
@@ -1412,7 +1294,7 @@ class ReadMaxValueDialog(tk.Toplevel):
         if img_path:
             print(f"[table image] {img_path}")
 
-        self._status_var.set("Done. Select material and click Add to Mapping & Run Analysis.")
+        self._status_var.set("Done. Select material and click Run Analysis.")
         self._add_run_btn.config(state=tk.NORMAL)
 
     @staticmethod
@@ -1783,12 +1665,7 @@ Write-Host "Saved: $outPath"
                                    message="Max Value is empty. Click Read first.", parent=self)
             return
 
-        # Step 1 — match: record the mapping (material type, max value → part)
-        self.db.add_mapping("material", map_value, part['part_no'])
-        if self.on_mapping_added:
-            self.on_mapping_added()
-
-        # Step 2 — compare: peak_value vs matched material's effective allowable
+        # Compare: peak_value vs selected material's effective allowable
         a = self.orchestrator.analyzer.analyze_direct(
             self._peak_value, self._entity_id, part
         )
@@ -1893,43 +1770,6 @@ class CompareOptionDialog(tk.Toplevel):
 
         self._refresh_std()
 
-        # ── Mapping Configuration (interactive mini-map) ──
-        map_outer = ttk.LabelFrame(self, text="Mapping Configuration", padding=8)
-        map_outer.pack(fill=tk.X, padx=10, pady=4)
-
-        map_toolbar = ttk.Frame(map_outer)
-        map_toolbar.pack(fill=tk.X, pady=(0, 4))
-        ttk.Button(map_toolbar, text="Add",    width=6,
-                   command=self._map_add).pack(side=tk.LEFT, padx=2)
-        ttk.Button(map_toolbar, text="Delete", width=6,
-                   command=self._map_delete).pack(side=tk.LEFT, padx=2)
-        ttk.Button(map_toolbar, text="Refresh", width=8,
-                   command=self._refresh_map).pack(side=tk.RIGHT, padx=2)
-
-        map_tree_frame = ttk.Frame(map_outer)
-        map_tree_frame.pack(fill=tk.BOTH, expand=True)
-
-        map_cols = ('map_type', 'map_value', 'part_no')
-        self._map_tree = ttk.Treeview(map_tree_frame, columns=map_cols, show='headings',
-                                      selectmode='browse', height=4)
-        for col, text, w in [
-            ('map_type',  'Map Type',    100),
-            ('map_value', 'Map Value',   220),
-            ('part_no',   'Part Number', 110),
-        ]:
-            self._map_tree.heading(col, text=text, anchor='center')
-            self._map_tree.column(col, width=w, minwidth=50, anchor='center')
-        self._map_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
-        self._map_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
-
-        map_sb = ttk.Scrollbar(map_tree_frame, orient=tk.VERTICAL,
-                               command=self._map_tree.yview)
-        self._map_tree.configure(yscrollcommand=map_sb.set)
-        self._map_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        map_sb.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self._refresh_map()
-
         # ── Analysis Result ──
         result_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
         result_frame.pack(fill=tk.X, padx=10, pady=4)
@@ -1951,9 +1791,7 @@ class CompareOptionDialog(tk.Toplevel):
         # ── Buttons ──
         btn_frame = ttk.Frame(self, padding=(10, 6))
         btn_frame.pack(fill=tk.X)
-        parts = self.db.get_all_parts()
-        mappings = self.db.get_all_mappings()
-        can_run = bool(parts) and bool(mappings)
+        can_run = bool(self.db.get_all_parts())
         self._run_btn = ttk.Button(btn_frame, text="Run Analysis",
                                    command=self._run, width=14,
                                    state=tk.NORMAL if can_run else tk.DISABLED)
@@ -1964,8 +1802,7 @@ class CompareOptionDialog(tk.Toplevel):
                    command=self.destroy, width=10).pack(side=tk.LEFT)
 
         if not can_run:
-            hint = "Configure standards and mappings above, then click Run Analysis."
-            self._set_result("  " + hint, 'dim')
+            self._set_result("  Add material standards above, then click Run Analysis.", 'dim')
 
     # ── Standards helpers ──
 
@@ -2027,7 +1864,6 @@ class CompareOptionDialog(tk.Toplevel):
             if remaining:
                 self.db.renumber_parts(remaining)
             self._refresh_std()
-            self._refresh_map()
             self._update_run_btn()
 
     def _std_import_csv(self):
@@ -2055,43 +1891,6 @@ class CompareOptionDialog(tk.Toplevel):
             messagebox.showinfo(title="Complete",
                                 message=f"Exported to {path} successfully", parent=self)
 
-    # ── Mapping helpers ──
-
-    def _refresh_map(self):
-        for item in self._map_tree.get_children():
-            self._map_tree.delete(item)
-        mappings = self.db.get_all_mappings()
-        for i, m in enumerate(mappings):
-            tag = 'odd' if i % 2 else 'even'
-            self._map_tree.insert('', tk.END, values=(
-                m['map_type'], m['map_value'], m['part_no']
-            ), tags=(tag,))
-
-    def _map_add(self):
-        parts = self.db.get_all_parts()
-        if not parts:
-            messagebox.showwarning(title="WARNING",
-                                   message="Add material standards first", parent=self)
-            return
-        dialog = MappingDialog(self, title="Add Mapping", parts=parts)
-        if dialog.result:
-            self.db.add_mapping(**dialog.result)
-            self._refresh_map()
-            self._update_run_btn()
-
-    def _map_delete(self):
-        sel = self._map_tree.selection()
-        if not sel:
-            messagebox.showwarning(title="WARNING", message="Select a mapping first", parent=self)
-            return
-        if messagebox.askyesno(title="Confirm",
-                               message="Delete selected mapping? This cannot be undone.",
-                               parent=self):
-            values = self._map_tree.item(sel[0])['values']
-            self.db.delete_mapping(values[0], values[1])
-            self._refresh_map()
-            self._update_run_btn()
-
     def _read_max_value(self):
         """Open ReadMaxValueDialog — plot contour, export hotspot CSV, compare to material."""
         ReadMaxValueDialog(
@@ -2100,16 +1899,13 @@ class CompareOptionDialog(tk.Toplevel):
             db=self.db,
             model_path=self.model_path,
             result_path=self.result_path,
-            on_mapping_added=lambda: (self._refresh_map(), self._update_run_btn()),
         )
 
     def _update_run_btn(self):
-        parts = self.db.get_all_parts()
-        mappings = self.db.get_all_mappings()
-        can_run = bool(parts) and bool(mappings)
+        can_run = bool(self.db.get_all_parts())
         self._run_btn.config(state=tk.NORMAL if can_run else tk.DISABLED)
         if not can_run:
-            self._set_result("  Configure standards and mappings above, then click Run Analysis.", 'dim')
+            self._set_result("  Add material standards above, then click Run Analysis.", 'dim')
 
     # ── Helpers ──
 
@@ -2158,7 +1954,7 @@ class CompareOptionDialog(tk.Toplevel):
             lines.append(f"  Margin       :  {a.margin:.2f} {unit}   "
                          f"Ratio={a.ratio:.2%}\n")
         else:
-            lines.append("  Part No.     :  Not matched — check mapping configuration\n")
+            lines.append("  Part No.     :  Not matched\n")
 
         lines.append(f"\n  {a.message}\n")
 

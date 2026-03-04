@@ -27,15 +27,6 @@ class DBStore:
                     notes TEXT
                 )
             ''')
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS mapping(
-                    map_type TEXT NOT NULL,
-                    map_value TEXT NOT NULL,
-                    part_no TEXT NOT NULL,
-                    PRIMARY KEY (map_type,map_value),
-                    FOREIGN KEY (part_no) REFERENCES parts(part_no)
-                )
-            ''')
             conn.commit()
 
     def get_next_part_no(self) -> str:
@@ -55,24 +46,20 @@ class DBStore:
         return '1' if max_no < 1 else str(max_no + 1)
 
     def renumber_parts(self, ordered_part_nos: List[str]) -> bool:
-        """按照给定顺序对所有零件从1开始重新编号，同步更新 mapping 表"""
+        """按照给定顺序对所有零件从1开始重新编号"""
         conn = self._get_conn()
-        conn.execute('PRAGMA foreign_keys = OFF')
         try:
             for i, old_no in enumerate(ordered_part_nos):
                 temp = f'__tmp_{i}__'
                 conn.execute('UPDATE parts SET part_no=? WHERE part_no=?', (temp, old_no))
-                conn.execute('UPDATE mapping SET part_no=? WHERE part_no=?', (temp, old_no))
             for i in range(len(ordered_part_nos)):
                 temp = f'__tmp_{i}__'
                 conn.execute('UPDATE parts SET part_no=? WHERE part_no=?', (str(i + 1), temp))
-                conn.execute('UPDATE mapping SET part_no=? WHERE part_no=?', (str(i + 1), temp))
             conn.commit()
         except Exception:
             conn.rollback()
             raise
         finally:
-            conn.execute('PRAGMA foreign_keys = ON')
             conn.close()
         return True
 
@@ -119,43 +106,6 @@ class DBStore:
             conn.execute('DELETE FROM parts WHERE part_no=?', (part_no,))
             conn.commit()
         return True
-
-    """Mapping操作"""
-
-    def get_all_mappings(self) -> List[Dict]:
-        with self._get_conn() as conn:
-            rows = conn.execute('SELECT * FROM mapping ORDER BY map_type,map_value').fetchall()
-            return [dict(r) for r in rows]
-
-    def add_mapping(self, map_type: str, map_value: str, part_no: str) -> bool:
-        if map_type not in ('component', 'part', 'property', 'material'):
-            return False
-        try:
-            with self._get_conn() as conn:
-                conn.execute('INSERT INTO mapping VALUES (?,?,?)', (map_type, map_value, part_no))
-                conn.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    def delete_mapping(self, map_type: str, map_value: str) -> bool:
-        with self._get_conn() as conn:
-            conn.execute('DELETE FROM mapping WHERE map_type=? AND map_value=?', (map_type, map_value))
-            conn.commit()
-        return True
-
-    def find_part_by_tags(self, tags: Dict[str, str]) -> Optional[Dict]:
-        priority = ['component', 'part', 'property']
-        with self._get_conn() as conn:
-            for map_type in priority:
-                if map_type in tags and tags[map_type]:
-                    row = conn.execute('''
-                        SELECT p.* FROM parts p JOIN mapping m ON p.part_no =m.part_no
-                        WHERE m.map_type=? AND m.map_value=?
-                    ''', (map_type, tags[map_type])).fetchone()
-                    if row:
-                        return dict(row)
-        return None
 
     def export_parts_csv(self, filepath: str):
         import csv
