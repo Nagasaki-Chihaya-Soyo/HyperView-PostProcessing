@@ -721,6 +721,7 @@ after 4000 listen
             return {
                 'success': True,
                 'analysis': analysis_result,
+                'peak_data': peak_data,
                 'report_path': report_path,
                 'run_dir': run_dir
             }

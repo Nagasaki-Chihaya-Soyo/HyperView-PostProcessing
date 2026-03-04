@@ -31,49 +31,20 @@ class Analyzer:
         peak_value = peak_data.get('value', 0)
         entity_id = peak_data.get('entity_id', 0)
         coords = tuple(peak_data.get('coords', [0, 0, 0]))
-        tags = peak_data.get('tags', {})
-        part = self.db.find_part_by_tags(tags)
-        if part is None:
-            return AnalysisResult(
-                peak_value=peak_value,
-                peak_entity_id=entity_id,
-                peak_coords=coords,
-                tags=tags,
-                part_no=None,
-                part_name=None,
-                allowable_vm=None,
-                safety_factor=None,
-                allowable=None,
-                passed=False,
-                margin=None,
-                ratio=None,
-                message="未找到匹配的标准值，请检查映射配置"
-            )
-
-        allowable_vm = part['allowable_vm']
-        safety_factor = part['safety_factor'] or 1.0
-        allowable = allowable_vm / safety_factor
-        passed = peak_value <= allowable
-        margin = allowable - peak_value
-        ratio = peak_value / allowable if allowable > 0 else float('inf')
-        if passed:
-            messages = f"通过-峰值{peak_value:.2f} MPa ≤ 许用值 {allowable:.2f} MPa 裕度为{margin:.2f} MPa"
-        else:
-            messages = f"未通过-峰值{peak_value:.2f} MPa > 许用值 {allowable:.2f} MPa 超出{-margin:.2f} MPa"
         return AnalysisResult(
             peak_value=peak_value,
             peak_entity_id=entity_id,
             peak_coords=coords,
-            tags=tags,
-            part_no=part['part_no'],
-            part_name=part.get('name', ''),
-            allowable_vm=allowable_vm,
-            safety_factor=safety_factor,
-            allowable=allowable,
-            passed=passed,
-            margin=margin,
-            ratio=ratio,
-            message=messages
+            tags={},
+            part_no=None,
+            part_name=None,
+            allowable_vm=None,
+            safety_factor=None,
+            allowable=None,
+            passed=False,
+            margin=None,
+            ratio=None,
+            message=f"Peak: {peak_value:.4f}",
         )
 
     def analyze_direct(self, peak_value: float, entity_id: Any, part: Dict) -> AnalysisResult:

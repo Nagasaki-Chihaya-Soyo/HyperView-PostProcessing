@@ -1685,6 +1685,7 @@ class CompareOptionDialog(tk.Toplevel):
         self.result_path = result_path
         self.on_complete = on_complete
         self._res_counter = 0
+        self._parts_data = []
 
         self._create_ui()
         self.wait_window()
@@ -1777,8 +1778,18 @@ class CompareOptionDialog(tk.Toplevel):
         self._progress = ttk.Progressbar(self, mode='indeterminate')
         # do not pack now; shown only while running
 
+        # ── Material selector ──
+        mat_frame = ttk.Frame(self, padding=(10, 4))
+        mat_frame.pack(fill=tk.X)
+        ttk.Label(mat_frame, text="Material:").pack(side=tk.LEFT, padx=(0, 6))
+        self._part_var = tk.StringVar()
+        self._part_cb = ttk.Combobox(mat_frame, textvariable=self._part_var,
+                                     state="readonly", width=38)
+        self._part_cb.pack(side=tk.LEFT)
+        self._refresh_parts()
+
         # ── Buttons ──
-        btn_frame = ttk.Frame(self, padding=(10, 6))
+        btn_frame = ttk.Frame(self, padding=(10, 4))
         btn_frame.pack(fill=tk.X)
         can_run = bool(self.db.get_all_parts())
         self._run_btn = ttk.Button(btn_frame, text="Run Analysis",
@@ -1799,6 +1810,18 @@ class CompareOptionDialog(tk.Toplevel):
         self._res_tree.insert('', tk.END, values=(
             self._res_counter, material, f"{value:.4f}", unit,
         ), tags=(tag,))
+
+    def _refresh_parts(self):
+        parts = self.db.get_all_parts()
+        self._parts_data = parts
+        opts = [
+            f"{p['part_no']}. {p['name'] or 'Unnamed'}  "
+            f"({p['allowable_vm']}/{p['safety_factor']} {p['units']})"
+            for p in parts
+        ]
+        self._part_cb['values'] = opts
+        if opts:
+            self._part_cb.current(0)
 
     # ── Standards helpers ──
 
@@ -1901,6 +1924,7 @@ class CompareOptionDialog(tk.Toplevel):
     def _update_run_btn(self):
         can_run = bool(self.db.get_all_parts())
         self._run_btn.config(state=tk.NORMAL if can_run else tk.DISABLED)
+        self._refresh_parts()
         if not can_run:
             self._set_result("  Add material standards above, then click Run Analysis.", 'dim')
 
@@ -1915,6 +1939,13 @@ class CompareOptionDialog(tk.Toplevel):
     # ── Analysis execution ──
 
     def _run(self):
+        sel_idx = self._part_cb.current()
+        if sel_idx < 0 or not self._parts_data:
+            messagebox.showwarning(title="WARNING",
+                                   message="Select a material standard first.", parent=self)
+            return
+        part = self._parts_data[sel_idx]
+
         self._run_btn.config(state=tk.DISABLED)
         self._progress.pack(fill=tk.X, padx=10, pady=(2, 0))
         self._progress.start(10)
@@ -1922,11 +1953,11 @@ class CompareOptionDialog(tk.Toplevel):
 
         def do_run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
-            self.after(0, lambda: self._on_done(result))
+            self.after(0, lambda: self._on_done(result, part))
 
         threading.Thread(target=do_run, daemon=True).start()
 
-    def _on_done(self, result):
+    def _on_done(self, result, part):
         self._progress.stop()
         self._progress.pack_forget()
         self._run_btn.config(state=tk.NORMAL)
@@ -1935,24 +1966,22 @@ class CompareOptionDialog(tk.Toplevel):
             self._set_result("Analysis failed. Check the Logs tab for details.", 'fail')
             return
 
-        a = result['analysis']
+        peak_data = result.get('peak_data', {})
+        a = self.orchestrator.analyzer.analyze_direct(
+            peak_data.get('value', 0), peak_data.get('entity_id', 0), part)
+
         status_tag = 'pass' if a.passed else 'fail'
         status_str = "PASSED" if a.passed else "FAILED"
-        unit = getattr(a, 'units', None) or 'MPa'
+        unit = part.get('units') or 'MPa'
 
         lines = [f"  Status       :  {status_str}\n\n"]
         lines.append(f"  Peak Stress  :  {a.peak_value:.4f} {unit}\n")
         lines.append(f"  Component ID :  {a.peak_entity_id}\n")
-
-        if a.part_no:
-            lines.append(f"  Part No.     :  {a.part_no}  ({a.part_name or '-'})\n")
-            lines.append(f"  Allowable    :  {a.allowable_vm:.2f}  "
-                         f"SF={a.safety_factor:.2f}  →  Effective={a.allowable:.2f} {unit}\n")
-            lines.append(f"  Margin       :  {a.margin:.2f} {unit}   "
-                         f"Ratio={a.ratio:.2%}\n")
-        else:
-            lines.append("  Part No.     :  Not matched\n")
-
+        lines.append(f"  Material     :  {a.part_no}  ({a.part_name or '-'})\n")
+        lines.append(f"  Allowable    :  {a.allowable_vm:.2f}  "
+                     f"SF={a.safety_factor:.2f}  →  Effective={a.allowable:.2f} {unit}\n")
+        lines.append(f"  Margin       :  {a.margin:.2f} {unit}   "
+                     f"Ratio={a.ratio:.2%}\n")
         lines.append(f"\n  {a.message}\n")
 
         self._result_text.config(state=tk.NORMAL)
