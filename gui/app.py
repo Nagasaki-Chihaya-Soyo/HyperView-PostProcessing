@@ -2011,10 +2011,13 @@ class CompareOptionDialog(tk.Toplevel):
 
     def _generate_report(self, report_rows):
         """Generate PNG screenshot from analysis comparison results."""
-        import datetime
-        ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        png_dir = os.path.join(app_dir, 'reports', 'png', ts)
+
+        # Determine slide label first — folder name is derived from it
+        CompareOptionDialog._slide_counter += 1
+        label = f"One Image only {CompareOptionDialog._slide_counter}"
+        folder_name = label.replace(' ', '_')   # safe for filesystem
+        png_dir  = os.path.join(app_dir, 'reports', 'png', folder_name)
         os.makedirs(png_dir, exist_ok=True)
         img_path = os.path.join(png_dir, 'analysis.png')
 
@@ -2042,8 +2045,6 @@ class CompareOptionDialog(tk.Toplevel):
 
         # ── Add slide to HyperView report ──
         if png and self.orchestrator and self.orchestrator.state == State.AGENT_READY:
-            CompareOptionDialog._slide_counter += 1
-            label = f"Analysis_{CompareOptionDialog._slide_counter}"
             ok = self.orchestrator.add_image_slide(label, png)
             self._result_text.config(state=tk.NORMAL)
             if ok:
