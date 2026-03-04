@@ -1520,17 +1520,16 @@ Write-Host "Saved: $outPath"
         with open(data_file, 'w', encoding='utf-8-sig') as f:
             json.dump(data, f, ensure_ascii=False)
 
-        n_cols  = len(data['headers'])
-        img_ps  = img_path.replace("'", "''")
-        data_ps = data_file.replace("'", "''")
+        n_cols = len(data['headers'])
 
-        ps_script = f"""
+        # PS script is 100% ASCII — paths come in via param()
+        ps_script = f"""param($DataFile, $OutFile)
+$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
-$d       = Get-Content -Path '{data_ps}' -Raw -Encoding UTF8 | ConvertFrom-Json
+$d       = Get-Content -Path $DataFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $headers = @($d.headers)
 $rows    = @($d.rows)
 $nCols   = {n_cols}
-$outPath = '{img_ps}'
 $font      = New-Object System.Drawing.Font('Arial', 9)
 $boldFont  = New-Object System.Drawing.Font('Arial', 9,  [System.Drawing.FontStyle]::Bold)
 $titleFont = New-Object System.Drawing.Font('Arial', 11, [System.Drawing.FontStyle]::Bold)
@@ -1592,7 +1591,7 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
     }}
     $y += $cellH
 }}
-$bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$bmp.Save($OutFile, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host 'Saved'
 """
@@ -1600,20 +1599,21 @@ Write-Host 'Saved'
             with open(ps_file, 'w', encoding='ascii') as f:
                 f.write(ps_script)
             proc = subprocess.run(
-                ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
+                ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file,
+                 '-DataFile', data_file, '-OutFile', img_path],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
             )
             if proc.returncode != 0:
-                print(f"[_save_comparison_image] PS error: "
-                      f"{proc.stderr.decode(errors='replace').strip()}")
+                err = proc.stderr.decode(errors='replace').strip()
+                print(f"[_save_comparison_image] PS error:\n{err}")
             return img_path if os.path.exists(img_path) else ""
         except Exception as e:
-            print(f"[_save_comparison_image] {e}")
+            print(f"[_save_comparison_image] exception: {e}")
             return ""
         finally:
-            for path in [ps_file, data_file]:
+            for p in [ps_file, data_file]:
                 try:
-                    os.remove(path)
+                    os.remove(p)
                 except OSError:
                     pass
 
@@ -2060,8 +2060,7 @@ class CompareOptionDialog(tk.Toplevel):
     def _save_analysis_image(report_rows, img_path):
         """Render analysis comparison table to PNG.
         Returns (img_path_or_empty, error_str_or_empty).
-        Data (including Chinese) is written to a JSON file (utf-8-sig).
-        PS script is pure ASCII and reads the JSON at runtime.
+        Paths are passed as PS params so the .ps1 file is pure ASCII.
         """
         import subprocess, json
 
@@ -2094,17 +2093,16 @@ class CompareOptionDialog(tk.Toplevel):
         with open(data_file, 'w', encoding='utf-8-sig') as f:
             json.dump(data, f, ensure_ascii=False)
 
-        n_cols  = len(data['headers'])
-        img_ps  = img_path.replace("'", "''")
-        data_ps = data_file.replace("'", "''")
+        n_cols = len(data['headers'])
 
-        ps_script = f"""
+        # PS script is 100% ASCII — paths come in via param()
+        ps_script = f"""param($DataFile, $OutFile)
+$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
-$d       = Get-Content -Path '{data_ps}' -Raw -Encoding UTF8 | ConvertFrom-Json
+$d       = Get-Content -Path $DataFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $headers = @($d.headers)
 $rows    = @($d.rows)
 $nCols   = {n_cols}
-$outPath = '{img_ps}'
 $font      = New-Object System.Drawing.Font('Arial', 9)
 $boldFont  = New-Object System.Drawing.Font('Arial', 9,  [System.Drawing.FontStyle]::Bold)
 $titleFont = New-Object System.Drawing.Font('Arial', 11, [System.Drawing.FontStyle]::Bold)
@@ -2161,7 +2159,7 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
     }}
     $y += $cellH
 }}
-$bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$bmp.Save($OutFile, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host 'Saved'
 """
@@ -2170,22 +2168,26 @@ Write-Host 'Saved'
             with open(ps_file, 'w', encoding='ascii') as f:
                 f.write(ps_script)
             proc = subprocess.run(
-                ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
+                ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file,
+                 '-DataFile', data_file, '-OutFile', img_path],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
             )
             if proc.returncode != 0:
                 err_msg = proc.stderr.decode(errors='replace').strip()
                 print(f"[_save_analysis_image] PS error:\n{err_msg}")
+            elif not os.path.exists(img_path):
+                err_msg = "PS exited 0 but PNG not found at expected path."
+                print(f"[_save_analysis_image] {err_msg}")
             path = img_path if os.path.exists(img_path) else ""
             return path, err_msg
         except Exception as e:
             err_msg = str(e)
-            print(f"[_save_analysis_image] {err_msg}")
+            print(f"[_save_analysis_image] exception: {err_msg}")
             return "", err_msg
         finally:
-            for path in [ps_file, data_file]:
+            for p in [ps_file, data_file]:
                 try:
-                    os.remove(path)
+                    os.remove(p)
                 except OSError:
                     pass
 
