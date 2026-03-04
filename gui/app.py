@@ -1237,25 +1237,19 @@ class ReadMaxValueDialog(tk.Toplevel):
         map_frame = ttk.LabelFrame(self, text="Add to Mapping", padding=10)
         map_frame.pack(fill=tk.X, padx=10, pady=2)
 
-        ttk.Label(map_frame, text="Map Type:").grid(row=0, column=0, sticky=tk.W, pady=4)
-        self._map_type_var = tk.StringVar(value="material")
-        ttk.Combobox(map_frame, textvariable=self._map_type_var,
-                     values=["material", "component", "part", "property"],
-                     state="readonly", width=14).grid(row=0, column=1, sticky=tk.W, padx=6, pady=4)
-
-        ttk.Label(map_frame, text="Map Value:").grid(row=1, column=0, sticky=tk.W, pady=4)
-        self._map_val_var = tk.StringVar()
-        ttk.Entry(map_frame, textvariable=self._map_val_var,
-                  width=24).grid(row=1, column=1, sticky=tk.W, padx=6, pady=4)
-        ttk.Label(map_frame, text="(auto-filled with contour max value, editable)",
-                  foreground='gray').grid(row=1, column=2, sticky=tk.W, padx=4)
-
-        ttk.Label(map_frame, text="Material:").grid(row=2, column=0, sticky=tk.W, pady=4)
+        ttk.Label(map_frame, text="材料:").grid(row=0, column=0, sticky=tk.W, pady=4)
         self._part_var = tk.StringVar()
         self._part_cb = ttk.Combobox(map_frame, textvariable=self._part_var,
-                                     state="readonly", width=34)
-        self._part_cb.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=6, pady=4)
+                                     state="readonly", width=36)
+        self._part_cb.grid(row=0, column=1, columnspan=2, sticky=tk.W, padx=6, pady=4)
         self._refresh_parts()
+
+        ttk.Label(map_frame, text="Max Value:").grid(row=1, column=0, sticky=tk.W, pady=4)
+        self._map_val_var = tk.StringVar()
+        ttk.Entry(map_frame, textvariable=self._map_val_var,
+                  state="readonly", width=24).grid(row=1, column=1, sticky=tk.W, padx=6, pady=4)
+        ttk.Label(map_frame, text="(contour max value)",
+                  foreground='gray').grid(row=1, column=2, sticky=tk.W, padx=4)
 
         # ── Analysis Result ──
         analysis_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
@@ -1308,9 +1302,9 @@ class ReadMaxValueDialog(tk.Toplevel):
         parts = self.db.get_all_parts()
         self._parts_data = parts
         opts = [
-            f"{p['part_no']} — {p['name'] or 'Unnamed'}  "
+            f"{i + 1}. {p['name'] or 'Unnamed'}  "
             f"({p['allowable_vm']}/{p['safety_factor']} {p['units']})"
-            for p in parts
+            for i, p in enumerate(parts)
         ]
         self._part_cb['values'] = opts
         if opts:
@@ -1629,7 +1623,7 @@ Write-Host "Saved: $outPath"
                    '比较结果', f'差值({unit})']
 
         row_lines = []
-        for p in parts:
+        for idx, p in enumerate(parts):
             sf = p.get('safety_factor') or 1.0
             eff = p['allowable_vm'] / sf
             exceeded = peak_value > eff
@@ -1638,7 +1632,7 @@ Write-Host "Saved: $outPath"
             # color code: 2=yellow(selected), 1=red(exceeded), 0=green(ok)
             color = 2 if is_selected else (1 if exceeded else 0)
             cells_ps = ', '.join([
-                ps_str(p['part_no']),
+                ps_str(str(idx + 1)),
                 ps_str(p.get('name') or '—'),
                 ps_str(f"{p['allowable_vm']:.2f}"),
                 ps_str(f"{sf:.2f}"),
@@ -1783,21 +1777,18 @@ Write-Host "Saved: $outPath"
             return
         part = self._parts_data[sel_idx]
 
-        map_type = self._map_type_var.get()
         map_value = self._map_val_var.get().strip()
         if not map_value:
             messagebox.showwarning(title="Warning",
-                                   message="Map Value cannot be empty.", parent=self)
+                                   message="Max Value is empty. Click Read first.", parent=self)
             return
 
-        # Add to mapping (skip silently if already exists)
-        self.db.add_mapping(map_type, map_value, part['part_no'])
-
-        # Notify parent to refresh its mapping view
+        # Step 1 — match: record the mapping (material type, max value → part)
+        self.db.add_mapping("material", map_value, part['part_no'])
         if self.on_mapping_added:
             self.on_mapping_added()
 
-        # Direct comparison for the selected material → show in result box
+        # Step 2 — compare: peak_value vs matched material's effective allowable
         a = self.orchestrator.analyzer.analyze_direct(
             self._peak_value, self._entity_id, part
         )
