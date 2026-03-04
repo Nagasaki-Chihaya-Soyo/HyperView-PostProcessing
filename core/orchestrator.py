@@ -437,8 +437,8 @@ proc process_job {job_file} {
             "add_image_slide" {
                 puts "Executing add_image_slide: label=$label file_path=$file_path"
                 if { [catch {
-                    hwc report Report add slide "One Image only" label="$label"
-                    hwc report Report edit items image position="$label,Image1" source=file file="$file_path"
+                    hwc report Report add slide "One Image only" "label=$label"
+                    hwc report Report edit items image "position=$label,Image1" source=file "file=$file_path"
                 } err] } {
                     puts "add_image_slide error: $err"
                     set escaped_err [escape_json_string $err]
