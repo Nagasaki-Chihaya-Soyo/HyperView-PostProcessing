@@ -437,8 +437,9 @@ proc process_job {job_file} {
             "add_image_slide" {
                 puts "Executing add_image_slide: label=$label file_path=$file_path"
                 if { [catch {
-                    hwc report Report add slide "One Image only 1" label=$label
+                    hwc report Report add slide "One Image only 1" label="$label"
                     hwc report Report edit items image position="$label,Image1" source=file file="$file_path"
+                    hwc report Report run position="$label"
                 } err] } {
                     puts "add_image_slide error: $err"
                     set escaped_err [escape_json_string $err]
@@ -852,8 +853,9 @@ after 4000 listen
 
     def add_image_slide(self, label: str, file_path: str) -> bool:
         """Add slide 'One Image only' and set image source to a local file.
-        hwc report Report add slide "One Image only 1" label=$label
+        hwc report Report add slide "One Image only 1" label="$label"
         hwc report Report edit items image position="$label,Image1" source=file file="$file_path"
+        hwc report Report run position="$label"
         """
         if self.state != State.AGENT_READY:
             self._log(f"add_image_slide: HyperView is not ready (state={self.state})")
