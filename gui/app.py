@@ -1480,7 +1480,9 @@ Write-Host "Saved: $outPath"
 
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        img_path  = os.path.join(app_dir, f'comparison_{ts}.png')
+        png_dir   = os.path.join(app_dir, 'reports', 'png', ts)
+        os.makedirs(png_dir, exist_ok=True)
+        img_path  = os.path.join(png_dir, 'comparison.png')
         ps_file   = img_path + '.ps1'
         data_file = img_path + '.json'
 
@@ -1671,6 +1673,8 @@ Write-Host 'Saved'
 
 class CompareOptionDialog(tk.Toplevel):
     """Compare with Material Standards 选项对话框"""
+
+    _slide_counter = 0  # tracks how many report slides have been added this session
 
     def __init__(self, parent, orchestrator, db, model_path, result_path="", on_complete=None):
         super().__init__(parent)
@@ -1980,9 +1984,10 @@ class CompareOptionDialog(tk.Toplevel):
                 'material': row['material'],
                 'allowable_vm': part['allowable_vm'],
                 'safety_factor': sf,
-                'allowable': allowable,
+                'effective_allowable': allowable,
                 'value': value,
                 'unit': unit,
+                'diff': allowable - value,
                 'pct_str': pct_str,
                 'passed': value <= allowable,
             })
@@ -2004,21 +2009,30 @@ class CompareOptionDialog(tk.Toplevel):
         """Generate HTML table + PNG screenshot from analysis comparison results."""
         import datetime
         ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        html_path = os.path.join(app_dir, f'analysis_{ts}.html')
-        img_path  = os.path.join(app_dir, f'analysis_{ts}.png')
+        app_dir  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        html_dir = os.path.join(app_dir, 'reports', 'html', ts)
+        png_dir  = os.path.join(app_dir, 'reports', 'png', ts)
+        os.makedirs(html_dir, exist_ok=True)
+        os.makedirs(png_dir,  exist_ok=True)
+        html_path = os.path.join(html_dir, 'analysis.html')
+        img_path  = os.path.join(png_dir,  'analysis.png')
 
-        # ── 1. HTML table ──
+        # ── 1. HTML table (merged: all comparison+analysis columns) ──
         rows_html = []
         for r in report_rows:
             bg = '#C6EFCE' if r['passed'] else '#FFC7CE'
+            status = 'PASS' if r['passed'] else 'FAIL'
             rows_html.append(
                 f'<tr style="background:{bg}">'
+                f'<td>{r["no"]}</td>'
                 f'<td>{r["material"]}</td>'
                 f'<td>{r["allowable_vm"]:.2f}</td>'
                 f'<td>{r["safety_factor"]:.2f}</td>'
+                f'<td>{r["effective_allowable"]:.2f}</td>'
                 f'<td>{r["value"]:.4f} {r["unit"]}</td>'
+                f'<td>{r["diff"]:+.4f}</td>'
                 f'<td>{r["pct_str"]}</td>'
+                f'<td>{status}</td>'
                 f'</tr>'
             )
         html = (
@@ -2031,8 +2045,9 @@ class CompareOptionDialog(tk.Toplevel):
             '</style></head><body>'
             '<h2>分析结果</h2>'
             '<table><thead><tr>'
-            '<th>材料名称</th><th>允许值</th><th>安全因子</th>'
-            '<th>实际值</th><th>超出/不足占比</th>'
+            '<th>编号</th><th>材料名称</th><th>许用值</th><th>安全因子</th>'
+            '<th>有效许用值</th><th>实际值</th><th>差值</th>'
+            '<th>超出/不足占比</th><th>状态</th>'
             f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table>'
             '</body></html>'
         )
@@ -2063,6 +2078,18 @@ class CompareOptionDialog(tk.Toplevel):
                 parent=self,
             )
 
+        # ── 4. Add slide to HyperView report ──
+        if png and self.orchestrator and self.orchestrator.state == State.AGENT_READY:
+            CompareOptionDialog._slide_counter += 1
+            label = f"Analysis_{CompareOptionDialog._slide_counter}"
+            ok = self.orchestrator.add_image_slide(label, png)
+            self._result_text.config(state=tk.NORMAL)
+            if ok:
+                self._result_text.insert(tk.END, f"  Slide: {label} added to report\n", 'dim')
+            else:
+                self._result_text.insert(tk.END, "  Slide: HyperView add failed (see log)\n", 'dim')
+            self._result_text.config(state=tk.DISABLED)
+
     @staticmethod
     def _save_analysis_image(report_rows, img_path):
         """Render analysis comparison table to PNG.
@@ -2075,22 +2102,30 @@ class CompareOptionDialog(tk.Toplevel):
         data_file = img_path + '.json'
 
         data = {
-            'title':   '\u5206\u6790\u7ed3\u679c',
+            'title':   '\u5206\u6790\u7ed3\u679c',  # 分析结果
             'headers': [
-                '\u6750\u6599\u540d\u79f0',
-                '\u5141\u8bb8\u503c',
-                '\u5b89\u5168\u56e0\u5b50',
-                '\u5b9e\u9645\u503c',
-                '\u8d85\u51fa/\u4e0d\u8db3\u5360\u6bd4',
+                '\u7f16\u53f7',            # 编号
+                '\u6750\u6599\u540d\u79f0',  # 材料名称
+                '\u8bb8\u7528\u503c',        # 许用值
+                '\u5b89\u5168\u56e0\u5b50',  # 安全因子
+                '\u6709\u6548\u8bb8\u7528\u503c',  # 有效许用值
+                '\u5b9e\u9645\u503c',        # 实际值
+                '\u5dee\u503c',              # 差值
+                '\u8d85\u51fa/\u4e0d\u8db3\u5360\u6bd4',  # 超出/不足占比
+                '\u72b6\u6001',              # 状态
             ],
             'rows': [
                 {
                     'cells': [
+                        str(r['no']),
                         r['material'],
                         f"{r['allowable_vm']:.2f}",
                         f"{r['safety_factor']:.2f}",
+                        f"{r['effective_allowable']:.2f}",
                         f"{r['value']:.4f} {r['unit']}",
+                        f"{r['diff']:+.4f}",
                         r['pct_str'],
+                        'PASS' if r['passed'] else 'FAIL',
                     ],
                     'color': 0 if r['passed'] else 1,
                 }
