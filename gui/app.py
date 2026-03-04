@@ -109,7 +109,7 @@ class Application(tk.Tk):
         self.result_text = tk.Text(result_frame, height=15, state=tk.DISABLED)
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
-        self.report_btn = ttk.Button(result_frame, text="Open Report Files", state=tk.DISABLED, command=self._open_report)
+        self.report_btn = ttk.Button(result_frame, text="Open Result File Folder", command=self._open_report)
         self.report_btn.pack(pady=10)
 
     def _browse_model(self):
@@ -212,7 +212,6 @@ class Application(tk.Tk):
 
         if result is None:
             self.result_text.insert(tk.END, "Analysis Failed.Check The Error Log for Details")
-            self.report_btn.config(state=tk.DISABLED)
         else:
             analysis = result['analysis']
             status = "Analysis Passed" if analysis.passed else "failed"
@@ -235,13 +234,18 @@ Report Path:{result['report_path']}
 """
             self.result_text.insert(tk.END, text)
             self.current_report_path = result['report_path']
-            self.report_btn.config(state=tk.NORMAL)
 
         self.result_text.config(state=tk.DISABLED)
 
     def _open_report(self):
-        if self.current_report_path and os.path.exists(self.current_report_path):
-            webbrowser.open(f"file://{self.current_report_path}")
+        import subprocess
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        reports_dir = os.path.join(os.path.dirname(app_dir), 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        try:
+            os.startfile(reports_dir)
+        except AttributeError:
+            subprocess.Popen(['xdg-open', reports_dir])
 
     def _create_parts_tab(self):
         tab = ttk.Frame(self.notebook)
@@ -1519,8 +1523,8 @@ Write-Host "Saved: $outPath"
             ],
             'rows': rows_data,
         }
-        with open(data_file, 'w', encoding='ascii') as f:
-            json.dump(data, f, ensure_ascii=True)
+        with open(data_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
 
         n_cols = len(data['headers'])
 
@@ -1529,7 +1533,7 @@ Write-Host "Saved: $outPath"
 $ErrorActionPreference = 'Stop'
 try {{
 Add-Type -AssemblyName System.Drawing
-$d       = Get-Content -Path $DataFile -Raw | ConvertFrom-Json
+$d       = Get-Content -Path $DataFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $headers = @($d.headers)
 $rows    = @($d.rows)
 $nCols   = {n_cols}
@@ -2006,65 +2010,23 @@ class CompareOptionDialog(tk.Toplevel):
             self._generate_report(report_rows)
 
     def _generate_report(self, report_rows):
-        """Generate HTML table + PNG screenshot from analysis comparison results."""
+        """Generate PNG screenshot from analysis comparison results."""
         import datetime
         ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        app_dir  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        html_dir = os.path.join(app_dir, 'reports', 'html', ts)
-        png_dir  = os.path.join(app_dir, 'reports', 'png', ts)
-        os.makedirs(html_dir, exist_ok=True)
-        os.makedirs(png_dir,  exist_ok=True)
-        html_path = os.path.join(html_dir, 'analysis.html')
-        img_path  = os.path.join(png_dir,  'analysis.png')
+        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        png_dir = os.path.join(app_dir, 'reports', 'png', ts)
+        os.makedirs(png_dir, exist_ok=True)
+        img_path = os.path.join(png_dir, 'analysis.png')
 
-        # ── 1. HTML table (merged: all comparison+analysis columns) ──
-        rows_html = []
-        for r in report_rows:
-            bg = '#C6EFCE' if r['passed'] else '#FFC7CE'
-            status = 'PASS' if r['passed'] else 'FAIL'
-            rows_html.append(
-                f'<tr style="background:{bg}">'
-                f'<td>{r["no"]}</td>'
-                f'<td>{r["material"]}</td>'
-                f'<td>{r["allowable_vm"]:.2f}</td>'
-                f'<td>{r["safety_factor"]:.2f}</td>'
-                f'<td>{r["effective_allowable"]:.2f}</td>'
-                f'<td>{r["value"]:.4f} {r["unit"]}</td>'
-                f'<td>{r["diff"]:+.4f}</td>'
-                f'<td>{r["pct_str"]}</td>'
-                f'<td>{status}</td>'
-                f'</tr>'
-            )
-        html = (
-            '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
-            'body{font-family:Arial,sans-serif;padding:16px}'
-            'h2{color:#1f3864}'
-            'table{border-collapse:collapse;width:100%}'
-            'th{background:#1f3864;color:#fff;padding:8px 14px;text-align:center}'
-            'td{border:1px solid #ccc;padding:6px 14px;text-align:center}'
-            '</style></head><body>'
-            '<h2>分析结果</h2>'
-            '<table><thead><tr>'
-            '<th>编号</th><th>材料名称</th><th>许用值</th><th>安全因子</th>'
-            '<th>有效许用值</th><th>实际值</th><th>差值</th>'
-            '<th>超出/不足占比</th><th>状态</th>'
-            f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table>'
-            '</body></html>'
-        )
-        with open(html_path, 'w', encoding='utf-8') as f:
-            f.write(html)
-        print(f"[analysis HTML] OK → {html_path}")
-
-        # ── 2. PNG via PowerShell System.Drawing ──
+        # ── PNG via PowerShell System.Drawing ──
         png, ps_err = self._save_analysis_image(report_rows, img_path)
         if png:
             print(f"[analysis PNG]  OK → {png}")
         else:
             print("[analysis PNG]  FAILED")
 
-        # ── 3. Append paths to Analysis Result box ──
+        # ── Append result to Analysis Result box ──
         self._result_text.config(state=tk.NORMAL)
-        self._result_text.insert(tk.END, f"\n  HTML: {html_path}\n", 'dim')
         if png:
             self._result_text.insert(tk.END, f"  PNG:  {png}\n", 'dim')
         else:
@@ -2078,7 +2040,7 @@ class CompareOptionDialog(tk.Toplevel):
                 parent=self,
             )
 
-        # ── 4. Add slide to HyperView report ──
+        # ── Add slide to HyperView report ──
         if png and self.orchestrator and self.orchestrator.state == State.AGENT_READY:
             CompareOptionDialog._slide_counter += 1
             label = f"Analysis_{CompareOptionDialog._slide_counter}"
@@ -2132,8 +2094,8 @@ class CompareOptionDialog(tk.Toplevel):
                 for r in report_rows
             ],
         }
-        with open(data_file, 'w', encoding='ascii') as f:
-            json.dump(data, f, ensure_ascii=True)
+        with open(data_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
 
         n_cols = len(data['headers'])
 
@@ -2142,7 +2104,7 @@ class CompareOptionDialog(tk.Toplevel):
 $ErrorActionPreference = 'Stop'
 try {{
 Add-Type -AssemblyName System.Drawing
-$d       = Get-Content -Path $DataFile -Raw | ConvertFrom-Json
+$d       = Get-Content -Path $DataFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $headers = @($d.headers)
 $rows    = @($d.rows)
 $nCols   = {n_cols}
@@ -2485,7 +2447,6 @@ class AnalysisDialog(tk.Toplevel):
 
         if report_path:
             self.parent.current_report_path = report_path
-            self.parent.report_btn.config(state=tk.NORMAL)
 
 
 def main():
