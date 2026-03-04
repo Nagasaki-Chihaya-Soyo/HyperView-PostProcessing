@@ -1133,24 +1133,10 @@ class ReadMaxValueDialog(tk.Toplevel):
         ttk.Label(map_frame, text="(contour max value)",
                   foreground='gray').grid(row=1, column=2, sticky=tk.W, padx=4)
 
-        # ── Analysis Result ──
-        analysis_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
-        analysis_frame.pack(fill=tk.X, padx=10, pady=2)
-
-        self._result_text = tk.Text(analysis_frame, height=6, state=tk.DISABLED,
-                                    wrap=tk.WORD, font=('Courier', 9))
-        self._result_text.tag_configure('pass', foreground='#166534',
-                                        font=('Courier', 9, 'bold'))
-        self._result_text.tag_configure('fail', foreground='#991b1b',
-                                        font=('Courier', 9, 'bold'))
-        self._result_text.tag_configure('info', foreground='#1e40af')
-        self._result_text.tag_configure('dim',  foreground='gray')
-        self._result_text.pack(fill=tk.X)
-
         # ── Bottom buttons ──
         btn_frame = ttk.Frame(self, padding=(10, 6))
         btn_frame.pack(fill=tk.X)
-        self._add_run_btn = ttk.Button(btn_frame, text="Run Analysis",
+        self._add_run_btn = ttk.Button(btn_frame, text="Add Result",
                                        command=self._add_and_run, width=30,
                                        state=tk.DISABLED)
         self._add_run_btn.pack(side=tk.LEFT, padx=(0, 6))
@@ -1294,7 +1280,7 @@ class ReadMaxValueDialog(tk.Toplevel):
         if img_path:
             print(f"[table image] {img_path}")
 
-        self._status_var.set("Done. Select material and click Run Analysis.")
+        self._status_var.set("Done. Select material and click Add Result.")
         self._add_run_btn.config(state=tk.NORMAL)
 
     @staticmethod
@@ -1669,8 +1655,6 @@ Write-Host "Saved: $outPath"
         a = self.orchestrator.analyzer.analyze_direct(
             self._peak_value, self._entity_id, part
         )
-        self._show_result(a)
-
         # Compare peak_value against ALL parts in database → PNG table
         dtype = self.type_var.get()
         unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
@@ -1680,27 +1664,6 @@ Write-Host "Saved: $outPath"
         )
         if img_path:
             print(f"[comparison image] {img_path}")
-
-    def _show_result(self, a):
-        dtype = self.type_var.get()
-        unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
-        tag = 'pass' if a.passed else 'fail'
-        lines = [
-            f"  Status     :  {'PASSED' if a.passed else 'FAILED'}\n\n",
-            f"  Peak Value :  {a.peak_value:.4f} {unit}\n",
-            f"  Material   :  {a.part_no}  ({a.part_name or '—'})\n",
-            f"  Allowable  :  {a.allowable_vm:.2f}  "
-            f"SF={a.safety_factor:.2f}  →  Eff={a.allowable:.2f} {unit}\n",
-            f"  Margin     :  {a.margin:.2f} {unit}   Ratio={a.ratio:.2%}\n\n",
-            f"  {a.message}\n",
-        ]
-        self._result_text.config(state=tk.NORMAL)
-        self._result_text.delete(1.0, tk.END)
-        self._result_text.insert(tk.END, f"  {'─'*48}\n", 'dim')
-        self._result_text.insert(tk.END, "".join(lines), tag)
-        self._result_text.insert(tk.END, f"  {'─'*48}\n", 'dim')
-        self._result_text.config(state=tk.DISABLED)
-
 
 class CompareOptionDialog(tk.Toplevel):
     """Compare with Material Standards 选项对话框"""
