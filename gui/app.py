@@ -1238,16 +1238,16 @@ class ReadMaxValueDialog(tk.Toplevel):
         map_frame.pack(fill=tk.X, padx=10, pady=2)
 
         ttk.Label(map_frame, text="Map Type:").grid(row=0, column=0, sticky=tk.W, pady=4)
-        self._map_type_var = tk.StringVar(value="component")
+        self._map_type_var = tk.StringVar(value="material")
         ttk.Combobox(map_frame, textvariable=self._map_type_var,
-                     values=["component", "part", "property"],
+                     values=["material", "component", "part", "property"],
                      state="readonly", width=14).grid(row=0, column=1, sticky=tk.W, padx=6, pady=4)
 
         ttk.Label(map_frame, text="Map Value:").grid(row=1, column=0, sticky=tk.W, pady=4)
         self._map_val_var = tk.StringVar()
         ttk.Entry(map_frame, textvariable=self._map_val_var,
                   width=24).grid(row=1, column=1, sticky=tk.W, padx=6, pady=4)
-        ttk.Label(map_frame, text="(auto-filled with Entity ID, editable)",
+        ttk.Label(map_frame, text="(auto-filled with contour max value, editable)",
                   foreground='gray').grid(row=1, column=2, sticky=tk.W, padx=4)
 
         ttk.Label(map_frame, text="Material:").grid(row=2, column=0, sticky=tk.W, pady=4)
@@ -1412,7 +1412,7 @@ class ReadMaxValueDialog(tk.Toplevel):
         unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
         self._max_val_var.set(f"{peak_value:.4f} {unit}")
         self._entity_var.set(str(entity_id))
-        self._map_val_var.set(str(entity_id))
+        self._map_val_var.set(f"{peak_value:.4f}")
 
         img_path = self._save_table_image(csv_path, rows, headers, peak_value)
         if img_path:
@@ -1601,7 +1601,171 @@ Write-Host "Saved: $outPath"
         except Exception as e:
             print(f"[_save_table_image] {e}")
             return ""
+
+    @staticmethod
+    def _save_comparison_image(peak_value: float, unit: str,
+                               parts: list, selected_part_no: str = "") -> str:
+        """Generate a PNG that compares peak_value against every part in the database.
+
+        Row colours:
+          yellow  (#FFD966) – the material the user selected (bold)
+          red     (#FFC7CE) – peak exceeds this material's effective allowable
+          green   (#C6EFCE) – peak is within this material's effective allowable
+        """
+        import subprocess, os, datetime
+
+        if not parts:
             return ""
+
+        def ps_str(s):
+            return "'" + str(s).replace("'", "''").replace('\r', '').replace('\n', ' ') + "'"
+
+        # Build comparison rows
+        col_keys = ('part_no', 'name', 'allowable_vm', 'safety_factor',
+                    'effective', 'peak', 'result', 'margin')
+        headers = ['编号', '材料名称',
+                   f'许用值({unit})', '安全系数',
+                   f'有效许用值({unit})', f'峰值({unit})',
+                   '比较结果', f'差值({unit})']
+
+        row_lines = []
+        for p in parts:
+            sf = p.get('safety_factor') or 1.0
+            eff = p['allowable_vm'] / sf
+            exceeded = peak_value > eff
+            margin = eff - peak_value
+            is_selected = (str(p['part_no']) == str(selected_part_no))
+            # color code: 2=yellow(selected), 1=red(exceeded), 0=green(ok)
+            color = 2 if is_selected else (1 if exceeded else 0)
+            cells_ps = ', '.join([
+                ps_str(p['part_no']),
+                ps_str(p.get('name') or '—'),
+                ps_str(f"{p['allowable_vm']:.2f}"),
+                ps_str(f"{sf:.2f}"),
+                ps_str(f"{eff:.2f}"),
+                ps_str(f"{peak_value:.4f}"),
+                ps_str('超出' if exceeded else '未超出'),
+                ps_str(f"{margin:.2f}"),
+            ])
+            row_lines.append(f"    @({cells_ps}, {color})")
+
+        header_ps = '@(' + ', '.join(ps_str(h) for h in headers) + ')'
+        rows_ps = '@(\n' + ',\n'.join(row_lines) + '\n)'
+
+        # Save location: project root (parent of gui/)
+        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        img_path = os.path.join(app_dir, f'comparison_{ts}.png')
+
+        out_ps = ps_str(img_path)[1:-1]
+        peak_label_ps = ps_str(f"峰值: {peak_value:.4f} {unit}")[1:-1]
+        ncols = len(headers)
+
+        ps_script = f"""
+Add-Type -AssemblyName System.Drawing
+
+$headers   = {header_ps}
+$rows      = {rows_ps}
+$peakLabel = '{peak_label_ps}'
+$outPath   = '{out_ps}'
+$nCols     = {ncols}
+
+$font      = New-Object System.Drawing.Font('Arial', 9)
+$boldFont  = New-Object System.Drawing.Font('Arial', 9,  [System.Drawing.FontStyle]::Bold)
+$titleFont = New-Object System.Drawing.Font('Arial', 11, [System.Drawing.FontStyle]::Bold)
+
+# Measure column widths from content
+$tmp = New-Object System.Drawing.Bitmap(1, 1)
+$tg  = [System.Drawing.Graphics]::FromImage($tmp)
+$colW = @()
+foreach ($h in $headers) {{
+    $colW += [int]($tg.MeasureString($h, $boldFont).Width) + 20
+}}
+for ($r = 0; $r -lt $rows.Count; $r++) {{
+    for ($c = 0; $c -lt $nCols; $c++) {{
+        $w = [int]($tg.MeasureString($rows[$r][$c], $font).Width) + 20
+        if ($w -gt $colW[$c]) {{ $colW[$c] = $w }}
+    }}
+}}
+$tg.Dispose(); $tmp.Dispose()
+
+$cellH  = 24
+$totalW = ($colW | Measure-Object -Sum).Sum
+$totalH = ($rows.Count + 1) * $cellH + 50
+
+$bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
+$g   = [System.Drawing.Graphics]::FromImage($bmp)
+$g.Clear([System.Drawing.Color]::White)
+$g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+
+$sf = New-Object System.Drawing.StringFormat
+$sf.Alignment     = [System.Drawing.StringAlignment]::Center
+$sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+# Title + peak label
+$titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
+$g.DrawString('峰值与材料许用值比较', $titleFont, $titleBrush, 5, 5)
+$g.DrawString($peakLabel, $font, $titleBrush, 5, 28)
+
+# Header row
+$y = 50; $x = 0
+$hdrBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
+$hdrFg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+for ($c = 0; $c -lt $nCols; $c++) {{
+    $g.FillRectangle($hdrBg, $x, $y, $colW[$c], $cellH)
+    $g.DrawRectangle([System.Drawing.Pens]::DarkGray, $x, $y, $colW[$c], $cellH)
+    $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+    $g.DrawString($headers[$c], $boldFont, $hdrFg, $rect, $sf)
+    $x += $colW[$c]
+}}
+$y += $cellH
+
+# Data rows
+$greenBg  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(198, 239, 206))
+$redBg    = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 199, 206))
+$yellowBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 217, 102))
+$blkFg    = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
+
+for ($r = 0; $r -lt $rows.Count; $r++) {{
+    $code = [int]$rows[$r][$nCols]
+    if      ($code -eq 2) {{ $bg = $yellowBg; $f = $boldFont }}
+    elseif  ($code -eq 1) {{ $bg = $redBg;    $f = $font }}
+    else                  {{ $bg = $greenBg;  $f = $font }}
+    $x = 0
+    for ($c = 0; $c -lt $nCols; $c++) {{
+        $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
+        $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
+        $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+        $g.DrawString($rows[$r][$c], $f, $blkFg, $rect, $sf)
+        $x += $colW[$c]
+    }}
+    $y += $cellH
+}}
+
+$bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose(); $bmp.Dispose()
+Write-Host "Saved: $outPath"
+"""
+        ps_file = img_path + '.ps1'
+        try:
+            with open(ps_file, 'w', encoding='utf-8') as f:
+                f.write(ps_script)
+            proc = subprocess.run(
+                ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
+            )
+            if proc.returncode != 0:
+                print(f"[_save_comparison_image] PS error: "
+                      f"{proc.stderr.decode(errors='replace').strip()}")
+            return img_path if os.path.exists(img_path) else ""
+        except Exception as e:
+            print(f"[_save_comparison_image] {e}")
+            return ""
+        finally:
+            try:
+                os.remove(ps_file)
+            except OSError:
+                pass
 
     # ── Add mapping & direct analysis ──
 
@@ -1633,11 +1797,21 @@ Write-Host "Saved: $outPath"
         if self.on_mapping_added:
             self.on_mapping_added()
 
-        # Direct comparison (no need for a second HyperView round-trip)
+        # Direct comparison for the selected material → show in result box
         a = self.orchestrator.analyzer.analyze_direct(
             self._peak_value, self._entity_id, part
         )
         self._show_result(a)
+
+        # Compare peak_value against ALL parts in database → PNG table
+        dtype = self.type_var.get()
+        unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
+        all_parts = self.db.get_all_parts()
+        img_path = self._save_comparison_image(
+            self._peak_value, unit, all_parts, part['part_no']
+        )
+        if img_path:
+            print(f"[comparison image] {img_path}")
 
     def _show_result(self, a):
         dtype = self.type_var.get()

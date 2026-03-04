@@ -128,7 +128,7 @@ class DBStore:
             return [dict(r) for r in rows]
 
     def add_mapping(self, map_type: str, map_value: str, part_no: str) -> bool:
-        if map_type not in ('component', 'part', 'property'):
+        if map_type not in ('component', 'part', 'property', 'material'):
             return False
         try:
             with self._get_conn() as conn:
