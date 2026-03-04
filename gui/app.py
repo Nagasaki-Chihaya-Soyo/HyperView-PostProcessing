@@ -1517,16 +1517,17 @@ Write-Host "Saved: $outPath"
             ],
             'rows': rows_data,
         }
-        with open(data_file, 'w', encoding='utf-8-sig') as f:
-            json.dump(data, f, ensure_ascii=False)
+        with open(data_file, 'w', encoding='ascii') as f:
+            json.dump(data, f, ensure_ascii=True)
 
         n_cols = len(data['headers'])
 
         # PS script is 100% ASCII — paths come in via param()
         ps_script = f"""param($DataFile, $OutFile)
 $ErrorActionPreference = 'Stop'
+try {{
 Add-Type -AssemblyName System.Drawing
-$d       = Get-Content -Path $DataFile -Raw -Encoding UTF8 | ConvertFrom-Json
+$d       = Get-Content -Path $DataFile -Raw | ConvertFrom-Json
 $headers = @($d.headers)
 $rows    = @($d.rows)
 $nCols   = {n_cols}
@@ -1548,8 +1549,10 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
 }}
 $tg.Dispose(); $tmp.Dispose()
 $cellH  = 24
-$totalW = ($colW | Measure-Object -Sum).Sum
-$totalH = ($rows.Count + 1) * $cellH + 50
+$totalW = [int]($colW | Measure-Object -Sum).Sum
+$totalH = [int](($rows.Count + 1) * $cellH + 50)
+if ($totalW -lt 1) {{ $totalW = 100 }}
+if ($totalH -lt 1) {{ $totalH = 50 }}
 $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
 $g   = [System.Drawing.Graphics]::FromImage($bmp)
 $g.Clear([System.Drawing.Color]::White)
@@ -1558,15 +1561,15 @@ $sf = New-Object System.Drawing.StringFormat
 $sf.Alignment     = [System.Drawing.StringAlignment]::Center
 $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
 $titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
-$g.DrawString($d.title,    $titleFont, $titleBrush, 5, 5)
-$g.DrawString($d.subtitle, $font,      $titleBrush, 5, 28)
+$g.DrawString($d.title,    $titleFont, $titleBrush, [float]5, [float]5)
+$g.DrawString($d.subtitle, $font,      $titleBrush, [float]5, [float]28)
 $y = 50; $x = 0
 $hdrBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
 $hdrFg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
 for ($c = 0; $c -lt $nCols; $c++) {{
     $g.FillRectangle($hdrBg, $x, $y, $colW[$c], $cellH)
     $g.DrawRectangle([System.Drawing.Pens]::DarkGray, $x, $y, $colW[$c], $cellH)
-    $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+    $rect = [System.Drawing.RectangleF]::new([float]$x, [float]$y, [float]$colW[$c], [float]$cellH)
     $g.DrawString($headers[$c], $boldFont, $hdrFg, $rect, $sf)
     $x += $colW[$c]
 }}
@@ -1585,7 +1588,7 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
     for ($c = 0; $c -lt $nCols; $c++) {{
         $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
         $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
-        $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+        $rect = [System.Drawing.RectangleF]::new([float]$x, [float]$y, [float]$colW[$c], [float]$cellH)
         $g.DrawString($cells[$c], $f, $blkFg, $rect, $sf)
         $x += $colW[$c]
     }}
@@ -1594,6 +1597,10 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
 $bmp.Save($OutFile, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host 'Saved'
+}} catch {{
+    Write-Error ($_.Exception.Message + ' | at: ' + $_.InvocationInfo.ScriptLineNumber)
+    exit 1
+}}
 """
         try:
             with open(ps_file, 'w', encoding='ascii') as f:
@@ -2090,16 +2097,17 @@ class CompareOptionDialog(tk.Toplevel):
                 for r in report_rows
             ],
         }
-        with open(data_file, 'w', encoding='utf-8-sig') as f:
-            json.dump(data, f, ensure_ascii=False)
+        with open(data_file, 'w', encoding='ascii') as f:
+            json.dump(data, f, ensure_ascii=True)
 
         n_cols = len(data['headers'])
 
         # PS script is 100% ASCII — paths come in via param()
         ps_script = f"""param($DataFile, $OutFile)
 $ErrorActionPreference = 'Stop'
+try {{
 Add-Type -AssemblyName System.Drawing
-$d       = Get-Content -Path $DataFile -Raw -Encoding UTF8 | ConvertFrom-Json
+$d       = Get-Content -Path $DataFile -Raw | ConvertFrom-Json
 $headers = @($d.headers)
 $rows    = @($d.rows)
 $nCols   = {n_cols}
@@ -2121,8 +2129,10 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
 }}
 $tg.Dispose(); $tmp.Dispose()
 $cellH  = 26
-$totalW = ($colW | Measure-Object -Sum).Sum
-$totalH = ($rows.Count + 1) * $cellH + 46
+$totalW = [int]($colW | Measure-Object -Sum).Sum
+$totalH = [int](($rows.Count + 1) * $cellH + 46)
+if ($totalW -lt 1) {{ $totalW = 100 }}
+if ($totalH -lt 1) {{ $totalH = 50 }}
 $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
 $g   = [System.Drawing.Graphics]::FromImage($bmp)
 $g.Clear([System.Drawing.Color]::White)
@@ -2131,14 +2141,14 @@ $sf = New-Object System.Drawing.StringFormat
 $sf.Alignment     = [System.Drawing.StringAlignment]::Center
 $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
 $titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
-$g.DrawString($d.title, $titleFont, $titleBrush, 5, 8)
+$g.DrawString($d.title, $titleFont, $titleBrush, [float]5, [float]8)
 $y = 38; $x = 0
 $hdrBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
 $hdrFg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
 for ($c = 0; $c -lt $nCols; $c++) {{
     $g.FillRectangle($hdrBg, $x, $y, $colW[$c], $cellH)
     $g.DrawRectangle([System.Drawing.Pens]::DarkGray, $x, $y, $colW[$c], $cellH)
-    $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+    $rect = [System.Drawing.RectangleF]::new([float]$x, [float]$y, [float]$colW[$c], [float]$cellH)
     $g.DrawString($headers[$c], $boldFont, $hdrFg, $rect, $sf)
     $x += $colW[$c]
 }}
@@ -2153,7 +2163,7 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
     for ($c = 0; $c -lt $nCols; $c++) {{
         $g.FillRectangle($bg, $x, $y, $colW[$c], $cellH)
         $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
-        $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+        $rect = [System.Drawing.RectangleF]::new([float]$x, [float]$y, [float]$colW[$c], [float]$cellH)
         $g.DrawString($cells[$c], $font, $blkFg, $rect, $sf)
         $x += $colW[$c]
     }}
@@ -2162,6 +2172,10 @@ for ($r = 0; $r -lt $rows.Count; $r++) {{
 $bmp.Save($OutFile, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host 'Saved'
+}} catch {{
+    Write-Error ($_.Exception.Message + ' | at line: ' + $_.InvocationInfo.ScriptLineNumber)
+    exit 1
+}}
 """
         err_msg = ""
         try:
@@ -2173,7 +2187,9 @@ Write-Host 'Saved'
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
             )
             if proc.returncode != 0:
-                err_msg = proc.stderr.decode(errors='replace').strip()
+                stderr = proc.stderr.decode(errors='replace').strip()
+                stdout = proc.stdout.decode(errors='replace').strip()
+                err_msg = stderr or stdout or f"PowerShell exited with code {proc.returncode}"
                 print(f"[_save_analysis_image] PS error:\n{err_msg}")
             elif not os.path.exists(img_path):
                 err_msg = "PS exited 0 but PNG not found at expected path."
