@@ -1037,7 +1037,8 @@ class ReadMaxValueDialog(tk.Toplevel):
     CATEGORIES = ContourOptionDialog.CATEGORIES
     COMPONENTS = ContourOptionDialog.COMPONENTS
 
-    def __init__(self, parent, orchestrator, db, model_path, result_path=""):
+    def __init__(self, parent, orchestrator, db, model_path, result_path="",
+                 on_add_result=None):
         super().__init__(parent)
         self.title("Read Max Value")
         self.geometry("560x680")
@@ -1050,11 +1051,11 @@ class ReadMaxValueDialog(tk.Toplevel):
         self.db = db
         self.model_path = model_path
         self.result_path = result_path
+        self.on_add_result = on_add_result
         self._hotspot_counter = 0
         self._peak_value = None
         self._entity_id = ""
         self._parts_data = []
-        self._res_counter = 0
 
         self._create_ui()
         self.wait_window()
@@ -1133,29 +1134,6 @@ class ReadMaxValueDialog(tk.Toplevel):
                   state="readonly", width=24).grid(row=1, column=1, sticky=tk.W, padx=6, pady=4)
         ttk.Label(map_frame, text="(contour max value)",
                   foreground='gray').grid(row=1, column=2, sticky=tk.W, padx=4)
-
-        # ── Results table ──
-        res_outer = ttk.LabelFrame(self, text="Results", padding=8)
-        res_outer.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 2))
-
-        res_cols = ('no', 'material', 'value', 'unit')
-        self._res_tree = ttk.Treeview(res_outer, columns=res_cols, show='headings',
-                                      selectmode='browse', height=5)
-        for col, text, w in [
-            ('no',       '结果编号', 70),
-            ('material', '材料',    200),
-            ('value',    '结果值',  120),
-            ('unit',     '单位',     70),
-        ]:
-            self._res_tree.heading(col, text=text, anchor='center')
-            self._res_tree.column(col, width=w, minwidth=40, anchor='center')
-        self._res_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
-        self._res_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
-
-        res_sb = ttk.Scrollbar(res_outer, orient=tk.VERTICAL, command=self._res_tree.yview)
-        self._res_tree.configure(yscrollcommand=res_sb.set)
-        self._res_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        res_sb.pack(side=tk.RIGHT, fill=tk.Y)
 
         # ── Bottom buttons ──
         btn_frame = ttk.Frame(self, padding=(10, 6))
@@ -1685,16 +1663,9 @@ Write-Host "Saved: $outPath"
         if img_path:
             print(f"[comparison image] {img_path}")
 
-        # Append to results table
-        self._res_counter += 1
-        material_label = part.get('name') or part.get('part_no', '—')
-        tag = 'odd' if self._res_counter % 2 else 'even'
-        self._res_tree.insert('', tk.END, values=(
-            self._res_counter,
-            material_label,
-            f"{self._peak_value:.4f}",
-            unit,
-        ), tags=(tag,))
+        if self.on_add_result:
+            material_label = part.get('name') or part.get('part_no', '—')
+            self.on_add_result(material_label, self._peak_value, unit)
 
 class CompareOptionDialog(tk.Toplevel):
     """Compare with Material Standards 选项对话框"""
@@ -1713,6 +1684,7 @@ class CompareOptionDialog(tk.Toplevel):
         self.model_path = model_path
         self.result_path = result_path
         self.on_complete = on_complete
+        self._res_counter = 0
 
         self._create_ui()
         self.wait_window()
@@ -1764,6 +1736,29 @@ class CompareOptionDialog(tk.Toplevel):
 
         self._refresh_std()
 
+        # ── Results ──
+        res_outer = ttk.LabelFrame(self, text="Results", padding=8)
+        res_outer.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 2))
+
+        res_cols = ('no', 'material', 'value', 'unit')
+        self._res_tree = ttk.Treeview(res_outer, columns=res_cols, show='headings',
+                                      selectmode='browse', height=4)
+        for col, text, w in [
+            ('no',       '结果编号',  70),
+            ('material', '材料',     200),
+            ('value',    '结果值',   120),
+            ('unit',     '单位',      70),
+        ]:
+            self._res_tree.heading(col, text=text, anchor='center')
+            self._res_tree.column(col, width=w, minwidth=40, anchor='center')
+        self._res_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
+        self._res_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
+
+        res_sb = ttk.Scrollbar(res_outer, orient=tk.VERTICAL, command=self._res_tree.yview)
+        self._res_tree.configure(yscrollcommand=res_sb.set)
+        self._res_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        res_sb.pack(side=tk.RIGHT, fill=tk.Y)
+
         # ── Analysis Result ──
         result_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
         result_frame.pack(fill=tk.X, padx=10, pady=4)
@@ -1797,6 +1792,13 @@ class CompareOptionDialog(tk.Toplevel):
 
         if not can_run:
             self._set_result("  Add material standards above, then click Run Analysis.", 'dim')
+
+    def _add_result_row(self, material: str, value: float, unit: str):
+        self._res_counter += 1
+        tag = 'odd' if self._res_counter % 2 else 'even'
+        self._res_tree.insert('', tk.END, values=(
+            self._res_counter, material, f"{value:.4f}", unit,
+        ), tags=(tag,))
 
     # ── Standards helpers ──
 
@@ -1893,6 +1895,7 @@ class CompareOptionDialog(tk.Toplevel):
             db=self.db,
             model_path=self.model_path,
             result_path=self.result_path,
+            on_add_result=self._add_result_row,
         )
 
     def _update_run_btn(self):
