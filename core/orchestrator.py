@@ -358,17 +358,6 @@ proc process_job {job_file} {
         }
     }
 
-    # 解析 "file_path": "value"
-    set file_path ""
-    set idx [string first {"file_path"} $content]
-    if {$idx >= 0} {
-        set start [string first {"} $content [expr {$idx + 11}]]
-        set end [string first {"} $content [expr {$start + 1}]]
-        if {$start >= 0 && $end > $start} {
-            set file_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
-        }
-    }
-
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -434,20 +423,7 @@ proc process_job {job_file} {
                 puts "capture_slide completed"
                 write_result $job_id {{"success":true}}
             }
-            "add_image_slide" {
-                puts "Executing add_image_slide: label=$label file_path=$file_path"
-                if { [catch {
-                    hwc report Report add slide "One Image only" "label=$label"
-                    hwc report Report edit items image "position=$label,Image1" source=file "file=$file_path"
-                } err] } {
-                    puts "add_image_slide error: $err"
-                    set escaped_err [escape_json_string $err]
-                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
-                    return
-                }
-                puts "add_image_slide completed: $label"
-                write_result $job_id {{"success":true}}
-            }
+
             "report_run" {
                 puts "Executing report_run command"
                 if { [catch {
@@ -850,30 +826,6 @@ after 4000 listen
         finally:
             self._set_state(State.AGENT_READY)
 
-    def add_image_slide(self, label: str, file_path: str) -> bool:
-        """Add slide 'One Image only' and set image source to a local file.
-        hwc report Report add slide "One Image only" label="$label"
-        hwc report Report edit items image position="$label,Image1" source=file file="$file_path"
-        """
-        if self.state != State.AGENT_READY:
-            self._log(f"add_image_slide: HyperView is not ready (state={self.state})")
-            return False
-        self._set_state(State.RUNNING)
-        try:
-            hv_path = file_path.replace('\\', '/')
-            self._log(f"Adding image slide: {label} → {hv_path}")
-            result = self.bridge.send_job(cmd="add_image_slide", params={
-                "label": label,
-                "file_path": hv_path,
-            })
-            if result.get('success', False):
-                self._log(f"Image slide added: {label}")
-                return True
-            else:
-                self._log(f"Image slide failed: {result.get('error', 'Unknown')}")
-                return False
-        finally:
-            self._set_state(State.AGENT_READY)
 
     def report_run(self) -> bool:
         """执行 hwc report Report Run"""

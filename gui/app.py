@@ -2007,30 +2007,11 @@ class CompareOptionDialog(tk.Toplevel):
         if report_rows:
             self._generate_report(report_rows)
 
-    @staticmethod
-    def _next_slide_number(reports_png_dir):
-        """Scan existing One_Image_only_N folders to find the next unused N.
-        Works across program restarts — no duplicate numbers ever."""
-        import re
-        max_n = 0
-        if os.path.isdir(reports_png_dir):
-            for name in os.listdir(reports_png_dir):
-                m = re.match(r'^One_Image_only_(\d+)$', name)
-                if m:
-                    max_n = max(max_n, int(m.group(1)))
-        return max_n + 1
-
     def _generate_report(self, report_rows):
         """Generate PNG screenshot from analysis comparison results."""
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        reports_png_dir = os.path.join(app_dir, 'reports', 'png')
-
-        # Derive slide number from existing folders — unique across restarts
-        n = self._next_slide_number(reports_png_dir)
-        label       = f"One Image only {n}"
-        folder_name = f"One_Image_only_{n}"
-        rel_path    = f"reports/png/{folder_name}/analyst.png"
-        png_dir     = os.path.join(reports_png_dir, folder_name)
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        png_dir = os.path.join(app_dir, 'reports', 'png', ts)
         os.makedirs(png_dir, exist_ok=True)
         img_path = os.path.join(png_dir, 'analyst.png')
 
@@ -2056,15 +2037,6 @@ class CompareOptionDialog(tk.Toplevel):
                 parent=self,
             )
 
-        # ── Add slide to HyperView report ──
-        if png and self.orchestrator and self.orchestrator.state == State.AGENT_READY:
-            ok = self.orchestrator.add_image_slide(label, rel_path)
-            self._result_text.config(state=tk.NORMAL)
-            if ok:
-                self._result_text.insert(tk.END, f"  Slide: {label} added to report\n", 'dim')
-            else:
-                self._result_text.insert(tk.END, "  Slide: HyperView add failed (see log)\n", 'dim')
-            self._result_text.config(state=tk.DISABLED)
 
     @staticmethod
     def _save_analysis_image(report_rows, img_path):
