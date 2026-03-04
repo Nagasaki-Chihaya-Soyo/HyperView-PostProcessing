@@ -245,8 +245,8 @@ proc process_job {job_file} {
     # 解析 "id": "value"
     set idx [string first {"id"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 4}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 4}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set job_id [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -255,8 +255,8 @@ proc process_job {job_file} {
     # 解析 "cmd": "value"
     set idx [string first {"cmd"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 5}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 5}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set cmd [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -265,8 +265,8 @@ proc process_job {job_file} {
     # 解析 "model_path": "value"
     set idx [string first {"model_path"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 12}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 12}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set model_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -275,8 +275,8 @@ proc process_job {job_file} {
     # 解析 "result_path": "value"
     set idx [string first {"result_path"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 13}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 13}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set result_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -285,8 +285,8 @@ proc process_job {job_file} {
     # 解析 "output_dir": "value"
     set idx [string first {"output_dir"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 12}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 12}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set output_dir [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -296,8 +296,8 @@ proc process_job {job_file} {
     set result_type ""
     set idx [string first {"result_type"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 13}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 13}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set result_type [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -307,8 +307,8 @@ proc process_job {job_file} {
     set result_component ""
     set idx [string first {"result_component"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 18}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 18}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set result_component [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -318,8 +318,8 @@ proc process_job {job_file} {
     set label ""
     set idx [string first {"label"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 7}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 7}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set label [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -329,8 +329,8 @@ proc process_job {job_file} {
     set hotspot_name ""
     set idx [string first {"hotspot_name"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 14}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 14}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set hotspot_name [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -340,8 +340,8 @@ proc process_job {job_file} {
     set viewmode_option ""
     set idx [string first {"viewmode_option"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 17}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 17}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set viewmode_option [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -351,8 +351,8 @@ proc process_job {job_file} {
     set csv_path ""
     set idx [string first {"csv_path"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 10}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 10}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set csv_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -362,8 +362,8 @@ proc process_job {job_file} {
     set file_path ""
     set idx [string first {"file_path"} $content]
     if {$idx >= 0} {
-        set start [string first {\"} $content [expr {$idx + 11}]]
-        set end [string first {\"} $content [expr {$start + 1}]]
+        set start [string first {"} $content [expr {$idx + 11}]]
+        set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
             set file_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
         }
@@ -438,7 +438,7 @@ proc process_job {job_file} {
                 puts "Executing add_image_slide: label=$label file_path=$file_path"
                 if { [catch {
                     hwc report Report add slide "One Image only" label=$label
-                    hwc report Report edit items image position="$label,Image1" source=file file="$file_path"
+                    hwc report Report edit items image position=$label,Image1 source=file file=$file_path
                 } err] } {
                     puts "add_image_slide error: $err"
                     set escaped_err [escape_json_string $err]
@@ -853,7 +853,7 @@ after 4000 listen
     def add_image_slide(self, label: str, file_path: str) -> bool:
         """Add slide 'One Image only' and set image source to a local file.
         hwc report Report add slide "One Image only" label=$label
-        hwc report Report edit items image position="$label,Image1" source=file file="$file_path"
+        hwc report Report edit items image position=$label,Image1 source=file file=$file_path
         """
         if self.state != State.AGENT_READY:
             self._log(f"add_image_slide: HyperView is not ready (state={self.state})")
