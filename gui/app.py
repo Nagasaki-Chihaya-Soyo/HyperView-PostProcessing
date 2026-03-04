@@ -1667,6 +1667,15 @@ Write-Host "Saved: $outPath"
             material_label = part.get('name') or part.get('part_no', '—')
             self.on_add_result(material_label, self._peak_value, unit)
 
+        # Reset state so user must Read again for the next value
+        self._peak_value = None
+        self._entity_id = ""
+        self._max_val_var.set("—")
+        self._entity_var.set("—")
+        self._map_val_var.set("")
+        self._add_run_btn.config(state=tk.DISABLED)
+        self._status_var.set("Result added. Click Read for the next value.")
+
 class CompareOptionDialog(tk.Toplevel):
     """Compare with Material Standards 选项对话框"""
 
@@ -1939,7 +1948,9 @@ class CompareOptionDialog(tk.Toplevel):
         parts = self.db.get_all_parts()
         std_by_name = {(p['name'] or '').strip().lower(): p for p in parts}
 
-        output_lines = []  # list of (text, tag)
+        output_lines = []  # (text, tag) for Analysis Result box
+        report_rows = []   # data for HTML/PNG report
+
         print("=" * 55)
         print("Run Analysis — Standards vs Results")
         print("=" * 55)
@@ -1957,17 +1968,31 @@ class CompareOptionDialog(tk.Toplevel):
             allowable = part['allowable_vm'] / sf
             value = row['value']
             unit = row['unit'] or part.get('units') or 'MPa'
+            pct = (value - allowable) / allowable * 100 if allowable else 0
+            pct_str = f"超出 {abs(pct):.2f}%" if value > allowable else f"不足 {abs(pct):.2f}%"
 
             if value > allowable:
-                verdict = f"Result ({value:.4f}) > Allowable ({allowable:.4f}) — FAILED"
+                verdict = f"Result ({value:.4f}) > Allowable ({allowable:.4f}) — FAILED  [{pct_str}]"
                 tag = 'fail'
             else:
-                verdict = f"Result ({value:.4f}) <= Allowable ({allowable:.4f}) — PASSED"
+                verdict = f"Result ({value:.4f}) <= Allowable ({allowable:.4f}) — PASSED  [{pct_str}]"
                 tag = 'pass'
 
             msg = f"[{row['no']}] {row['material']} [{unit}]: {verdict}"
             print(msg)
             output_lines.append((f"  {msg}\n", tag))
+
+            report_rows.append({
+                'no': row['no'],
+                'material': row['material'],
+                'allowable_vm': part['allowable_vm'],
+                'safety_factor': sf,
+                'allowable': allowable,
+                'value': value,
+                'unit': unit,
+                'pct_str': pct_str,
+                'passed': value <= allowable,
+            })
 
         print("=" * 55)
 
@@ -1978,6 +2003,178 @@ class CompareOptionDialog(tk.Toplevel):
             self._result_text.insert(tk.END, text, tag)
         self._result_text.insert(tk.END, f"  {'─' * 50}\n", 'dim')
         self._result_text.config(state=tk.DISABLED)
+
+        if report_rows:
+            self._generate_report(report_rows)
+
+    def _generate_report(self, report_rows):
+        """Generate HTML table + PNG screenshot from analysis comparison results."""
+        import datetime
+        ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        html_path = os.path.join(app_dir, f'analysis_{ts}.html')
+        img_path  = os.path.join(app_dir, f'analysis_{ts}.png')
+
+        # ── 1. HTML table ──
+        rows_html = []
+        for r in report_rows:
+            bg = '#C6EFCE' if r['passed'] else '#FFC7CE'
+            rows_html.append(
+                f'<tr style="background:{bg}">'
+                f'<td>{r["material"]}</td>'
+                f'<td>{r["allowable_vm"]:.2f}</td>'
+                f'<td>{r["safety_factor"]:.2f}</td>'
+                f'<td>{r["value"]:.4f} {r["unit"]}</td>'
+                f'<td>{r["pct_str"]}</td>'
+                f'</tr>'
+            )
+        html = (
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
+            'body{font-family:Arial,sans-serif;padding:16px}'
+            'h2{color:#1f3864}'
+            'table{border-collapse:collapse;width:100%}'
+            'th{background:#1f3864;color:#fff;padding:8px 14px;text-align:center}'
+            'td{border:1px solid #ccc;padding:6px 14px;text-align:center}'
+            '</style></head><body>'
+            '<h2>分析结果</h2>'
+            '<table><thead><tr>'
+            '<th>材料名称</th><th>允许值</th><th>安全因子</th>'
+            '<th>实际值</th><th>超出/不足占比</th>'
+            f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table>'
+            '</body></html>'
+        )
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        print(f"[analysis HTML] {html_path}")
+
+        # ── 2. PNG via PowerShell System.Drawing ──
+        png = self._save_analysis_image(report_rows, img_path)
+        if png:
+            print(f"[analysis PNG]  {png}")
+
+    @staticmethod
+    def _save_analysis_image(report_rows, img_path):
+        """Render analysis comparison table to PNG using PowerShell System.Drawing."""
+        import subprocess
+
+        def ps_str(s):
+            return "'" + str(s).replace("'", "''").replace('\r', '').replace('\n', ' ') + "'"
+
+        headers = ['材料名称', '允许值', '安全因子', '实际值', '超出/不足占比']
+        n_cols = len(headers)
+
+        row_lines = []
+        for r in report_rows:
+            color_code = 0 if r['passed'] else 1   # 0=green, 1=red
+            cells = ', '.join([
+                ps_str(r['material']),
+                ps_str(f"{r['allowable_vm']:.2f}"),
+                ps_str(f"{r['safety_factor']:.2f}"),
+                ps_str(f"{r['value']:.4f} {r['unit']}"),
+                ps_str(r['pct_str']),
+            ])
+            row_lines.append(f"    @({cells}, {color_code})")
+
+        header_ps = '@(' + ', '.join(ps_str(h) for h in headers) + ')'
+        rows_ps    = '@(\n' + ',\n'.join(row_lines) + '\n)'
+        out_ps     = ps_str(img_path)[1:-1]
+
+        ps_script = f"""
+Add-Type -AssemblyName System.Drawing
+
+$headers = {header_ps}
+$rows    = {rows_ps}
+$nCols   = {n_cols}
+$outPath = '{out_ps}'
+
+$font      = New-Object System.Drawing.Font('Arial', 9)
+$boldFont  = New-Object System.Drawing.Font('Arial', 9,  [System.Drawing.FontStyle]::Bold)
+$titleFont = New-Object System.Drawing.Font('Arial', 11, [System.Drawing.FontStyle]::Bold)
+
+$tmp = New-Object System.Drawing.Bitmap(1, 1)
+$tg  = [System.Drawing.Graphics]::FromImage($tmp)
+$colW = @()
+foreach ($h in $headers) {{
+    $colW += [int]($tg.MeasureString($h, $boldFont).Width) + 24
+}}
+for ($r = 0; $r -lt $rows.Count; $r++) {{
+    for ($c = 0; $c -lt $nCols; $c++) {{
+        $w = [int]($tg.MeasureString($rows[$r][$c], $font).Width) + 24
+        if ($w -gt $colW[$c]) {{ $colW[$c] = $w }}
+    }}
+}}
+$tg.Dispose(); $tmp.Dispose()
+
+$cellH  = 26
+$totalW = ($colW | Measure-Object -Sum).Sum
+$totalH = ($rows.Count + 1) * $cellH + 46
+
+$bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
+$g   = [System.Drawing.Graphics]::FromImage($bmp)
+$g.Clear([System.Drawing.Color]::White)
+$g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+
+$sf = New-Object System.Drawing.StringFormat
+$sf.Alignment     = [System.Drawing.StringAlignment]::Center
+$sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+$titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
+$g.DrawString('分析结果', $titleFont, $titleBrush, 5, 8)
+
+$y = 38; $x = 0
+$hdrBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(31, 56, 100))
+$hdrFg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+for ($c = 0; $c -lt $nCols; $c++) {{
+    $g.FillRectangle($hdrBg, $x, $y, $colW[$c], $cellH)
+    $g.DrawRectangle([System.Drawing.Pens]::DarkGray, $x, $y, $colW[$c], $cellH)
+    $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+    $g.DrawString($headers[$c], $boldFont, $hdrFg, $rect, $sf)
+    $x += $colW[$c]
+}}
+$y += $cellH
+
+$greenBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(198, 239, 206))
+$redBg   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 199, 206))
+$blkFg   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
+
+for ($r = 0; $r -lt $rows.Count; $r++) {{
+    $code = [int]$rows[$r][$nCols]
+    $bg   = if ($code -eq 1) {{ $redBg }} else {{ $greenBg }}
+    $x = 0
+    for ($c = 0; $c -lt $nCols; $c++) {{
+        $g.FillRectangle($bg,  $x, $y, $colW[$c], $cellH)
+        $g.DrawRectangle([System.Drawing.Pens]::LightGray, $x, $y, $colW[$c], $cellH)
+        $rect = New-Object System.Drawing.RectangleF($x, $y, $colW[$c], $cellH)
+        $g.DrawString($rows[$r][$c], $font, $blkFg, $rect, $sf)
+        $x += $colW[$c]
+    }}
+    $y += $cellH
+}}
+
+$bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose(); $bmp.Dispose()
+Write-Host "Saved: $outPath"
+"""
+        ps_file = img_path + '.ps1'
+        try:
+            with open(ps_file, 'w', encoding='utf-8') as f:
+                f.write(ps_script)
+            proc = subprocess.run(
+                ['powershell', '-ExecutionPolicy', 'Bypass', '-File', ps_file],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
+            )
+            if proc.returncode != 0:
+                print(f"[_save_analysis_image] PS error: "
+                      f"{proc.stderr.decode(errors='replace').strip()}")
+            return img_path if os.path.exists(img_path) else ""
+        except Exception as e:
+            print(f"[_save_analysis_image] {e}")
+            return ""
+        finally:
+            try:
+                os.remove(ps_file)
+            except OSError:
+                pass
 
 
 class AnalysisDialog(tk.Toplevel):
