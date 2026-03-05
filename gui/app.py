@@ -2052,10 +2052,9 @@ class CompareOptionDialog(tk.Toplevel):
                 parent=self,
             )
 
-        # ── HWC: add slide One Image only + edit items image ──
+        # ── HWC: add slide One Image only + edit items image + rename ──
         if png and self.orchestrator:
-            position = f"{label},Image1"
-            self.orchestrator.add_slide_one_image_only(label, position, img_path)
+            self.orchestrator.add_slide_one_image_only(label, seq)
 
 
     @staticmethod
