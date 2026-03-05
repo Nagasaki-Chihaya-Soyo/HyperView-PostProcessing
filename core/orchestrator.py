@@ -655,7 +655,9 @@ proc process_job {job_file} {
                     after 300
                     hwc report Report edit items image "position=$label,Image1" source=file
                     after 300
-                    hwc report Report edit items image "position=$position" source=file file=$file_path
+                    set file_arg "file="
+                    append file_arg $file_path
+                    hwc report Report edit items image "position=$position" source=file $file_arg
                     after 300
                     hwc report Report edit items slide "position=$file_path" "label=Analyst [lindex $label end]"
                     after 300
