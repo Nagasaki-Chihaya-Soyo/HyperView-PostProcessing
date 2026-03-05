@@ -651,9 +651,8 @@ proc process_job {job_file} {
             "add_slide_one_image_only" {
                 puts "Executing add_slide_one_image_only: label=$label position=$position file_path=$file_path"
                 if { [catch {
-                    set native_file_path [string map [list / \\\\] $file_path]
                     hwc report Report add slide "One Image only" "label=$label"
-                    hwc report Report edit items image "position=$position" source=file "file=$native_file_path"
+                    hwc report Report edit items image "position=$position" source=file "file=$file_path"
                     hwc report Report edit items slide "position=$file_path" "label=Analyst [lindex $label end]"
                 } err] } {
                     puts "add_slide_one_image_only error: $err"
