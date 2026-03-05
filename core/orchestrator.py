@@ -378,7 +378,7 @@ proc process_job {job_file} {
         set start [string first {"} $content [expr {$idx + 11}]]
         set end [string first {"} $content [expr {$start + 1}]]
         if {$start >= 0 && $end > $start} {
-            set file_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+            set file_path [string trim [string range $content [expr {$start + 1}] [expr {$end - 1}]]]
         }
     }
 
