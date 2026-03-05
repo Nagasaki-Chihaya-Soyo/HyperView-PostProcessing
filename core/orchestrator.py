@@ -380,17 +380,6 @@ proc process_job {job_file} {
         }
     }
 
-    # 解析 "seq": "value"
-    set seq "1"
-    set idx [string first {"seq"} $content]
-    if {$idx >= 0} {
-        set start [string first {"} $content [expr {$idx + 5}]]
-        set end [string first {"} $content [expr {$start + 1}]]
-        if {$start >= 0 && $end > $start} {
-            set seq [string range $content [expr {$start + 1}] [expr {$end - 1}]]
-        }
-    }
-
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -658,16 +647,11 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "add_slide_one_image_only" {
-                puts "Executing add_slide_one_image_only: label=$label seq=$seq"
-                set base_dir [file dirname [file dirname $INBOX_DIR]]
-                set folder_name "One_Image_only_$seq"
-                set img_path [string map {\\ /} [file join $base_dir reports png $folder_name analyst.png]]
-                set slide_num [lindex $label end]
-                puts "img_path=$img_path"
+                puts "Executing add_slide_one_image_only: label=$label position=$position file_path=$file_path"
                 if { [catch {
                     hwc report Report add slide "One Image only" "label=$label"
-                    hwc report Report edit items image "position=One Image only $slide_num\,Image1" source=file "file=$img_path"
-                    hwc report Report edit items slide "position=$img_path" "label=Analyst $slide_num"
+                    hwc report Report edit items image "position=$position" source=file file=$file_path
+                    hwc report Report edit items slide position=$file_path "label=Analyst [lindex $label end]"
                 } err] } {
                     puts "add_slide_one_image_only error: $err"
                     set escaped_err [escape_json_string $err]
@@ -1027,17 +1011,18 @@ after 4000 listen
             self._log(f"Load failed:{result.get('error', 'Unknown')}")
             return False
 
-    def add_slide_one_image_only(self, label: str, seq: int) -> bool:
-        """执行三条HWC命令: add slide / edit image / rename slide"""
+    def add_slide_one_image_only(self, label: str, position: str, file_path: str) -> bool:
+        """执行两条HWC命令: add slide One Image only 并 edit items image"""
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
         self._set_state(State.RUNNING)
         try:
-            self._log(f"add_slide_one_image_only: label={label}, seq={seq}")
+            self._log(f"add_slide_one_image_only: label={label}")
             result = self.bridge.send_job(cmd="add_slide_one_image_only", params={
                 "label": label,
-                "seq": str(seq),
+                "position": position,
+                "file_path": file_path.replace('\\', '/'),
             })
             if result.get('success', False):
                 self._log("add_slide_one_image_only completed")
