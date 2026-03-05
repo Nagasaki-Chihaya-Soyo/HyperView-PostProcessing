@@ -358,6 +358,28 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "position": "value"
+    set position ""
+    set idx [string first {"position"} $content]
+    if {$idx >= 0} {
+        set start [string first {"} $content [expr {$idx + 10}]]
+        set end [string first {"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set position [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    # 解析 "file_path": "value"
+    set file_path ""
+    set idx [string first {"file_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {"} $content [expr {$idx + 11}]]
+        set end [string first {"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set file_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -622,6 +644,20 @@ proc process_job {job_file} {
                     return
                 }
                 puts "load_model completed successfully"
+                write_result $job_id {{"success":true}}
+            }
+            "add_slide_one_image_only" {
+                puts "Executing add_slide_one_image_only: label=$label position=$position file_path=$file_path"
+                if { [catch {
+                    hwc report Report add slide "One Image only" "label=$label"
+                    hwc report Report edit items image "position=$position" source=file file=$file_path
+                } err] } {
+                    puts "add_slide_one_image_only error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "add_slide_one_image_only completed"
                 write_result $job_id {{"success":true}}
             }
             default {
@@ -973,6 +1009,31 @@ after 4000 listen
         else:
             self._log(f"Load failed:{result.get('error', 'Unknown')}")
             return False
+
+    def add_slide_one_image_only(self, label: str, position: str, file_path: str) -> bool:
+        """执行两条HWC命令: add slide One Image only 并 edit items image"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"add_slide_one_image_only: label={label}")
+            result = self.bridge.send_job(cmd="add_slide_one_image_only", params={
+                "label": label,
+                "position": position,
+                "file_path": file_path.replace('\\', '/'),
+            })
+            if result.get('success', False):
+                self._log("add_slide_one_image_only completed")
+                return True
+            else:
+                self._log(f"add_slide_one_image_only failed: {result.get('error', 'Unknown')}")
+                return False
+        except Exception as e:
+            self._log(f"add_slide_one_image_only error: {e}")
+            return False
+        finally:
+            self._set_state(State.AGENT_READY)
 
     def plot_contour_only(self, result_type: str, component: str) -> bool:
         """hwc result scalar edit + plot — no report slide."""

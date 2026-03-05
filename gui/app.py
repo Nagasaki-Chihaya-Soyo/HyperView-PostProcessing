@@ -2010,8 +2010,23 @@ class CompareOptionDialog(tk.Toplevel):
     def _generate_report(self, report_rows):
         """Generate PNG screenshot from analysis comparison results."""
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        png_dir = os.path.join(app_dir, 'reports', 'png', ts)
+
+        # ── 计算唯一序号（跨程序多次启动不重复）──
+        png_base = os.path.join(app_dir, 'reports', 'png')
+        os.makedirs(png_base, exist_ok=True)
+        seq = 1
+        if os.path.isdir(png_base):
+            for name in os.listdir(png_base):
+                if name.startswith('One_Image_only_') and os.path.isdir(os.path.join(png_base, name)):
+                    suffix = name[len('One_Image_only_'):]
+                    if suffix.isdigit():
+                        n = int(suffix)
+                        if n >= seq:
+                            seq = n + 1
+
+        folder_name = f"One_Image_only_{seq}"
+        label = f"One Image only {seq}"
+        png_dir = os.path.join(png_base, folder_name)
         os.makedirs(png_dir, exist_ok=True)
         img_path = os.path.join(png_dir, 'analyst.png')
 
@@ -2036,6 +2051,12 @@ class CompareOptionDialog(tk.Toplevel):
                 message=f"PowerShell error:\n\n{ps_err}",
                 parent=self,
             )
+
+        # ── HWC: add slide One Image only + edit items image ──
+        if png and self.orchestrator:
+            position = f"{label},Image1"
+            rel_file = f"reports/png/{folder_name}/analyst.png"
+            self.orchestrator.add_slide_one_image_only(label, position, rel_file)
 
 
     @staticmethod
