@@ -2055,8 +2055,7 @@ class CompareOptionDialog(tk.Toplevel):
         # ── HWC: add slide One Image only + edit items image ──
         if png and self.orchestrator:
             position = f"{label},Image1"
-            rel_file = f"reports/png/{folder_name}/analyst.png"
-            self.orchestrator.add_slide_one_image_only(label, position, rel_file)
+            self.orchestrator.add_slide_one_image_only(label, position, img_path)
 
 
     @staticmethod
