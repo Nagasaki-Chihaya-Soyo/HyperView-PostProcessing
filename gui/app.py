@@ -239,8 +239,7 @@ Report Path:{result['report_path']}
 
     def _open_report(self):
         import subprocess
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        reports_dir = os.path.join(os.path.dirname(app_dir), 'reports')
+        reports_dir = self.orchestrator.output_dir
         os.makedirs(reports_dir, exist_ok=True)
         try:
             os.startfile(reports_dir)
@@ -1472,7 +1471,8 @@ Write-Host "Saved: $outPath"
 
     @staticmethod
     def _save_comparison_image(peak_value: float, unit: str,
-                               parts: list, selected_part_no: str = "") -> str:
+                               parts: list, selected_part_no: str = "",
+                               output_dir: str = "") -> str:
         """Generate a PNG comparing peak_value against every part.
         Data is written to a JSON file (utf-8-sig); PS script is pure ASCII.
         Row colours: yellow=selected, red=exceeded, green=ok.
@@ -1482,9 +1482,10 @@ Write-Host "Saved: $outPath"
         if not parts:
             return ""
 
-        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if not output_dir:
+            output_dir = os.path.join(os.path.expanduser("~"), "Documents", "HyperView-PostProcessing")
         ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        png_dir   = os.path.join(app_dir, 'reports', 'png', ts)
+        png_dir   = os.path.join(output_dir, 'reports', 'png', ts)
         os.makedirs(png_dir, exist_ok=True)
         img_path  = os.path.join(png_dir, 'comparison.png')
         ps_file   = img_path + '.ps1'
@@ -1657,7 +1658,8 @@ Write-Host 'Saved'
         unit = 'mm' if 'Displacement' in dtype else ('—' if 'Strain' in dtype else 'MPa')
         all_parts = self.db.get_all_parts()
         img_path = self._save_comparison_image(
-            self._peak_value, unit, all_parts, part['part_no']
+            self._peak_value, unit, all_parts, part['part_no'],
+            output_dir=self.orchestrator.output_dir
         )
         if img_path:
             print(f"[comparison image] {img_path}")
@@ -2009,10 +2011,8 @@ class CompareOptionDialog(tk.Toplevel):
 
     def _generate_report(self, report_rows):
         """Generate PNG screenshot from analysis comparison results."""
-        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
         # ── 计算唯一序号（跨程序多次启动不重复）──
-        png_base = os.path.join(app_dir, 'reports', 'png')
+        png_base = os.path.join(self.orchestrator.output_dir, 'reports', 'png')
         os.makedirs(png_base, exist_ok=True)
         seq = 1
         if os.path.isdir(png_base):

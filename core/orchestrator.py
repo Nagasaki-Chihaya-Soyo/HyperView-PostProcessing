@@ -32,9 +32,11 @@ class Orchestrator:
             self.config = json.load(f)
         self.inbox_dir = os.path.join(base_dir, self.config['workdir']['inbox'])
         self.outbox_dir = os.path.join(base_dir, self.config['workdir']['outbox'])
-        self.runs_dir = os.path.join(base_dir, self.config['workdir']['runs'])
         self.logs_dir = os.path.join(base_dir, self.config['workdir']['logs'])
-        for d in [self.inbox_dir, self.outbox_dir, self.runs_dir, self.logs_dir]:
+        # 用户结果文件输出到 Documents/HyperView-PostProcessing，与程序安装位置解耦
+        self.output_dir = os.path.join(os.path.expanduser("~"), "Documents", "HyperView-PostProcessing")
+        self.runs_dir = os.path.join(self.output_dir, "runs")
+        for d in [self.inbox_dir, self.outbox_dir, self.logs_dir, self.output_dir, self.runs_dir]:
             os.makedirs(d, exist_ok=True)
         self.hv_process = HVProcess(self.config['hyperview'])
         self.bridge = HVBridge(self.inbox_dir, self.outbox_dir,
