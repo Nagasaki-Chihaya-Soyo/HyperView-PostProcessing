@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import shutil
 from enum import Enum, auto
 from typing import Optional, Callable, Dict, Any
 from datetime import datetime
@@ -60,6 +61,21 @@ class Orchestrator:
         log_info(msg)
         if self.on_log:
             self.on_log(msg)
+
+    def _get_next_slide_index(self) -> int:
+        """扫描 reports/png/ 目录，返回下一个可用的 One Image only 序号"""
+        reports_png_dir = os.path.join(self.base_dir, 'reports', 'png')
+        if not os.path.exists(reports_png_dir):
+            return 1
+        existing = []
+        for name in os.listdir(reports_png_dir):
+            if name.startswith('One_Image_only_'):
+                try:
+                    num = int(name.split('_')[-1])
+                    existing.append(num)
+                except ValueError:
+                    pass
+        return max(existing, default=0) + 1
 
     def _generate_agent_tcl(self) -> str:
         agent_dir = os.path.join(self.base_dir, 'hv_agent')
@@ -347,6 +363,28 @@ proc process_job {job_file} {
         }
     }
 
+    # 解析 "slide_index": "value"
+    set slide_index ""
+    set idx [string first {"slide_index"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 13}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set slide_index [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
+    # 解析 "image_file_path": "value"
+    set image_file_path ""
+    set idx [string first {"image_file_path"} $content]
+    if {$idx >= 0} {
+        set start [string first {\"} $content [expr {$idx + 17}]]
+        set end [string first {\"} $content [expr {$start + 1}]]
+        if {$start >= 0 && $end > $start} {
+            set image_file_path [string range $content [expr {$start + 1}] [expr {$end - 1}]]
+        }
+    }
+
     puts "DEBUG: job_id=$job_id cmd=$cmd"
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
@@ -557,6 +595,22 @@ proc process_job {job_file} {
                 puts "load_model completed successfully"
                 write_result $job_id {{"success":true}}
             }
+            "add_analysis_slide" {
+                puts "Executing add_analysis_slide: slide_index=$slide_index image_file_path=$image_file_path"
+                if { [catch {
+                    set slide_label "One Image only $slide_index"
+                    hwc report Report add slide "One Image only" label=$slide_label
+                    set slide_position "$slide_label,Image1"
+                    hwc report Report edit items image position=$slide_position source=file file=$image_file_path
+                } err] } {
+                    puts "add_analysis_slide error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "add_analysis_slide completed"
+                write_result $job_id {{"success":true}}
+            }
             default {
                 write_result $job_id [format {{"success":false,"error":"Unknown cmd: %s"}} $cmd]
             }
@@ -652,6 +706,25 @@ after 4000 listen
                 output_path=report_path
             )
             self._log(f"Analyzing Complete,Report:{report_path}")
+
+            # 添加 HWC 报告幻灯片
+            slide_index = self._get_next_slide_index()
+            slide_dir = os.path.join(self.base_dir, 'reports', 'png',
+                                     f'One_Image_only_{slide_index}')
+            os.makedirs(slide_dir, exist_ok=True)
+            analyst_png = os.path.join(slide_dir, 'analyst.png')
+            images = result.get('images', [])
+            if images and os.path.exists(images[0]):
+                shutil.copy2(images[0], analyst_png)
+            image_rel_path = f'reports/png/One_Image_only_{slide_index}/analyst.png'
+            self._log(f"Adding analysis slide: index={slide_index}")
+            slide_result = self.bridge.send_job(cmd="add_analysis_slide", params={
+                "slide_index": str(slide_index),
+                "image_file_path": image_rel_path
+            })
+            if not slide_result.get('success', False):
+                self._log(f"add_analysis_slide failed: {slide_result.get('error', 'Unknown')}")
+
             return {
                 'success': True,
                 'analysis': analysis_result,
