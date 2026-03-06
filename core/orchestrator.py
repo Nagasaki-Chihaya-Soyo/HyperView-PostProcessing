@@ -213,20 +213,45 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 }
 
 proc cmd_display_contour {model_path result_path} {
-    puts "=== Display Contour V3 (HWC) ==="
-
+    puts "=== cmd_display_contour (native TCL) ==="
     if { [catch {
-        # 使用HWC指令显示云图
-        puts "Setting contour type to Element Stresses vonMises..."
-        hwc result scalar edit "Current Contour" type="Element Stresses (2D & 3D)" component=vonMises
-        puts "Plotting contour using HWC command..."
-        hwc result scalar plot "Current Contour"
-        puts "Contour plotted successfully"
+        puts "dc Step 1: OpenStack + GetSessionHandle"
+        hwi OpenStack
+        hwi GetSessionHandle sess_dc
+        puts "dc Step 2: GetProjectHandle"
+        sess_dc GetProjectHandle proj_dc
+        set pageId_dc [proj_dc GetActivePage]
+        puts "dc Step 3: GetPageHandle pageId=$pageId_dc"
+        proj_dc GetPageHandle page_dc $pageId_dc
+        set winId_dc [page_dc GetActiveWindow]
+        puts "dc Step 4: GetWindowHandle winId=$winId_dc"
+        page_dc GetWindowHandle win_dc $winId_dc
+        win_dc SetClientType animation
+        puts "dc Step 5: GetClientHandle (post)"
+        win_dc GetClientHandle post_dc
+        puts "dc Step 6: GetContourCtrlHandle"
+        post_dc GetContourCtrlHandle cc_dc
+        puts "dc Step 7: SetDataType Element Stresses"
+        cc_dc SetDataType "Element Stresses (2D & 3D)"
+        puts "dc Step 8: SetDataComponent vonMises"
+        cc_dc SetDataComponent "vonMises"
+        puts "dc Step 9: Apply"
+        cc_dc Apply
+        cc_dc ReleaseHandle
+        puts "dc Step 10: Draw"
+        post_dc Draw
+        post_dc ReleaseHandle
+        win_dc ReleaseHandle
+        page_dc ReleaseHandle
+        proj_dc ReleaseHandle
+        sess_dc ReleaseHandle
+        hwi CloseStack
     } err] } {
-        puts "cmd_display_contour error: $err"
+        puts "cmd_display_contour FAILED: $err"
+        catch { hwi CloseStack }
         return 0
     }
-
+    puts "=== cmd_display_contour completed ==="
     return 1
 }
 
@@ -405,60 +430,142 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
             "apply_contour" {
-                puts "Executing apply_contour command"
-                puts "result_type=$result_type result_component=$result_component label=$label"
+                puts "=== apply_contour start: type=$result_type component=$result_component label=$label ==="
                 if { [catch {
-                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
-                    hwc result scalar plot "Current Contour"
-                    hwc report Report add slide "One Image with Caption" label=$label
+                    puts "ac Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_ac
+                    puts "ac Step 2: GetProjectHandle"
+                    sess_ac GetProjectHandle proj_ac
+                    set pageId_ac [proj_ac GetActivePage]
+                    puts "ac Step 3: GetPageHandle pageId=$pageId_ac"
+                    proj_ac GetPageHandle page_ac $pageId_ac
+                    set winId_ac [page_ac GetActiveWindow]
+                    puts "ac Step 4: GetWindowHandle winId=$winId_ac"
+                    page_ac GetWindowHandle win_ac $winId_ac
+                    win_ac SetClientType animation
+                    puts "ac Step 5: GetClientHandle (post)"
+                    win_ac GetClientHandle post_ac
+                    puts "ac Step 6: GetContourCtrlHandle"
+                    post_ac GetContourCtrlHandle cc_ac
+                    puts "ac Step 7: SetDataType $result_type"
+                    cc_ac SetDataType $result_type
+                    puts "ac Step 8: SetDataComponent $result_component"
+                    cc_ac SetDataComponent $result_component
+                    puts "ac Step 9: Apply contour"
+                    cc_ac Apply
+                    cc_ac ReleaseHandle
+                    puts "ac Step 10: Draw"
+                    post_ac Draw
+                    post_ac ReleaseHandle
+                    win_ac ReleaseHandle
+                    page_ac ReleaseHandle
+                    proj_ac ReleaseHandle
+                    puts "ac Step 11: GetReportCtrlHandle"
+                    sess_ac GetReportCtrlHandle rc_ac
+                    puts "ac Step 12: GetReportHandle"
+                    rc_ac GetReportHandle rH_ac "Report"
+                    puts "ac Step 13: AddSlide One Image with Caption"
+                    rH_ac AddSlide sH_ac "One Image with Caption"
+                    puts "ac Step 14: SetLabel $label"
+                    sH_ac SetLabel $label
+                    sH_ac ReleaseHandle
+                    rH_ac ReleaseHandle
+                    rc_ac ReleaseHandle
+                    sess_ac ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "apply_contour error: $err"
+                    puts "apply_contour FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "apply_contour completed successfully"
+                puts "=== apply_contour completed ==="
                 write_result $job_id {{"success":true}}
             }
             "report_run_position" {
-                puts "Executing report_run_position: label=$label"
+                puts "=== report_run_position start: label=$label ==="
                 if { [catch {
-                    hwc report Report run position=$label
+                    puts "rrp Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_rrp
+                    puts "rrp Step 2: GetReportCtrlHandle"
+                    sess_rrp GetReportCtrlHandle rc_rrp
+                    puts "rrp Step 3: GetReportHandle"
+                    rc_rrp GetReportHandle rH_rrp "Report"
+                    puts "rrp Step 4: Run position=$label"
+                    rH_rrp Run $label
+                    rH_rrp ReleaseHandle
+                    rc_rrp ReleaseHandle
+                    sess_rrp ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "report_run_position error: $err"
+                    puts "report_run_position FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "report_run_position completed"
+                puts "=== report_run_position completed ==="
                 write_result $job_id {{"success":true}}
             }
             "capture_slide" {
-                puts "Executing capture_slide: label=$label"
+                puts "=== capture_slide start: label=$label ==="
                 if { [catch {
-                    hwc report Report add slide "One Image with Caption" label=$label
-                    hwc report Report run position=$label
+                    puts "cs Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_cs
+                    puts "cs Step 2: GetReportCtrlHandle"
+                    sess_cs GetReportCtrlHandle rc_cs
+                    puts "cs Step 3: GetReportHandle"
+                    rc_cs GetReportHandle rH_cs "Report"
+                    puts "cs Step 4: AddSlide One Image with Caption"
+                    rH_cs AddSlide sH_cs "One Image with Caption"
+                    puts "cs Step 5: SetLabel $label"
+                    sH_cs SetLabel $label
+                    sH_cs ReleaseHandle
+                    puts "cs Step 6: Run position=$label"
+                    rH_cs Run $label
+                    rH_cs ReleaseHandle
+                    rc_cs ReleaseHandle
+                    sess_cs ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "capture_slide error: $err"
+                    puts "capture_slide FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "capture_slide completed"
+                puts "=== capture_slide completed ==="
                 write_result $job_id {{"success":true}}
             }
 
             "report_run" {
-                puts "Executing report_run command"
+                puts "=== report_run start ==="
                 if { [catch {
-                    hwc report Report run
+                    puts "rr Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_rr
+                    puts "rr Step 2: GetReportCtrlHandle"
+                    sess_rr GetReportCtrlHandle rc_rr
+                    puts "rr Step 3: GetReportHandle"
+                    rc_rr GetReportHandle rH_rr "Report"
+                    puts "rr Step 4: Run"
+                    rH_rr Run
+                    rH_rr ReleaseHandle
+                    rc_rr ReleaseHandle
+                    sess_rr ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "report_run error: $err"
+                    puts "report_run FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "report_run completed successfully"
+                puts "=== report_run completed ==="
                 write_result $job_id {{"success":true}}
             }
             "report_export" {
@@ -484,168 +591,409 @@ proc process_job {job_file} {
                 }
             }
             "setup_view" {
-                puts "Executing setup_view command"
+                puts "=== setup_view start ==="
                 if { [catch {
-                    hwc view orientation iso
-                    hwc animate frame last
+                    puts "sv Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_sv
+                    puts "sv Step 2: GetProjectHandle"
+                    sess_sv GetProjectHandle proj_sv
+                    set pageId_sv [proj_sv GetActivePage]
+                    puts "sv Step 3: GetPageHandle pageId=$pageId_sv"
+                    proj_sv GetPageHandle page_sv $pageId_sv
+                    set winId_sv [page_sv GetActiveWindow]
+                    puts "sv Step 4: GetWindowHandle winId=$winId_sv"
+                    page_sv GetWindowHandle win_sv $winId_sv
+                    win_sv SetClientType animation
+                    puts "sv Step 5: GetClientHandle (post)"
+                    win_sv GetClientHandle post_sv
+                    puts "sv Step 6: SetViewOrientation ISO"
+                    post_sv SetViewOrientation ISO
+                    puts "sv Step 7: GetAnimCtrlHandle"
+                    post_sv GetAnimCtrlHandle ac_sv
+                    set nFrames_sv [ac_sv GetNumberOfFrames]
+                    puts "sv Step 8: SetCurrentFrame last (nFrames=$nFrames_sv)"
+                    if {$nFrames_sv > 0} {
+                        ac_sv SetCurrentFrame [expr {$nFrames_sv - 1}]
+                    }
+                    ac_sv ReleaseHandle
+                    puts "sv Step 9: Draw"
+                    post_sv Draw
+                    post_sv ReleaseHandle
+                    win_sv ReleaseHandle
+                    page_sv ReleaseHandle
+                    proj_sv ReleaseHandle
+                    sess_sv ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "setup_view error: $err"
+                    puts "setup_view FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "setup_view completed successfully"
+                puts "=== setup_view completed ==="
                 write_result $job_id {{"success":true}}
             }
             "create_report" {
-                puts "Executing create_report command"
+                puts "=== create_report start ==="
                 if { [catch {
-                    hwc report create presentation Report layouttemplate=$REPORT_DIR
-                    hwc report create presentation "Report"
+                    puts "cr Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_cr
+                    puts "cr Step 2: GetReportCtrlHandle"
+                    sess_cr GetReportCtrlHandle rc_cr
+                    puts "cr Step 3: CreateReport Report with layouttemplate=$REPORT_DIR"
+                    rc_cr CreateReport rH_cr "Report" $REPORT_DIR
+                    puts "cr Step 4: CreateReport Report (no template)"
+                    rc_cr CreateReport rH_cr2 "Report"
+                    rH_cr ReleaseHandle
+                    rH_cr2 ReleaseHandle
+                    rc_cr ReleaseHandle
+                    sess_cr ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "create_report error: $err"
+                    puts "create_report FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "create_report completed successfully"
+                puts "=== create_report completed ==="
                 write_result $job_id {{"success":true}}
             }
             "hotspot_find" {
-                puts "Executing hotspot_find: hotspot_name=$hotspot_name"
+                puts "=== hotspot_find start: hotspot_name=$hotspot_name ==="
                 if { [catch {
-                    hwc kpi hotspot create $hotspot_name
+                    puts "hf Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_hf
+                    puts "hf Step 2: GetProjectHandle"
+                    sess_hf GetProjectHandle proj_hf
+                    set pageId_hf [proj_hf GetActivePage]
+                    puts "hf Step 3: GetPageHandle pageId=$pageId_hf"
+                    proj_hf GetPageHandle page_hf $pageId_hf
+                    set winId_hf [page_hf GetActiveWindow]
+                    puts "hf Step 4: GetWindowHandle winId=$winId_hf"
+                    page_hf GetWindowHandle win_hf $winId_hf
+                    win_hf SetClientType animation
+                    puts "hf Step 5: GetClientHandle (post)"
+                    win_hf GetClientHandle post_hf
+                    puts "hf Step 6: GetKPICtrlHandle"
+                    post_hf GetKPICtrlHandle kpi_hf
+                    puts "hf Step 7: CreateHotspot $hotspot_name"
+                    kpi_hf CreateHotspot $hotspot_name
+                    puts "hf Step 8: FindHotspots $hotspot_name"
+                    kpi_hf FindHotspots $hotspot_name
+                    puts "hf Step 9: ReviewHotspots $hotspot_name"
+                    kpi_hf ReviewHotspots $hotspot_name
+                    kpi_hf ReleaseHandle
+                    post_hf ReleaseHandle
+                    win_hf ReleaseHandle
+                    page_hf ReleaseHandle
+                    proj_hf ReleaseHandle
+                    sess_hf ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "hwc kpi create error: $err"
+                    puts "hotspot_find FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
-                    write_result $job_id [format {{"success":false,"error":"kpi create failed: %s"}} $escaped_err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "hwc kpi create $hotspot_name done"
-                if { [catch {
-                    hwc kpi hotspot $hotspot_name findhotspots
-                } err] } {
-                    puts "hwc kpi hotspot findhotspot error: $err"
-                    set escaped_err [escape_json_string $err]
-                    write_result $job_id [format {{"success":false,"error":"findhotspot failed: %s"}} $escaped_err]
-                    return
-                }
-                puts "hwc kpi hotspot $hotspot_name findhotspot done"
-                if { [catch {
-                    hwc kpi hotspot $hotspot_name review
-                } err] } {
-                    puts "hwc kpi hotspot review error: $err"
-                    set escaped_err [escape_json_string $err]
-                    write_result $job_id [format {{"success":false,"error":"review failed: %s"}} $escaped_err]
-                    return
-                }
-                puts "hwc kpi hotspot $hotspot_name review done"
-                puts "hotspot_find completed successfully"
+                puts "=== hotspot_find completed ==="
                 write_result $job_id {{"success":true}}
             }
             "hotspot_navigate" {
-                puts "Executing hotspot_navigate: direction=$label"
+                puts "=== hotspot_navigate start: direction=$label ==="
                 if { [catch {
-                    hwc kpi hotspot display $label
+                    puts "hn Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_hn
+                    puts "hn Step 2: GetProjectHandle"
+                    sess_hn GetProjectHandle proj_hn
+                    set pageId_hn [proj_hn GetActivePage]
+                    proj_hn GetPageHandle page_hn $pageId_hn
+                    set winId_hn [page_hn GetActiveWindow]
+                    puts "hn Step 3: GetWindowHandle winId=$winId_hn"
+                    page_hn GetWindowHandle win_hn $winId_hn
+                    win_hn SetClientType animation
+                    puts "hn Step 4: GetClientHandle (post)"
+                    win_hn GetClientHandle post_hn
+                    puts "hn Step 5: GetKPICtrlHandle"
+                    post_hn GetKPICtrlHandle kpi_hn
+                    puts "hn Step 6: NavigateToHotspot $label"
+                    kpi_hn NavigateToHotspot $label
+                    kpi_hn ReleaseHandle
+                    post_hn ReleaseHandle
+                    win_hn ReleaseHandle
+                    page_hn ReleaseHandle
+                    proj_hn ReleaseHandle
+                    sess_hn ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "hotspot_navigate error: $err"
+                    puts "hotspot_navigate FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "hotspot_navigate completed"
+                puts "=== hotspot_navigate completed ==="
                 write_result $job_id {{"success":true}}
             }
             "hotspot_display_viewmode" {
-                puts "Executing hotspot_display_viewmode: mode=$label option=$viewmode_option"
+                puts "=== hotspot_display_viewmode start: mode=$label option=$viewmode_option ==="
                 if { [catch {
-                    hwc kpi hotspot display viewmode $label $viewmode_option
+                    puts "hdv Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_hdv
+                    puts "hdv Step 2: GetProjectHandle"
+                    sess_hdv GetProjectHandle proj_hdv
+                    set pageId_hdv [proj_hdv GetActivePage]
+                    proj_hdv GetPageHandle page_hdv $pageId_hdv
+                    set winId_hdv [page_hdv GetActiveWindow]
+                    puts "hdv Step 3: GetWindowHandle winId=$winId_hdv"
+                    page_hdv GetWindowHandle win_hdv $winId_hdv
+                    win_hdv SetClientType animation
+                    puts "hdv Step 4: GetClientHandle (post)"
+                    win_hdv GetClientHandle post_hdv
+                    puts "hdv Step 5: GetKPICtrlHandle"
+                    post_hdv GetKPICtrlHandle kpi_hdv
+                    puts "hdv Step 6: SetViewMode $label $viewmode_option"
+                    kpi_hdv SetViewMode $label $viewmode_option
+                    kpi_hdv ReleaseHandle
+                    post_hdv ReleaseHandle
+                    win_hdv ReleaseHandle
+                    page_hdv ReleaseHandle
+                    proj_hdv ReleaseHandle
+                    sess_hdv ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "hotspot_display_viewmode error: $err"
+                    puts "hotspot_display_viewmode FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "hotspot_display_viewmode completed"
+                puts "=== hotspot_display_viewmode completed ==="
                 write_result $job_id {{"success":true}}
             }
             "plot_contour_only" {
-                puts "Executing plot_contour_only: type=$result_type component=$result_component"
+                puts "=== plot_contour_only start: type=$result_type component=$result_component ==="
                 if { [catch {
-                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
-                    hwc result scalar plot "Current Contour"
+                    puts "pco Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_pco
+                    puts "pco Step 2: GetProjectHandle"
+                    sess_pco GetProjectHandle proj_pco
+                    set pageId_pco [proj_pco GetActivePage]
+                    puts "pco Step 3: GetPageHandle pageId=$pageId_pco"
+                    proj_pco GetPageHandle page_pco $pageId_pco
+                    set winId_pco [page_pco GetActiveWindow]
+                    puts "pco Step 4: GetWindowHandle winId=$winId_pco"
+                    page_pco GetWindowHandle win_pco $winId_pco
+                    win_pco SetClientType animation
+                    puts "pco Step 5: GetClientHandle (post)"
+                    win_pco GetClientHandle post_pco
+                    puts "pco Step 6: GetContourCtrlHandle"
+                    post_pco GetContourCtrlHandle cc_pco
+                    puts "pco Step 7: SetDataType $result_type"
+                    cc_pco SetDataType $result_type
+                    puts "pco Step 8: SetDataComponent $result_component"
+                    cc_pco SetDataComponent $result_component
+                    puts "pco Step 9: Apply"
+                    cc_pco Apply
+                    cc_pco ReleaseHandle
+                    puts "pco Step 10: Draw"
+                    post_pco Draw
+                    post_pco ReleaseHandle
+                    win_pco ReleaseHandle
+                    page_pco ReleaseHandle
+                    proj_pco ReleaseHandle
+                    sess_pco ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "plot_contour_only error: $err"
+                    puts "plot_contour_only FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "plot_contour_only completed"
+                puts "=== plot_contour_only completed ==="
                 write_result $job_id {{"success":true}}
             }
             "export_hotspot_csv" {
-                puts "Executing export_hotspot_csv: hotspot_name=$hotspot_name csv_path=$csv_path"
+                puts "=== export_hotspot_csv start: hotspot_name=$hotspot_name csv_path=$csv_path ==="
                 if { [catch {
-                    hwc show component all
-                    hwc hide component all
-                    hwc show element all
-                    hwc kpi hotspot $hotspot_name export $csv_path
+                    puts "ehc Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_ehc
+                    puts "ehc Step 2: GetProjectHandle"
+                    sess_ehc GetProjectHandle proj_ehc
+                    set pageId_ehc [proj_ehc GetActivePage]
+                    proj_ehc GetPageHandle page_ehc $pageId_ehc
+                    set winId_ehc [page_ehc GetActiveWindow]
+                    puts "ehc Step 3: GetWindowHandle winId=$winId_ehc"
+                    page_ehc GetWindowHandle win_ehc $winId_ehc
+                    win_ehc SetClientType animation
+                    puts "ehc Step 4: GetClientHandle (post)"
+                    win_ehc GetClientHandle post_ehc
+                    puts "ehc Step 5: ShowAllComponents"
+                    post_ehc ShowAllComponents
+                    puts "ehc Step 6: HideAllComponents"
+                    post_ehc HideAllComponents
+                    puts "ehc Step 7: ShowAllElements"
+                    post_ehc ShowAllElements
+                    puts "ehc Step 8: GetKPICtrlHandle"
+                    post_ehc GetKPICtrlHandle kpi_ehc
+                    puts "ehc Step 9: ExportHotspots $hotspot_name $csv_path"
+                    kpi_ehc ExportHotspots $hotspot_name $csv_path
+                    kpi_ehc ReleaseHandle
+                    post_ehc ReleaseHandle
+                    win_ehc ReleaseHandle
+                    page_ehc ReleaseHandle
+                    proj_ehc ReleaseHandle
+                    sess_ehc ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "export_hotspot_csv error: $err"
+                    puts "export_hotspot_csv FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "export_hotspot_csv completed"
+                puts "=== export_hotspot_csv completed ==="
                 set escaped_csv [escape_json_string $csv_path]
                 write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]
             }
             "read_max_value" {
-                puts "Executing read_max_value"
-                puts "result_type=$result_type result_component=$result_component"
-                puts "hotspot_name=$hotspot_name csv_path=$csv_path"
+                puts "=== read_max_value start: type=$result_type component=$result_component hotspot=$hotspot_name ==="
                 if { [catch {
-                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
-                    hwc result scalar plot "Current Contour"
-                    hwc kpi hotspot create $hotspot_name
-                    hwc kpi hotspot $hotspot_name findhotspots
-                    hwc kpi hotspot $hotspot_name review
-                    hwc show component all
-                    hwc hide component all
-                    hwc show element all
-                    hwc kpi hotspot $hotspot_name export $csv_path
+                    puts "rmv Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_rmv
+                    puts "rmv Step 2: GetProjectHandle"
+                    sess_rmv GetProjectHandle proj_rmv
+                    set pageId_rmv [proj_rmv GetActivePage]
+                    puts "rmv Step 3: GetPageHandle pageId=$pageId_rmv"
+                    proj_rmv GetPageHandle page_rmv $pageId_rmv
+                    set winId_rmv [page_rmv GetActiveWindow]
+                    puts "rmv Step 4: GetWindowHandle winId=$winId_rmv"
+                    page_rmv GetWindowHandle win_rmv $winId_rmv
+                    win_rmv SetClientType animation
+                    puts "rmv Step 5: GetClientHandle (post)"
+                    win_rmv GetClientHandle post_rmv
+                    puts "rmv Step 6: GetContourCtrlHandle"
+                    post_rmv GetContourCtrlHandle cc_rmv
+                    puts "rmv Step 7: SetDataType $result_type"
+                    cc_rmv SetDataType $result_type
+                    puts "rmv Step 8: SetDataComponent $result_component"
+                    cc_rmv SetDataComponent $result_component
+                    puts "rmv Step 9: Apply contour"
+                    cc_rmv Apply
+                    cc_rmv ReleaseHandle
+                    puts "rmv Step 10: Draw"
+                    post_rmv Draw
+                    puts "rmv Step 11: GetKPICtrlHandle"
+                    post_rmv GetKPICtrlHandle kpi_rmv
+                    puts "rmv Step 12: CreateHotspot $hotspot_name"
+                    kpi_rmv CreateHotspot $hotspot_name
+                    puts "rmv Step 13: FindHotspots $hotspot_name"
+                    kpi_rmv FindHotspots $hotspot_name
+                    puts "rmv Step 14: ReviewHotspots $hotspot_name"
+                    kpi_rmv ReviewHotspots $hotspot_name
+                    puts "rmv Step 15: ShowAllComponents"
+                    post_rmv ShowAllComponents
+                    puts "rmv Step 16: HideAllComponents"
+                    post_rmv HideAllComponents
+                    puts "rmv Step 17: ShowAllElements"
+                    post_rmv ShowAllElements
+                    puts "rmv Step 18: ExportHotspots $hotspot_name $csv_path"
+                    kpi_rmv ExportHotspots $hotspot_name $csv_path
+                    kpi_rmv ReleaseHandle
+                    post_rmv ReleaseHandle
+                    win_rmv ReleaseHandle
+                    page_rmv ReleaseHandle
+                    proj_rmv ReleaseHandle
+                    sess_rmv ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "read_max_value error: $err"
+                    puts "read_max_value FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "read_max_value completed successfully"
+                puts "=== read_max_value completed ==="
                 set escaped_csv [escape_json_string $csv_path]
                 write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]
             }
             "quit" {
                 puts "Executing quit command"
                 write_result $job_id {{"success":true}}
-                hwc hwd exit
+                puts "Closing HyperView via session Exit"
+                after 300
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_q
+                    sess_q Exit
+                    sess_q ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "Session Exit failed ($err), falling back to TCL exit"
+                    exit 0
+                }
             }
             "load_model" {
-                puts "Executing load_model command"
-                puts "Model path: $model_path"
-                puts "Result path: $result_path"
+                puts "=== load_model start: model=$model_path result=$result_path ==="
                 if { [catch {
-                    hwc open animation model $model_path
+                    puts "lm Step 1: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_lm
+                    puts "lm Step 2: GetProjectHandle"
+                    sess_lm GetProjectHandle proj_lm
+                    set pageId_lm [proj_lm GetActivePage]
+                    puts "lm Step 3: GetPageHandle pageId=$pageId_lm"
+                    proj_lm GetPageHandle page_lm $pageId_lm
+                    set winId_lm [page_lm GetActiveWindow]
+                    puts "lm Step 4: GetWindowHandle winId=$winId_lm"
+                    page_lm GetWindowHandle win_lm $winId_lm
+                    win_lm SetClientType animation
+                    puts "lm Step 5: GetClientHandle (post)"
+                    win_lm GetClientHandle post_lm
+                    puts "lm Step 6: AddModel $model_path"
+                    post_lm AddModel $model_path
+                    puts "lm Step 7: Draw"
+                    post_lm Draw
                     if {$result_path ne ""} {
-                        hwc open animation result $result_path
+                        set mc_lm [post_lm GetNumberOfModels]
+                        puts "lm Step 8: GetModelHandle (count=$mc_lm)"
+                        post_lm GetModelHandle mdl_lm $mc_lm
+                        puts "lm Step 9: AddResult $result_path"
+                        mdl_lm AddResult $result_path
+                        mdl_lm ReleaseHandle
                     }
-                    hwc result animation load all
+                    puts "lm Step 10: GetAnimCtrlHandle"
+                    post_lm GetAnimCtrlHandle ac_lm
+                    puts "lm Step 11: LoadAll frames"
+                    ac_lm LoadAll
+                    ac_lm ReleaseHandle
+                    puts "lm Step 12: Draw"
+                    post_lm Draw
+                    post_lm ReleaseHandle
+                    win_lm ReleaseHandle
+                    page_lm ReleaseHandle
+                    proj_lm ReleaseHandle
+                    sess_lm ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "load_model error: $err"
+                    puts "load_model FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "load_model completed successfully"
+                puts "=== load_model completed ==="
                 write_result $job_id {{"success":true}}
             }
             "add_slide_one_image_only" {
