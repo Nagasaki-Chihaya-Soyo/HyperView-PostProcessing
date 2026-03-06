@@ -649,25 +649,65 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "add_slide_one_image_only" {
-                puts "Executing add_slide_one_image_only: label=$label position=$position file_path=$file_path"
+                puts "=== add_slide_one_image_only start: label=$label file_path=$file_path ==="
                 if { [catch {
-                    hwc report Report add slide "One Image only" "label=$label"
+                    puts "Step 0: OpenStack + GetSessionHandle"
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_r
+                    puts "Step 0 OK"
+
+                    puts "Step 1: GetReportCtrlHandle"
+                    sess_r GetReportCtrlHandle rc
+                    puts "Step 1 OK"
+
+                    puts "Step 2: GetReportHandle Report"
+                    rc GetReportHandle rH "Report"
+                    puts "Step 2 OK"
+
+                    puts "Step 3: AddSlide One Image only"
+                    rH AddSlide sH "One Image only"
+                    puts "Step 3 OK"
+
+                    puts "Step 4: SetLabel $label"
+                    sH SetLabel $label
+                    puts "Step 4 OK"
                     after 300
-                    hwc report Report edit items image "position=$label,Image1" source=file
+
+                    puts "Step 5: GetItemHandle Image1"
+                    sH GetItemHandle imgH "Image1"
+                    puts "Step 5 OK"
+
+                    puts "Step 6: SetSourceType file (2)"
+                    imgH SetSourceType 2
+                    puts "Step 6 OK"
                     after 300
-                    set file_arg "file="
-                    append file_arg $file_path
-                    hwc report Report edit items image "position=$position" source=file $file_arg
+
+                    puts "Step 7: SetFileName $file_path"
+                    imgH SetFileName $file_path
+                    puts "Step 7 OK"
+                    imgH ReleaseHandle
                     after 300
-                    hwc report Report edit items slide "position=$file_path" "label=Analyst [lindex $label end]"
+
+                    set seq [lindex $label end]
+                    set new_label "Analyst $seq"
+                    puts "Step 8: SetLabel $new_label"
+                    sH SetLabel $new_label
+                    puts "Step 8 OK"
                     after 300
+
+                    sH ReleaseHandle
+                    rH ReleaseHandle
+                    rc ReleaseHandle
+                    sess_r ReleaseHandle
+                    hwi CloseStack
                 } err] } {
-                    puts "add_slide_one_image_only error: $err"
+                    puts "add_slide_one_image_only FAILED: $err"
+                    catch { hwi CloseStack }
                     set escaped_err [escape_json_string $err]
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                puts "add_slide_one_image_only completed"
+                puts "=== add_slide_one_image_only completed ==="
                 write_result $job_id {{"success":true}}
             }
             default {
