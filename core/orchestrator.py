@@ -411,7 +411,7 @@ proc process_job {job_file} {
     puts "DEBUG: model_path=$model_path"
     puts "Processing: $job_id $cmd"
 
-    if { [catch {
+    set _proc_code [catch {
         switch $cmd {
             "export_contour_and_peak_vm" {
                 set res [cmd_export_contour_and_peak_vm $model_path $result_path $output_dir]
@@ -607,17 +607,9 @@ proc process_job {job_file} {
                     win_sv SetClientType animation
                     puts "sv Step 5: GetClientHandle (post)"
                     win_sv GetClientHandle post_sv
-                    puts "sv Step 6: SetViewOrientation ISO"
-                    post_sv SetViewOrientation ISO
-                    puts "sv Step 7: GetAnimCtrlHandle"
-                    post_sv GetAnimCtrlHandle ac_sv
-                    set nFrames_sv [ac_sv GetNumberOfFrames]
-                    puts "sv Step 8: SetCurrentFrame last (nFrames=$nFrames_sv)"
-                    if {$nFrames_sv > 0} {
-                        ac_sv SetCurrentFrame [expr {$nFrames_sv - 1}]
-                    }
-                    ac_sv ReleaseHandle
-                    puts "sv Step 9: Draw"
+                    puts "sv Step 6: SetViewOrientation iso"
+                    win_sv SetViewOrientation iso
+                    puts "sv Step 7: Draw"
                     post_sv Draw
                     post_sv ReleaseHandle
                     win_sv ReleaseHandle
@@ -1057,7 +1049,8 @@ proc process_job {job_file} {
                 write_result $job_id [format {{"success":false,"error":"Unknown cmd: %s"}} $cmd]
             }
         }
-    } err] } {
+    } err]
+    if { $_proc_code != 0 && $_proc_code != 2 } {
         puts "process_job error: $err"
         set escaped_err [escape_json_string $err]
         write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
