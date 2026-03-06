@@ -97,7 +97,7 @@ proc write_ready {} {
 }
 
 proc escape_json_string {str} {
-    set str [string map {\\ \\\\ \" \\" \n \\n \r \\r \t \\t} $str]
+    set str [string map [list \\ \\\\ \" \\" \n \\n \r \\r \t \\t] $str]
     return $str
 }
 
@@ -973,12 +973,7 @@ proc process_job {job_file} {
                         mdl_lm AddResult $result_path
                         mdl_lm ReleaseHandle
                     }
-                    puts "lm Step 10: GetAnimCtrlHandle"
-                    post_lm GetAnimCtrlHandle ac_lm
-                    puts "lm Step 11: LoadAll frames"
-                    ac_lm LoadAll
-                    ac_lm ReleaseHandle
-                    puts "lm Step 12: Draw"
+                    puts "lm Step 10: Draw"
                     post_lm Draw
                     post_lm ReleaseHandle
                     win_lm ReleaseHandle
