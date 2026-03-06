@@ -604,14 +604,14 @@ proc process_job {job_file} {
                     set winId_sv [page_sv GetActiveWindow]
                     puts "sv Step 4: GetWindowHandle winId=$winId_sv"
                     page_sv GetWindowHandle win_sv $winId_sv
-                    win_sv SetClientType animation
-                    puts "sv Step 5: GetClientHandle (post)"
-                    win_sv GetClientHandle post_sv
-                    puts "sv Step 6: SetViewOrientation iso"
-                    win_sv SetViewOrientation iso
-                    puts "sv Step 7: Draw"
-                    post_sv Draw
-                    post_sv ReleaseHandle
+                    puts "sv Step 5: GetViewControlHandle"
+                    win_sv GetViewControlHandle vc_sv
+                    set iso_vm "0.707107 0.353553 -0.612372 0.000000 -0.707107 0.353553 -0.612372 0.000000 0.000000 0.866025 0.500000 0.000000 0.000000 0.000000 0.000000 1.000000"
+                    puts "sv Step 6: SetViewMatrix iso"
+                    vc_sv SetViewMatrix $iso_vm
+                    puts "sv Step 7: Fit"
+                    vc_sv Fit
+                    vc_sv ReleaseHandle
                     win_sv ReleaseHandle
                     page_sv ReleaseHandle
                     proj_sv ReleaseHandle
