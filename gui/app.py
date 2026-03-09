@@ -113,13 +113,13 @@ class Application(tk.Tk):
         self.report_btn.pack(pady=10)
 
     def _browse_model(self):
-        filetypes = [("Model Files", "*.h3d"),
-                     ("HyperMesh Files", "*.h3m"),
-                     ("FEM Files", "*.fem;*.bdf;*.nas"),
-                     ("LS-DYNA Files", "*.k;*.key;*.d3plot"),
-                     ("Nastran Results", "*.op2;*.pch"),
-                     ("ANSYS Results", "*.rst"),
-                     ("All Files", "*.*")
+        filetypes = [("Model Files (*.h3d)", "*.h3d"),
+                     ("HyperMesh Files (*.h3m)", "*.h3m"),
+                     ("FEM Files (*.fem *.bdf *.nas)", "*.fem;*.bdf;*.nas"),
+                     ("LS-DYNA Files (*.k *.key *.d3plot)", "*.k;*.key;*.d3plot"),
+                     ("Nastran Results (*.op2 *.pch)", "*.op2;*.pch"),
+                     ("ANSYS Results (*.rst)", "*.rst"),
+                     ("All Files (*.*)", "*.*")
         ]
         path = filedialog.askopenfilename(title="Select Model Files", filetypes=filetypes)
         if path:
@@ -136,11 +136,11 @@ class Application(tk.Tk):
 
     def _browse_result(self):
         filetypes = [
-            ("H3D Results", "*.h3d"),
-            ("Nastran Results", "*.op2;*.pch"),
-            ("LS-DYNA Files", "*.d3plot"),
-            ("ANSYS Results", "*.rst"),
-            ("All Files", "*.*")
+            ("H3D Results (*.h3d)", "*.h3d"),
+            ("Nastran Results (*.op2 *.pch)", "*.op2;*.pch"),
+            ("LS-DYNA Files (*.d3plot)", "*.d3plot"),
+            ("ANSYS Results (*.rst)", "*.rst"),
+            ("All Files (*.*)", "*.*")
         ]
         path = filedialog.askopenfilename(title="Select ResultFiles", filetypes=filetypes)
         if path:
