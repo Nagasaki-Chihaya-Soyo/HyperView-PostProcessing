@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import fnmatch
 from typing import Optional
@@ -10,6 +11,17 @@ class HVProcess:
         self.config = config
         self.process: Optional[subprocess.Popen] = None
         self.shortcut_path: Optional[str] = None
+        self.hv_version: Optional[str] = None
+
+    def extract_version(self, path: str) -> Optional[str]:
+        """从快捷方式路径中提取 HyperView 版本号（如 '2023.1'）。"""
+        match = re.search(r'(\d{4})(?:[._](\d+))?', path)
+        if match:
+            year = int(match.group(1))
+            if 2000 <= year <= 2100:
+                minor = match.group(2) or '0'
+                return f"{year}.{minor}"
+        return None
 
     def find_shortcut(self) -> Optional[str]:
         if self.shortcut_path and os.path.exists(self.shortcut_path):
@@ -45,7 +57,9 @@ class HVProcess:
                 for f in files:
                     if fnmatch.fnmatch(f, pattern):
                         self.shortcut_path = os.path.join(root, f)
+                        self.hv_version = self.extract_version(self.shortcut_path)
                         log_info(f"HyperView Found In :{self.shortcut_path}")
+                        log_info(f"Detected HyperView version: {self.hv_version}")
                         return self.shortcut_path
         log_error("NOT FOUND HYPERVIEW LINK")
         return None

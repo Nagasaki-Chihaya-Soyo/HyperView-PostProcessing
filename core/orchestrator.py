@@ -70,6 +70,17 @@ class Orchestrator:
         ready_file = self.ready_signal.ready_file.replace('\\', '/')
         inbox_dir = self.inbox_dir.replace('\\', '/')
         outbox_dir = self.outbox_dir.replace('\\', '/')
+
+        # 根据检测到的 HyperView 版本决定使用 HWC 还是 native TCL API
+        hv_version = self.hv_process.hv_version
+        if hv_version:
+            major = int(hv_version.split('.')[0])
+            use_hwc = (major >= 2023)
+        else:
+            use_hwc = True  # 无法检测版本时默认使用 HWC
+        api_label = "HWC" if use_hwc else "native TCL"
+        log_info(f"HyperView {hv_version or 'unknown'} → TCL Agent 使用 {api_label} API")
+
         tcl_code = '''\
 package require Tk
 set READY_FILE "''' + ready_file + '''"
@@ -211,25 +222,59 @@ proc cmd_export_contour_and_peak_vm {model_path result_path output_dir } {
 
     return [list $MAX_VALUE $MAX_ID $image_path]
 }
-
+'''
+        # === cmd_display_contour：版本特定实现 ===
+        if use_hwc:
+            tcl_code += '''\
 proc cmd_display_contour {model_path result_path} {
-    puts "=== Display Contour V3 (HWC) ==="
-
+    puts "=== Display Contour (HWC) ==="
     if { [catch {
-        # 使用HWC指令显示云图
-        puts "Setting contour type to Element Stresses vonMises..."
         hwc result scalar edit "Current Contour" type="Element Stresses (2D & 3D)" component=vonMises
-        puts "Plotting contour using HWC command..."
         hwc result scalar plot "Current Contour"
-        puts "Contour plotted successfully"
     } err] } {
         puts "cmd_display_contour error: $err"
         return 0
     }
-
     return 1
 }
 
+'''
+        else:
+            tcl_code += '''\
+proc cmd_display_contour {model_path result_path} {
+    puts "=== cmd_display_contour (native TCL) ==="
+    if { [catch {
+        hwi OpenStack
+        hwi GetSessionHandle sess_dc
+        sess_dc GetProjectHandle proj_dc
+        set pageId_dc [proj_dc GetActivePage]
+        proj_dc GetPageHandle page_dc $pageId_dc
+        set winId_dc [page_dc GetActiveWindow]
+        page_dc GetWindowHandle win_dc $winId_dc
+        win_dc SetClientType animation
+        win_dc GetClientHandle post_dc
+        post_dc GetContourCtrlHandle cc_dc
+        cc_dc SetDataType "Element Stresses (2D & 3D)"
+        cc_dc SetDataComponent "vonMises"
+        cc_dc Apply
+        cc_dc ReleaseHandle
+        post_dc Draw
+        post_dc ReleaseHandle
+        win_dc ReleaseHandle
+        page_dc ReleaseHandle
+        proj_dc ReleaseHandle
+        sess_dc ReleaseHandle
+        hwi CloseStack
+    } err] } {
+        puts "cmd_display_contour FAILED: $err"
+        catch { hwi CloseStack }
+        return 0
+    }
+    return 1
+}
+
+'''
+        tcl_code += '''\
 proc process_job {job_file} {
     global MAX_VALUE MAX_ID REPORT_DIR
     set f [open $job_file r]
@@ -404,6 +449,10 @@ proc process_job {job_file} {
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
+'''
+        # === switch cases：版本特定实现 ===
+        if use_hwc:
+            tcl_code += '''\
             "apply_contour" {
                 puts "Executing apply_contour command"
                 puts "result_type=$result_type result_component=$result_component label=$label"
@@ -447,7 +496,6 @@ proc process_job {job_file} {
                 puts "capture_slide completed"
                 write_result $job_id {{"success":true}}
             }
-
             "report_run" {
                 puts "Executing report_run command"
                 if { [catch {
@@ -674,6 +722,490 @@ proc process_job {job_file} {
                 write_result $job_id [format {{"success":false,"error":"Unknown cmd: %s"}} $cmd]
             }
         }
+'''
+        else:
+            tcl_code += '''\
+            "apply_contour" {
+                puts "=== apply_contour start: type=$result_type component=$result_component label=$label ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_ac
+                    sess_ac GetProjectHandle proj_ac
+                    set pageId_ac [proj_ac GetActivePage]
+                    proj_ac GetPageHandle page_ac $pageId_ac
+                    set winId_ac [page_ac GetActiveWindow]
+                    page_ac GetWindowHandle win_ac $winId_ac
+                    win_ac SetClientType animation
+                    win_ac GetClientHandle post_ac
+                    post_ac GetContourCtrlHandle cc_ac
+                    cc_ac SetDataType $result_type
+                    cc_ac SetDataComponent $result_component
+                    cc_ac Apply
+                    cc_ac ReleaseHandle
+                    post_ac Draw
+                    post_ac ReleaseHandle
+                    win_ac ReleaseHandle
+                    page_ac ReleaseHandle
+                    proj_ac ReleaseHandle
+                    sess_ac GetReportCtrlHandle rc_ac
+                    rc_ac GetReportHandle rH_ac "Report"
+                    rH_ac AddSlide sH_ac "One Image with Caption"
+                    sH_ac SetLabel $label
+                    sH_ac ReleaseHandle
+                    rH_ac ReleaseHandle
+                    rc_ac ReleaseHandle
+                    sess_ac ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "apply_contour FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "report_run_position" {
+                puts "=== report_run_position start: label=$label ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_rrp
+                    sess_rrp GetReportCtrlHandle rc_rrp
+                    rc_rrp GetReportHandle rH_rrp "Report"
+                    rH_rrp Run $label
+                    rH_rrp ReleaseHandle
+                    rc_rrp ReleaseHandle
+                    sess_rrp ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "report_run_position FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "capture_slide" {
+                puts "=== capture_slide start: label=$label ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_cs
+                    sess_cs GetReportCtrlHandle rc_cs
+                    rc_cs GetReportHandle rH_cs "Report"
+                    rH_cs AddSlide sH_cs "One Image with Caption"
+                    sH_cs SetLabel $label
+                    sH_cs ReleaseHandle
+                    rH_cs Run $label
+                    rH_cs ReleaseHandle
+                    rc_cs ReleaseHandle
+                    sess_cs ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "capture_slide FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "report_run" {
+                puts "=== report_run start ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_rr
+                    sess_rr GetReportCtrlHandle rc_rr
+                    rc_rr GetReportHandle rH_rr "Report"
+                    rH_rr Run
+                    rH_rr ReleaseHandle
+                    rc_rr ReleaseHandle
+                    sess_rr ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "report_run FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "report_export" {
+                puts "Executing report_export command"
+                if { [catch {
+                    .hw_report.hw_hw_report.mainwardMainWidget1.toolbar.export invoke
+                    puts "report_export completed"
+                } err] } {
+                    puts "report_export error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "display_contour" {
+                puts "Executing display_contour command"
+                set res [cmd_display_contour $model_path $result_path]
+                if {$res == 1} {
+                    write_result $job_id {{"success":true,"message":"Contour displayed"}}
+                } else {
+                    write_result $job_id {{"success":false,"error":"Failed to display contour"}}
+                }
+            }
+            "setup_view" {
+                puts "=== setup_view start ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_sv
+                    sess_sv GetProjectHandle proj_sv
+                    set pageId_sv [proj_sv GetActivePage]
+                    proj_sv GetPageHandle page_sv $pageId_sv
+                    set winId_sv [page_sv GetActiveWindow]
+                    page_sv GetWindowHandle win_sv $winId_sv
+                    win_sv SetClientType animation
+                    win_sv GetClientHandle post_sv
+                    post_sv SetViewOrientation ISO
+                    post_sv GetAnimCtrlHandle ac_sv
+                    set nFrames_sv [ac_sv GetNumberOfFrames]
+                    if {$nFrames_sv > 0} {
+                        ac_sv SetCurrentFrame [expr {$nFrames_sv - 1}]
+                    }
+                    ac_sv ReleaseHandle
+                    post_sv Draw
+                    post_sv ReleaseHandle
+                    win_sv ReleaseHandle
+                    page_sv ReleaseHandle
+                    proj_sv ReleaseHandle
+                    sess_sv ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "setup_view FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "create_report" {
+                puts "=== create_report start ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_cr
+                    sess_cr GetReportCtrlHandle rc_cr
+                    rc_cr CreateReport rH_cr "Report" $REPORT_DIR
+                    rc_cr CreateReport rH_cr2 "Report"
+                    rH_cr ReleaseHandle
+                    rH_cr2 ReleaseHandle
+                    rc_cr ReleaseHandle
+                    sess_cr ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "create_report FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "hotspot_find" {
+                puts "=== hotspot_find start: hotspot_name=$hotspot_name ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_hf
+                    sess_hf GetProjectHandle proj_hf
+                    set pageId_hf [proj_hf GetActivePage]
+                    proj_hf GetPageHandle page_hf $pageId_hf
+                    set winId_hf [page_hf GetActiveWindow]
+                    page_hf GetWindowHandle win_hf $winId_hf
+                    win_hf SetClientType animation
+                    win_hf GetClientHandle post_hf
+                    post_hf GetKPICtrlHandle kpi_hf
+                    kpi_hf CreateHotspot $hotspot_name
+                    kpi_hf FindHotspots $hotspot_name
+                    kpi_hf ReviewHotspots $hotspot_name
+                    kpi_hf ReleaseHandle
+                    post_hf ReleaseHandle
+                    win_hf ReleaseHandle
+                    page_hf ReleaseHandle
+                    proj_hf ReleaseHandle
+                    sess_hf ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "hotspot_find FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "hotspot_navigate" {
+                puts "=== hotspot_navigate start: direction=$label ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_hn
+                    sess_hn GetProjectHandle proj_hn
+                    set pageId_hn [proj_hn GetActivePage]
+                    proj_hn GetPageHandle page_hn $pageId_hn
+                    set winId_hn [page_hn GetActiveWindow]
+                    page_hn GetWindowHandle win_hn $winId_hn
+                    win_hn SetClientType animation
+                    win_hn GetClientHandle post_hn
+                    post_hn GetKPICtrlHandle kpi_hn
+                    kpi_hn NavigateToHotspot $label
+                    kpi_hn ReleaseHandle
+                    post_hn ReleaseHandle
+                    win_hn ReleaseHandle
+                    page_hn ReleaseHandle
+                    proj_hn ReleaseHandle
+                    sess_hn ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "hotspot_navigate FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "hotspot_display_viewmode" {
+                puts "=== hotspot_display_viewmode start: mode=$label option=$viewmode_option ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_hdv
+                    sess_hdv GetProjectHandle proj_hdv
+                    set pageId_hdv [proj_hdv GetActivePage]
+                    proj_hdv GetPageHandle page_hdv $pageId_hdv
+                    set winId_hdv [page_hdv GetActiveWindow]
+                    page_hdv GetWindowHandle win_hdv $winId_hdv
+                    win_hdv SetClientType animation
+                    win_hdv GetClientHandle post_hdv
+                    post_hdv GetKPICtrlHandle kpi_hdv
+                    kpi_hdv SetViewMode $label $viewmode_option
+                    kpi_hdv ReleaseHandle
+                    post_hdv ReleaseHandle
+                    win_hdv ReleaseHandle
+                    page_hdv ReleaseHandle
+                    proj_hdv ReleaseHandle
+                    sess_hdv ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "hotspot_display_viewmode FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "plot_contour_only" {
+                puts "=== plot_contour_only start: type=$result_type component=$result_component ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_pco
+                    sess_pco GetProjectHandle proj_pco
+                    set pageId_pco [proj_pco GetActivePage]
+                    proj_pco GetPageHandle page_pco $pageId_pco
+                    set winId_pco [page_pco GetActiveWindow]
+                    page_pco GetWindowHandle win_pco $winId_pco
+                    win_pco SetClientType animation
+                    win_pco GetClientHandle post_pco
+                    post_pco GetContourCtrlHandle cc_pco
+                    cc_pco SetDataType $result_type
+                    cc_pco SetDataComponent $result_component
+                    cc_pco Apply
+                    cc_pco ReleaseHandle
+                    post_pco Draw
+                    post_pco ReleaseHandle
+                    win_pco ReleaseHandle
+                    page_pco ReleaseHandle
+                    proj_pco ReleaseHandle
+                    sess_pco ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "plot_contour_only FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "export_hotspot_csv" {
+                puts "=== export_hotspot_csv start: hotspot_name=$hotspot_name csv_path=$csv_path ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_ehc
+                    sess_ehc GetProjectHandle proj_ehc
+                    set pageId_ehc [proj_ehc GetActivePage]
+                    proj_ehc GetPageHandle page_ehc $pageId_ehc
+                    set winId_ehc [page_ehc GetActiveWindow]
+                    page_ehc GetWindowHandle win_ehc $winId_ehc
+                    win_ehc SetClientType animation
+                    win_ehc GetClientHandle post_ehc
+                    post_ehc ShowAllComponents
+                    post_ehc HideAllComponents
+                    post_ehc ShowAllElements
+                    post_ehc GetKPICtrlHandle kpi_ehc
+                    kpi_ehc ExportHotspots $hotspot_name $csv_path
+                    kpi_ehc ReleaseHandle
+                    post_ehc ReleaseHandle
+                    win_ehc ReleaseHandle
+                    page_ehc ReleaseHandle
+                    proj_ehc ReleaseHandle
+                    sess_ehc ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "export_hotspot_csv FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                set escaped_csv [escape_json_string $csv_path]
+                write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]
+            }
+            "read_max_value" {
+                puts "=== read_max_value start: type=$result_type component=$result_component hotspot=$hotspot_name ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_rmv
+                    sess_rmv GetProjectHandle proj_rmv
+                    set pageId_rmv [proj_rmv GetActivePage]
+                    proj_rmv GetPageHandle page_rmv $pageId_rmv
+                    set winId_rmv [page_rmv GetActiveWindow]
+                    page_rmv GetWindowHandle win_rmv $winId_rmv
+                    win_rmv SetClientType animation
+                    win_rmv GetClientHandle post_rmv
+                    post_rmv GetContourCtrlHandle cc_rmv
+                    cc_rmv SetDataType $result_type
+                    cc_rmv SetDataComponent $result_component
+                    cc_rmv Apply
+                    cc_rmv ReleaseHandle
+                    post_rmv Draw
+                    post_rmv GetKPICtrlHandle kpi_rmv
+                    kpi_rmv CreateHotspot $hotspot_name
+                    kpi_rmv FindHotspots $hotspot_name
+                    kpi_rmv ReviewHotspots $hotspot_name
+                    post_rmv ShowAllComponents
+                    post_rmv HideAllComponents
+                    post_rmv ShowAllElements
+                    kpi_rmv ExportHotspots $hotspot_name $csv_path
+                    kpi_rmv ReleaseHandle
+                    post_rmv ReleaseHandle
+                    win_rmv ReleaseHandle
+                    page_rmv ReleaseHandle
+                    proj_rmv ReleaseHandle
+                    sess_rmv ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "read_max_value FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                set escaped_csv [escape_json_string $csv_path]
+                write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]
+            }
+            "quit" {
+                puts "Executing quit command"
+                write_result $job_id {{"success":true}}
+                after 300
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_q
+                    sess_q Exit
+                    sess_q ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "Session Exit failed ($err), falling back to TCL exit"
+                    exit 0
+                }
+            }
+            "load_model" {
+                puts "=== load_model start: model=$model_path result=$result_path ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_lm
+                    sess_lm GetProjectHandle proj_lm
+                    set pageId_lm [proj_lm GetActivePage]
+                    proj_lm GetPageHandle page_lm $pageId_lm
+                    set winId_lm [page_lm GetActiveWindow]
+                    page_lm GetWindowHandle win_lm $winId_lm
+                    win_lm SetClientType animation
+                    win_lm GetClientHandle post_lm
+                    post_lm AddModel $model_path
+                    post_lm Draw
+                    if {$result_path ne ""} {
+                        set mc_lm [post_lm GetNumberOfModels]
+                        post_lm GetModelHandle mdl_lm $mc_lm
+                        mdl_lm AddResult $result_path
+                        mdl_lm ReleaseHandle
+                    }
+                    post_lm GetAnimCtrlHandle ac_lm
+                    ac_lm LoadAll
+                    ac_lm ReleaseHandle
+                    post_lm Draw
+                    post_lm ReleaseHandle
+                    win_lm ReleaseHandle
+                    page_lm ReleaseHandle
+                    proj_lm ReleaseHandle
+                    sess_lm ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "load_model FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            "add_slide_one_image_only" {
+                puts "=== add_slide_one_image_only start: label=$label file_path=$file_path ==="
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess_r
+                    sess_r GetReportCtrlHandle rc
+                    rc GetReportHandle rH "Report"
+                    rH AddSlide sH "One Image only"
+                    sH SetLabel $label
+                    after 300
+                    sH GetItemHandle imgH "Image1"
+                    imgH SetSourceType 2
+                    after 300
+                    imgH SetFileName $file_path
+                    imgH ReleaseHandle
+                    after 300
+                    set seq [lindex $label end]
+                    set new_label "Analyst $seq"
+                    sH SetLabel $new_label
+                    after 300
+                    sH ReleaseHandle
+                    rH ReleaseHandle
+                    rc ReleaseHandle
+                    sess_r ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "add_slide_one_image_only FAILED: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                write_result $job_id {{"success":true}}
+            }
+            default {
+                write_result $job_id [format {{"success":false,"error":"Unknown cmd: %s"}} $cmd]
+            }
+        }
+'''
+        tcl_code += '''\
     } err] } {
         puts "process_job error: $err"
         set escaped_err [escape_json_string $err]
