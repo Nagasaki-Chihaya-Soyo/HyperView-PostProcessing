@@ -302,6 +302,49 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
                 exit
             }
+            "load_model" {
+                puts "Executing load_model command (TCL/HWI mode)"
+                puts "Model path: $model_path"
+                puts "Result path: $result_path"
+                cleanup_handles
+                if { [catch {
+                    hwi OpenStack
+                    hwi GetSessionHandle sess
+                    sess GetProjectHandle proj
+                    proj GetPageHandle page [proj GetActivePage]
+                    page GetWindowHandle win [page GetActiveWindow]
+                    win GetClientHandle poster
+
+                    # 加载模型
+                    poster AddModel $model_path
+                    poster Draw
+
+                    # 如果有结果文件则加载
+                    if {$result_path ne ""} {
+                        poster GetModelHandle mdl [poster GetActiveModel]
+                        mdl AddResult $result_path
+                        mdl ReleaseHandle
+                    }
+
+                    # 尝试 load all（经典模式下会失败，catch 吃掉错误）
+                    catch {hwc result animation load all}
+
+                    poster ReleaseHandle
+                    win ReleaseHandle
+                    page ReleaseHandle
+                    proj ReleaseHandle
+                    sess ReleaseHandle
+                    hwi CloseStack
+                } err] } {
+                    puts "load_model error: $err"
+                    catch { hwi CloseStack }
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "load_model completed successfully"
+                write_result $job_id {{"success":true}}
+            }
             "apply_contour" -
             "report_run_position" -
             "capture_slide" -
@@ -315,7 +358,6 @@ proc process_job {job_file} {
             "plot_contour_only" -
             "export_hotspot_csv" -
             "read_max_value" -
-            "load_model" -
             "add_slide_one_image_only" {
                 # TODO: Implement with HWI commands
                 puts "$cmd: not implemented in TCL mode"
