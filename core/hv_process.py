@@ -64,7 +64,9 @@ class HVProcess:
         if not self.shortcut_path:
             return None
         path = self.shortcut_path.replace('\\', '/')
-        match = re.search(r'\b(\d{4}\.\d+)\b', path)
+        print(f"[HyperView] Shortcut path: {path}")
+        # Match "2024.1" or standalone year like "2024"
+        match = re.search(r'\b(20[12]\d(?:\.\d+)?)\b', path)
         if match:
             self.version = match.group(1)
             print(f"[HyperView] Detected version: {self.version}")
