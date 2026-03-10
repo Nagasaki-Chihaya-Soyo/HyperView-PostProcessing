@@ -77,13 +77,27 @@ class HVProcess:
             log_debug("HyperView version could not be detected from shortcut path")
         return self.version
 
-    def start(self, agent_tcl_path: str) -> bool:
+    def get_version_year(self) -> int:
+        """从版本字符串提取年份，如 '2024.1' -> 2024, '2024' -> 2024, None -> 0"""
+        if not self.version:
+            return 0
+        try:
+            return int(self.version.split('.')[0])
+        except ValueError:
+            return 0
+
+    def ensure_shortcut_detected(self) -> bool:
+        """确保快捷方式已找到且版本已检测，不启动进程。"""
+        return self.find_shortcut() is not None
+
+    def start(self, agent_path: str, mode: str = "tcl") -> bool:
         shortcut = self.find_shortcut()
         if not shortcut:
             return False
-        agent_tcl_path = agent_tcl_path.replace('\\', '/')
+        agent_path = agent_path.replace('\\', '/')
+        flag = "-tcl" if mode == "tcl" else "-hwc"
         try:
-            cmd = f'cmd /c start "" "{shortcut}" -tcl "{agent_tcl_path}"'
+            cmd = f'cmd /c start "" "{shortcut}" {flag} "{agent_path}"'
             log_info(f"Start Command:{cmd}")
             self.process = subprocess.Popen(
                 cmd,
@@ -91,7 +105,7 @@ class HVProcess:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            log_info("Starting HyperView...")
+            log_info(f"Starting HyperView (mode={mode})...")
             return True
         except Exception as e:
             log_error(f"Failed to Starting Hyperview:{e}")

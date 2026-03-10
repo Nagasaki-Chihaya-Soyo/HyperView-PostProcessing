@@ -709,7 +709,33 @@ after 4000 listen
             f.write(tcl_code)
         return agent_path
 
-    def start_hyperview(self) -> bool:
+    def _generate_agent_hwc(self) -> str:
+        """生成 HWC agent 脚本框架（待实现具体业务逻辑）。"""
+        agent_dir = os.path.join(self.base_dir, 'hv_agent')
+        os.makedirs(agent_dir, exist_ok=True)
+        agent_path = os.path.join(agent_dir, 'agent.hwc')
+        ready_file = self.ready_signal.ready_file.replace('\\', '/')
+        inbox_dir = self.inbox_dir.replace('\\', '/')
+        outbox_dir = self.outbox_dir.replace('\\', '/')
+
+        # TODO: 实现 HWC agent 业务逻辑
+        hwc_code = f'''# HyperView HWC Agent - Auto Generated
+# Ready File: {ready_file}
+# Inbox Dir:  {inbox_dir}
+# Outbox Dir: {outbox_dir}
+
+# TODO: Implement HWC agent with the following structure:
+# 1. Initialize HyperView session
+# 2. Write ready signal to: {ready_file}
+# 3. Poll {inbox_dir} for job_*.json files
+# 4. Parse job JSON and dispatch commands
+# 5. Write results to {outbox_dir}
+'''
+        with open(agent_path, 'w', encoding='utf-8') as f:
+            f.write(hwc_code)
+        return agent_path
+
+    def start_hyperview(self, agent_mode: str = "tcl") -> bool:
         if self.state == State.AGENT_READY and not self.hv_process.is_running():
             self._set_state(State.IDLE)
         if self.state not in (State.IDLE, State.FAILED, State.EXITED):
@@ -719,14 +745,23 @@ after 4000 listen
         self.ready_signal.clear()
         self.bridge.clear_inbox()
         self.bridge.clear_outbox()
-        agent_path = self._generate_agent_tcl()
-        self._log(f"Generate Agent:{agent_path}")
-        if not self.hv_process.start(agent_path):
+        # 先检测版本
+        if not self.hv_process.ensure_shortcut_detected():
+            self._set_state(State.FAILED)
+            self._log("HyperView shortcut not found")
             return False
         if self.hv_process.version:
             self._log(f"HyperView Version: {self.hv_process.version}")
         else:
             self._log("HyperView Version: unknown")
+        # 根据模式生成对应 agent
+        if agent_mode == "hwc":
+            agent_path = self._generate_agent_hwc()
+        else:
+            agent_path = self._generate_agent_tcl()
+        self._log(f"Generate Agent ({agent_mode.upper()}): {agent_path}")
+        if not self.hv_process.start(agent_path, mode=agent_mode):
+            return False
         self._log("Waiting HyperView Agent Ready...")
         timeout = self.config['hyperview'].get('startup_timeout')
         if self.ready_signal.wait(timeout):
