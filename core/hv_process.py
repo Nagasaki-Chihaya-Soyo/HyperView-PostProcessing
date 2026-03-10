@@ -90,7 +90,7 @@ class HVProcess:
         """确保快捷方式已找到且版本已检测，不启动进程。"""
         return self.find_shortcut() is not None
 
-    def start(self, agent_path: str, mode: str = "tcl") -> bool:
+    def start(self, agent_path: str) -> bool:
         shortcut = self.find_shortcut()
         if not shortcut:
             return False
@@ -104,7 +104,7 @@ class HVProcess:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            log_info(f"Starting HyperView (mode={mode})...")
+            log_info(f"Starting HyperView...")
             return True
         except Exception as e:
             log_error(f"Failed to Starting Hyperview:{e}")
