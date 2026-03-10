@@ -95,9 +95,8 @@ class HVProcess:
         if not shortcut:
             return False
         agent_path = agent_path.replace('\\', '/')
-        flag = "-tcl" if mode == "tcl" else "-hwc"
         try:
-            cmd = f'cmd /c start "" "{shortcut}" {flag} "{agent_path}"'
+            cmd = f'cmd /c start "" "{shortcut}" -tcl "{agent_path}"'
             log_info(f"Start Command:{cmd}")
             self.process = subprocess.Popen(
                 cmd,

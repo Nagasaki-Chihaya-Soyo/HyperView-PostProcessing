@@ -67,7 +67,7 @@ class Orchestrator:
         """生成纯 TCL/HWI agent 脚本（不含 hwc 命令）。"""
         agent_dir = os.path.join(self.base_dir, 'hv_agent')
         os.makedirs(agent_dir, exist_ok=True)
-        agent_path = os.path.join(agent_dir, 'agent.tcl')
+        agent_path = os.path.join(agent_dir, 'agent_tcl.tcl')
         ready_file = self.ready_signal.ready_file.replace('\\', '/')
         inbox_dir = self.inbox_dir.replace('\\', '/')
         outbox_dir = self.outbox_dir.replace('\\', '/')
@@ -405,7 +405,7 @@ after 4000 listen
         """生成 HWC agent 脚本（包含完整的 hwc 命令实现）。"""
         agent_dir = os.path.join(self.base_dir, 'hv_agent')
         os.makedirs(agent_dir, exist_ok=True)
-        agent_path = os.path.join(agent_dir, 'agent.hwc')
+        agent_path = os.path.join(agent_dir, 'agent_hwc.tcl')
         ready_file = self.ready_signal.ready_file.replace('\\', '/')
         inbox_dir = self.inbox_dir.replace('\\', '/')
         outbox_dir = self.outbox_dir.replace('\\', '/')
