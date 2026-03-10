@@ -262,7 +262,7 @@ proc process_job {job_file} {
                 exit
             }
             "load_model" {
-                puts "TCL>>> load_model (pure HWI, NO hwc commands)"
+                puts "TCL>>> load_model (HWI + rea commands)"
                 puts "TCL>>> Model path: $model_path"
                 puts "TCL>>> Result path: $result_path"
                 cleanup_handles
@@ -280,20 +280,22 @@ proc process_job {job_file} {
                     puts "TCL>>> win GetClientHandle poster"
                     win GetClientHandle poster
 
-                    puts "TCL>>> poster AddModel $model_path"
-                    poster AddModel $model_path
-                    puts "TCL>>> poster Draw"
-                    poster Draw
+                    puts "TCL>>> rea geo $model_path"
+                    rea geo $model_path
 
                     if {$result_path ne ""} {
-                        puts "TCL>>> poster GetModelHandle mdl \[poster GetActiveModel\]"
-                        poster GetModelHandle mdl [poster GetActiveModel]
-                        puts "TCL>>> mdl AddResult $result_path"
-                        mdl AddResult $result_path
-                        puts "TCL>>> mdl ReleaseHandle"
-                        mdl ReleaseHandle
+                        puts "TCL>>> rea res $result_path"
+                        rea res $result_path
                     }
 
+                    puts "TCL>>> poster GetModelHandle mdl \[poster GetActiveModel\]"
+                    poster GetModelHandle mdl [poster GetActiveModel]
+
+                    puts "TCL>>> catch {hwc result animation load all} (may fail in classic mode)"
+                    catch {hwc result animation load all}
+
+                    puts "TCL>>> mdl ReleaseHandle"
+                    mdl ReleaseHandle
                     puts "TCL>>> releasing handles (poster, win, page, proj, sess)..."
                     poster ReleaseHandle
                     win ReleaseHandle
