@@ -723,6 +723,10 @@ after 4000 listen
         self._log(f"Generate Agent:{agent_path}")
         if not self.hv_process.start(agent_path):
             return False
+        if self.hv_process.version:
+            self._log(f"HyperView Version: {self.hv_process.version}")
+        else:
+            self._log("HyperView Version: unknown")
         self._log("Waiting HyperView Agent Ready...")
         timeout = self.config['hyperview'].get('startup_timeout')
         if self.ready_signal.wait(timeout):

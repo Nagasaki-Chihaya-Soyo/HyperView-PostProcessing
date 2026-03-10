@@ -3,7 +3,7 @@ import re
 import subprocess
 import fnmatch
 from typing import Optional
-from .logging_util import log_info, log_error
+from .logging_util import log_info, log_error, log_debug
 
 
 class HVProcess:
@@ -31,15 +31,21 @@ class HVProcess:
         ])
         altair_base = 'C:/ProgramData/Microsoft/Windows/Start Menu/Programs'
         if os.path.exists(altair_base):
-            for folder in os.listdir(altair_base):
-                if folder.lower().startswith('altair'):
-                    altair_path = os.path.join(altair_base, folder)
-                    search_paths.append(altair_path)
-                    if os.path.isdir(altair_path):
-                        for sub in os.listdir(altair_path):
-                            sub_path = os.path.join(altair_path, sub)
-                            if os.path.isdir(sub_path):
-                                search_paths.append(sub_path)
+            try:
+                for folder in os.listdir(altair_base):
+                    if folder.lower().startswith('altair'):
+                        altair_path = os.path.join(altair_base, folder)
+                        search_paths.append(altair_path)
+                        if os.path.isdir(altair_path):
+                            try:
+                                for sub in os.listdir(altair_path):
+                                    sub_path = os.path.join(altair_path, sub)
+                                    if os.path.isdir(sub_path):
+                                        search_paths.append(sub_path)
+                            except (PermissionError, OSError) as e:
+                                log_error(f"Cannot read subdirectory {altair_path}: {e}")
+            except (PermissionError, OSError) as e:
+                log_error(f"Cannot read directory {altair_base}: {e}")
         for base_path in search_paths:
             if not os.path.exists(base_path):
                 continue
@@ -62,11 +68,11 @@ class HVProcess:
         if match:
             self.version = match.group(1)
             print(f"[HyperView] Detected version: {self.version}")
-            log_info(f"HyperView version detected: {self.version}")
+            log_debug(f"HyperView version detected: {self.version}")
         else:
             self.version = None
             print("[HyperView] Version: unknown (no version string found in shortcut path)")
-            log_info("HyperView version could not be detected from shortcut path")
+            log_debug("HyperView version could not be detected from shortcut path")
         return self.version
 
     def start(self, agent_tcl_path: str) -> bool:
