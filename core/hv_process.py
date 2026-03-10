@@ -1,8 +1,28 @@
 import os
+import re
 import subprocess
 import fnmatch
 from typing import Optional
 from .logging_util import log_info, log_error
+
+
+def _extract_hv_version(shortcut_path: str) -> Optional[str]:
+    """从快捷方式路径中提取 HyperView 版本号。
+
+    优先从文件名解析（如 'HyperView 2023.1.lnk' -> '2023.1'），
+    失败时从父目录名解析（如 'Altair HyperWorks 2023.1'）。
+    """
+    filename = os.path.basename(shortcut_path)
+    m = re.search(r'HyperView\s+([\d]+(?:\.[\d]+)*)', filename, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    # 从父目录名中提取
+    parent = os.path.dirname(shortcut_path)
+    folder = os.path.basename(parent)
+    m = re.search(r'([\d]{4}(?:\.[\d]+)*)', folder)
+    if m:
+        return m.group(1)
+    return None
 
 
 class HVProcess:
@@ -10,6 +30,7 @@ class HVProcess:
         self.config = config
         self.process: Optional[subprocess.Popen] = None
         self.shortcut_path: Optional[str] = None
+        self.hv_version: Optional[str] = None
 
     def find_shortcut(self) -> Optional[str]:
         if self.shortcut_path and os.path.exists(self.shortcut_path):
@@ -45,7 +66,12 @@ class HVProcess:
                 for f in files:
                     if fnmatch.fnmatch(f, pattern):
                         self.shortcut_path = os.path.join(root, f)
+                        self.hv_version = _extract_hv_version(self.shortcut_path)
                         log_info(f"HyperView Found In :{self.shortcut_path}")
+                        if self.hv_version:
+                            log_info(f"HyperView Version Detected: {self.hv_version}")
+                        else:
+                            log_info("HyperView Version: unknown")
                         return self.shortcut_path
         log_error("NOT FOUND HYPERVIEW LINK")
         return None

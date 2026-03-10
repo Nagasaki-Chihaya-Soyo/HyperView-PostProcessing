@@ -53,6 +53,8 @@ class Application(tk.Tk):
         ttk.Label(frame, text="HyperView Now:").pack(side=tk.LEFT)
         self.status_label = ttk.Label(frame, text="Disconnected", foreground="gray")
         self.status_label.pack(side=tk.LEFT, padx=5)
+        self.hv_version_label = ttk.Label(frame, text="", foreground="#555555")
+        self.hv_version_label.pack(side=tk.LEFT, padx=(8, 0))
         self.connect_btn = ttk.Button(frame, text="Starting HyperView", command=self._start_hv)
         self.connect_btn.pack(side=tk.RIGHT)
 
@@ -548,6 +550,13 @@ Report Path:{result['report_path']}
         }
         text, color = state_text.get(state, ("Unknown", "gray"))
         self.status_label.config(text=text, foreground=color)
+
+        # 更新 HyperView 版本号标签（首次检测到后持续显示）
+        ver = self.orchestrator.hv_version
+        if ver:
+            self.hv_version_label.config(text=f"(v{ver})")
+        elif state in (State.IDLE, State.FAILED, State.EXITED):
+            self.hv_version_label.config(text="")
 
         # Sequential unlock: enable Model View button when HyperView is ready
         if state == State.AGENT_READY:

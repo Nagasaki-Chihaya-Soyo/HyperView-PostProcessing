@@ -596,6 +596,11 @@ after 4000 listen
             f.write(tcl_code)
         return agent_path
 
+    @property
+    def hv_version(self) -> Optional[str]:
+        """返回检测到的 HyperView 版本号，未检测到时为 None。"""
+        return self.hv_process.hv_version
+
     def start_hyperview(self) -> bool:
         if self.state == State.AGENT_READY and not self.hv_process.is_running():
             self._set_state(State.IDLE)
