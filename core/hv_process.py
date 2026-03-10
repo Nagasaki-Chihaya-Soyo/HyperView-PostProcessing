@@ -3,7 +3,7 @@ import re
 import subprocess
 import fnmatch
 from typing import Optional
-from .logging_util import log_info, log_error
+from .logging_util import log_info, log_error, log_debug
 
 
 class HVProcess:
@@ -31,15 +31,21 @@ class HVProcess:
         ])
         altair_base = 'C:/ProgramData/Microsoft/Windows/Start Menu/Programs'
         if os.path.exists(altair_base):
-            for folder in os.listdir(altair_base):
-                if folder.lower().startswith('altair'):
-                    altair_path = os.path.join(altair_base, folder)
-                    search_paths.append(altair_path)
-                    if os.path.isdir(altair_path):
-                        for sub in os.listdir(altair_path):
-                            sub_path = os.path.join(altair_path, sub)
-                            if os.path.isdir(sub_path):
-                                search_paths.append(sub_path)
+            try:
+                for folder in os.listdir(altair_base):
+                    if folder.lower().startswith('altair'):
+                        altair_path = os.path.join(altair_base, folder)
+                        search_paths.append(altair_path)
+                        if os.path.isdir(altair_path):
+                            try:
+                                for sub in os.listdir(altair_path):
+                                    sub_path = os.path.join(altair_path, sub)
+                                    if os.path.isdir(sub_path):
+                                        search_paths.append(sub_path)
+                            except (PermissionError, OSError) as e:
+                                log_error(f"Cannot read subdirectory {altair_path}: {e}")
+            except (PermissionError, OSError) as e:
+                log_error(f"Cannot read directory {altair_base}: {e}")
         for base_path in search_paths:
             if not os.path.exists(base_path):
                 continue
@@ -58,24 +64,40 @@ class HVProcess:
         if not self.shortcut_path:
             return None
         path = self.shortcut_path.replace('\\', '/')
-        match = re.search(r'\b(\d{4}\.\d+)\b', path)
+        print(f"[HyperView] Shortcut path: {path}")
+        # Match "2024.1" or standalone year like "2024"
+        match = re.search(r'\b(20[12]\d(?:\.\d+)?)\b', path)
         if match:
             self.version = match.group(1)
             print(f"[HyperView] Detected version: {self.version}")
-            log_info(f"HyperView version detected: {self.version}")
+            log_debug(f"HyperView version detected: {self.version}")
         else:
             self.version = None
             print("[HyperView] Version: unknown (no version string found in shortcut path)")
-            log_info("HyperView version could not be detected from shortcut path")
+            log_debug("HyperView version could not be detected from shortcut path")
         return self.version
 
-    def start(self, agent_tcl_path: str) -> bool:
+    def get_version_year(self) -> int:
+        """从版本字符串提取年份，如 '2024.1' -> 2024, '2024' -> 2024, None -> 0"""
+        if not self.version:
+            return 0
+        try:
+            return int(self.version.split('.')[0])
+        except ValueError:
+            return 0
+
+    def ensure_shortcut_detected(self) -> bool:
+        """确保快捷方式已找到且版本已检测，不启动进程。"""
+        return self.find_shortcut() is not None
+
+    def start(self, agent_path: str, mode: str = "tcl") -> bool:
         shortcut = self.find_shortcut()
         if not shortcut:
             return False
-        agent_tcl_path = agent_tcl_path.replace('\\', '/')
+        agent_path = agent_path.replace('\\', '/')
+        flag = "-tcl" if mode == "tcl" else "-hwc"
         try:
-            cmd = f'cmd /c start "" "{shortcut}" -tcl "{agent_tcl_path}"'
+            cmd = f'cmd /c start "" "{shortcut}" {flag} "{agent_path}"'
             log_info(f"Start Command:{cmd}")
             self.process = subprocess.Popen(
                 cmd,
@@ -83,7 +105,7 @@ class HVProcess:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            log_info("Starting HyperView...")
+            log_info(f"Starting HyperView (mode={mode})...")
             return True
         except Exception as e:
             log_error(f"Failed to Starting Hyperview:{e}")

@@ -36,8 +36,17 @@ class HVBridge:
         while time.time() < deadline:
             if os.path.exists(result_file):
                 time.sleep(0.1)
-                with open(result_file, 'r', encoding='utf-8') as f:
-                    result = json.load(f)
+                try:
+                    with open(result_file, 'r', encoding='utf-8') as f:
+                        result = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    time.sleep(0.5)
+                    try:
+                        with open(result_file, 'r', encoding='utf-8') as f:
+                            result = json.load(f)
+                    except (json.JSONDecodeError, OSError) as e:
+                        log_error(f"Failed to read result file: {e}")
+                        continue
                 log_info(f"收到结果:job_{job_id}")
                 try:
                     os.remove(result_file)
@@ -46,8 +55,17 @@ class HVBridge:
                 return result
             if os.path.exists(error_file):
                 time.sleep(0.1)
-                with open(error_file, 'r', encoding='utf-8') as f:
-                    error = json.load(f)
+                try:
+                    with open(error_file, 'r', encoding='utf-8') as f:
+                        error = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    time.sleep(0.5)
+                    try:
+                        with open(error_file, 'r', encoding='utf-8') as f:
+                            error = json.load(f)
+                    except (json.JSONDecodeError, OSError) as e:
+                        log_error(f"Failed to read error file: {e}")
+                        continue
                 log_error(f"任务失败:{error.get('error', 'Unknown error')}")
                 try:
                     os.remove(error_file)
@@ -78,12 +96,18 @@ class HVBridge:
     def clear_inbox(self):
         for f in os.listdir(self.inbox_dir):
             if f.endswith('.json'):
-                os.remove(os.path.join(self.inbox_dir, f))
+                try:
+                    os.remove(os.path.join(self.inbox_dir, f))
+                except OSError:
+                    pass
 
     def clear_outbox(self):
         for f in os.listdir(self.outbox_dir):
             if f.endswith('.json'):
-                os.remove(os.path.join(self.outbox_dir, f))
+                try:
+                    os.remove(os.path.join(self.outbox_dir, f))
+                except OSError:
+                    pass
 
 
 class ReadySignal:

@@ -33,6 +33,11 @@ class Application(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.current_report_path = None
         self._is_closing = False
+        # 后台检测 HyperView 版本，初始化 Agent 模式选择器
+        def _detect_version_bg():
+            self.orchestrator.hv_process.ensure_shortcut_detected()
+            self.after(0, self._update_agent_mode_selector)
+        threading.Thread(target=_detect_version_bg, daemon=True).start()
 
     def _create_ui(self):
         style = ttk.Style()
@@ -62,6 +67,14 @@ class Application(tk.Tk):
         self.status_label.pack(side=tk.LEFT, padx=5)
         self.connect_btn = ttk.Button(frame, text="Starting HyperView", command=self._start_hv)
         self.connect_btn.pack(side=tk.RIGHT)
+        # Agent mode selector (TCL / HWC)
+        self.agent_mode_var = tk.StringVar(value="TCL")
+        self.agent_mode_cb = ttk.Combobox(
+            frame, textvariable=self.agent_mode_var,
+            values=["TCL", "HWC"], width=6, state=tk.DISABLED
+        )
+        self.agent_mode_cb.pack(side=tk.RIGHT, padx=(0, 10))
+        ttk.Label(frame, text="Agent:").pack(side=tk.RIGHT)
 
     def _create_run_tab(self):
         tab = ttk.Frame(self.notebook)
@@ -473,16 +486,32 @@ Report Path:{result['report_path']}
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 
+    def _update_agent_mode_selector(self):
+        """根据检测到的 HyperView 版本更新 Agent 模式选择器的默认值和可用状态。"""
+        version_year = self.orchestrator.hv_process.get_version_year()
+        if version_year <= 2022:
+            self.agent_mode_var.set("TCL")
+            self.agent_mode_cb.config(state=tk.DISABLED)
+        elif version_year < 2024:
+            self.agent_mode_var.set("TCL")
+            self.agent_mode_cb.config(state="readonly")
+        else:
+            self.agent_mode_var.set("HWC")
+            self.agent_mode_cb.config(state="readonly")
+
     def _start_hv(self):
         self.connect_btn.config(state=tk.DISABLED)
+        self.agent_mode_cb.config(state=tk.DISABLED)
+        agent_mode = self.agent_mode_var.get().lower()
         def start():
-            success = self.orchestrator.start_hyperview()
+            success = self.orchestrator.start_hyperview(agent_mode=agent_mode)
             self.after(0, lambda: self._on_hv_started(success))
         threading.Thread(target=start, daemon=True).start()
 
     def _on_hv_started(self, success: bool):
         self.connect_btn.config(state=tk.NORMAL)
         if not success:
+            self._update_agent_mode_selector()
             messagebox.showerror(title="ERROR", message="HyperView Failed to Start")
 
     def _on_state_change(self, state: State):
@@ -506,6 +535,7 @@ Report Path:{result['report_path']}
             self.result_view_btn.config(state=tk.DISABLED)
             self.load_btn.config(state=tk.DISABLED)
             self.run_btn.config(state=tk.DISABLED)
+            self._update_agent_mode_selector()
 
     def _on_close(self):
         if self._is_closing:
