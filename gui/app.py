@@ -33,6 +33,11 @@ class Application(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.current_report_path = None
         self._is_closing = False
+        # 后台检测 HyperView 版本，初始化 Agent 模式选择器
+        def _detect_version_bg():
+            self.orchestrator.hv_process.ensure_shortcut_detected()
+            self.after(0, self._update_agent_mode_selector)
+        threading.Thread(target=_detect_version_bg, daemon=True).start()
 
     def _create_ui(self):
         style = ttk.Style()
