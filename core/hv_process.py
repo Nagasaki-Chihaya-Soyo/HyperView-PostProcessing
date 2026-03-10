@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import fnmatch
 from typing import Optional
@@ -10,6 +11,7 @@ class HVProcess:
         self.config = config
         self.process: Optional[subprocess.Popen] = None
         self.shortcut_path: Optional[str] = None
+        self.version: Optional[str] = None
 
     def find_shortcut(self) -> Optional[str]:
         if self.shortcut_path and os.path.exists(self.shortcut_path):
@@ -46,9 +48,26 @@ class HVProcess:
                     if fnmatch.fnmatch(f, pattern):
                         self.shortcut_path = os.path.join(root, f)
                         log_info(f"HyperView Found In :{self.shortcut_path}")
+                        self.detect_version()
                         return self.shortcut_path
         log_error("NOT FOUND HYPERVIEW LINK")
         return None
+
+    def detect_version(self) -> Optional[str]:
+        """从快捷方式路径中提取 HyperView 版本号，并打印到控制台。"""
+        if not self.shortcut_path:
+            return None
+        path = self.shortcut_path.replace('\\', '/')
+        match = re.search(r'\b(\d{4}\.\d+)\b', path)
+        if match:
+            self.version = match.group(1)
+            print(f"[HyperView] Detected version: {self.version}")
+            log_info(f"HyperView version detected: {self.version}")
+        else:
+            self.version = None
+            print("[HyperView] Version: unknown (no version string found in shortcut path)")
+            log_info("HyperView version could not be detected from shortcut path")
+        return self.version
 
     def start(self, agent_tcl_path: str) -> bool:
         shortcut = self.find_shortcut()
