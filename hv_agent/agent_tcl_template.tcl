@@ -54,13 +54,36 @@ proc process_job {job_file} {
     if { [catch {
         switch $cmd {
             "load_model" {
-                puts "TCL>>> rea geo $model_path"
-                rea geo $model_path
+                puts "TCL>>> Loading model: $model_path"
+                hwi OpenStack
+                hwi GetSessionHandle sess
+                sess GetProjectHandle proj
+                set pageId [proj GetActivePage]
+                proj GetPageHandle page1 $pageId
+                set winId [page1 GetActiveWindow]
+                page1 GetWindowHandle win1 $winId
+                win1 SetClientType animation
+                win1 GetClientHandle my_post
+
+                my_post AddModel $model_path
+                my_post Draw
+
                 if {$result_path ne ""} {
-                    puts "TCL>>> rea res $result_path"
-                    rea res $result_path
+                    puts "TCL>>> Loading result: $result_path"
+                    set modelCount [my_post GetNumberOfModels]
+                    if {$modelCount > 0} {
+                        my_post GetModelHandle model1 1
+                        catch { model1 AddResult $result_path }
+                        model1 ReleaseHandle
+                    }
                 }
-                catch {hwc result animation load all}
+
+                my_post ReleaseHandle
+                win1 ReleaseHandle
+                page1 ReleaseHandle
+                proj ReleaseHandle
+                sess ReleaseHandle
+                hwi CloseStack
                 write_result $job_id {{"success":true}}
             }
             "setup_view" {
@@ -71,11 +94,19 @@ proc process_job {job_file} {
                 page GetWindowHandle win [page GetActiveWindow]
                 win GetViewControlHandle vch
 
-                # 读取当前视角矩阵
-                set mat [vch GetViewMatrix]
-                puts "TCL>>> Current view matrix: $mat"
-                eval vch SetViewMatrix $mat
+                # 设置等轴测视角矩阵
+                vch SetViewMatrix {0.707107 0.353553 -0.612372 0.000000 -0.707107 0.353553 -0.612372 0.000000 -0.000000 0.866025 0.500000 0.000000 0.000000 0.000000 0.000000 1.000000}
+                puts "TCL>>> View matrix set"
 
+                # 适配视图
+                vch Fit
+                puts "TCL>>> View fitted"
+
+                vch ReleaseHandle
+                win ReleaseHandle
+                page ReleaseHandle
+                proj ReleaseHandle
+                sess ReleaseHandle
                 hwi CloseStack
                 write_result $job_id {{"success":true}}
             }
