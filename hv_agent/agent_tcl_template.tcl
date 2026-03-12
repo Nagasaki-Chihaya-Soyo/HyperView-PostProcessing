@@ -87,6 +87,7 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "setup_view" {
+                puts "TCL>>> Executing setup_view command"
                 hwi OpenStack
                 hwi GetSessionHandle sess
                 sess GetProjectHandle proj
@@ -103,7 +104,12 @@ proc process_job {job_file} {
                 vch Fit
                 puts "TCL>>> View fitted"
 
-                ani last
+                puts "TCL>>> Executing ani last"
+                if { [catch { ani last } ani_err] } {
+                    puts "TCL>>> ani last failed: $ani_err"
+                } else {
+                    puts "TCL>>> ani last completed successfully"
+                }
 
                 vch ReleaseHandle
                 win ReleaseHandle
@@ -111,6 +117,7 @@ proc process_job {job_file} {
                 proj ReleaseHandle
                 sess ReleaseHandle
                 hwi CloseStack
+                puts "TCL>>> setup_view completed successfully"
                 write_result $job_id {{"success":true}}
             }
             "ping" {
