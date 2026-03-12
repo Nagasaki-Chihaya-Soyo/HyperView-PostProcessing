@@ -1,4 +1,4 @@
-hwi OpenStack\n
+hwi OpenStack//
 hwi GetSessionHandle sess
 sess GetProjectHandle proj
 proj GetPageHandle page [proj GetActivePage]
