@@ -60,7 +60,7 @@ proc process_job {job_file} {
                     puts "TCL>>> rea res $result_path"
                     rea res $result_path
                 }
-                catch {hwc animation result load all}
+                catch {hwc result animation load all}
                 write_result $job_id {{"success":true}}
             }
             "ping" {
