@@ -74,7 +74,7 @@ proc process_job {job_file} {
                 # 读取当前视角矩阵
                 set mat [vch GetViewMatrix]
                 puts "TCL>>> Current view matrix: $mat"
-                vch SetViewMatrix $mat
+                eval vch SetViewMatrix $mat
 
                 hwi CloseStack
                 write_result $job_id {{"success":true}}
