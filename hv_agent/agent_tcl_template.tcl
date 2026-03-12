@@ -63,7 +63,7 @@ proc process_job {job_file} {
                 catch {hwc result animation load all}
                 write_result $job_id {{"success":true}}
             }
-            "export_contour_and_peak_vm" {
+            "setup_view" {
                 hwi OpenStack
                 hwi GetSessionHandle sess
                 sess GetProjectHandle proj
