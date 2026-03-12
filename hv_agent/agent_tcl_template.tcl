@@ -63,6 +63,22 @@ proc process_job {job_file} {
                 catch {hwc result animation load all}
                 write_result $job_id {{"success":true}}
             }
+            "export_contour_and_peak_vm" {
+                hwi OpenStack
+                hwi GetSessionHandle sess
+                sess GetProjectHandle proj
+                proj GetPageHandle page [proj GetActivePage]
+                page GetWindowHandle win [page GetActiveWindow]
+                win GetViewControlHandle vch
+
+                # 读取当前视角矩阵
+                set mat [vch GetViewMatrix]
+                puts "TCL>>> Current view matrix: $mat"
+                vch SetViewMatrix $mat
+
+                hwi CloseStack
+                write_result $job_id {{"success":true}}
+            }
             "ping" {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
