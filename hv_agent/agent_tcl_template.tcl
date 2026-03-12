@@ -100,7 +100,7 @@ proc process_job {job_file} {
                 puts "TCL>>> View matrix set"
 
                 # 适配视图
-                catch{hwc view fit}
+                catch {hwc view fit}
                 vch Fit
                 puts "TCL>>> View fitted"
 
