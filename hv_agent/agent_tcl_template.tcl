@@ -92,15 +92,18 @@ proc process_job {job_file} {
                 sess GetProjectHandle proj
                 proj GetPageHandle page [proj GetActivePage]
                 page GetWindowHandle win [page GetActiveWindow]
-                win GetViewControlHandle vch
+                win GetViewControl handle vch
 
                 # 设置等轴测视角矩阵
-                vch SetViewMatrix {0.707107 0.353553 -0.612372 0.000000 -0.707107 0.353553 -0.612372 0.000000 -0.000000 0.866025 0.500000 0.000000 0.000000 0.000000 0.000000 1.000000}
+                vch SetViewMatrix {0.707107 0.353553 -0.612372 0.000000 -0.707107 10.53553 -0.612372 0.000000 -0.000000 0.866025 0.500000 0.000000 0.000000 0.000000 0.000000 1.000000}
                 puts "TCL>>> View matrix set"
 
                 # 适配视图
+                catch{hwc view fit}
                 vch Fit
                 puts "TCL>>> View fitted"
+
+                ani last
 
                 vch ReleaseHandle
                 win ReleaseHandle
