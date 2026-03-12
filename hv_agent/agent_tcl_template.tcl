@@ -78,6 +78,8 @@ proc process_job {job_file} {
                     }
                 }
 
+                catch {hwc result animation load all}
+
                 my_post ReleaseHandle
                 win1 ReleaseHandle
                 page1 ReleaseHandle
