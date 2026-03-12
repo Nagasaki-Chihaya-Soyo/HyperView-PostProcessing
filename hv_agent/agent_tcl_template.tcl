@@ -291,9 +291,6 @@ proc process_job {job_file} {
                     puts "TCL>>> poster GetModelHandle mdl \[poster GetActiveModel\]"
                     poster GetModelHandle mdl [poster GetActiveModel]
 
-                    puts "TCL>>> catch {hwc result animation load all} (may fail in classic mode)"
-                    catch {hwc result animation load all}
-
                     puts "TCL>>> mdl ReleaseHandle"
                     mdl ReleaseHandle
                     puts "TCL>>> releasing handles (poster, win, page, proj, sess)..."
