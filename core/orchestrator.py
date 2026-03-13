@@ -9,6 +9,7 @@ from .hv_bridge import HVBridge, ReadySignal
 from .db_store import DBStore
 from .analysis import Analyzer
 from .report_html import HTMLReporter
+from .report_pptx import PPTXReporter
 from .logging_util import log_info, log_error, setup_logger
 
 
@@ -45,6 +46,8 @@ class Orchestrator:
         self.db = DBStore(os.path.join(base_dir, self.config['database']['path']))
         self.analyzer = Analyzer(self.db)
         self.reporter = HTMLReporter()
+        self.pptx_reporter = PPTXReporter()
+        self.agent_mode: str = "tcl"          # "tcl" or "hwc"
         self.state = State.IDLE
         self.current_job_id: Optional[str] = None
         self.on_state_change = None
@@ -105,6 +108,8 @@ class Orchestrator:
             self._log(f"HyperView Version: {self.hv_process.version}")
         else:
             self._log("HyperView Version: unknown")
+        # 记录模式，供报告方法判断走 HWC 还是 Python PPT
+        self.agent_mode = agent_mode
         # 根据模式生成对应 agent
         if agent_mode == "hwc":
             agent_path = self._generate_agent_hwc()
@@ -215,9 +220,49 @@ class Orchestrator:
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
                 return None
             self._log("Contour applied successfully")
+            # TCL 模式：额外截图并加入 PPT
+            if self.agent_mode != "hwc":
+                self._capture_and_add_slide(label)
             return {'success': True}
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
+            return None
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def _capture_and_add_slide(self, label: str):
+        """TCL 模式下截取 HyperView 窗口并添加到 python-pptx 报告。"""
+        img_dir = os.path.join(self.output_dir, "reports", "captures")
+        os.makedirs(img_dir, exist_ok=True)
+        safe_label = label.replace(" ", "_").replace("/", "_")
+        img_path = os.path.join(img_dir, f"{safe_label}.png")
+        # 注意：此时状态已是 RUNNING，不能调用 capture_image（它会检查 AGENT_READY）
+        # 直接通过 bridge 发送 capture_image
+        cap_result = self.bridge.send_job(cmd="capture_image", params={
+            "output_path": img_path.replace('\\', '/')
+        })
+        if cap_result.get('success', False):
+            actual_path = cap_result.get('image_path', img_path)
+            self.pptx_reporter.add_image_slide(label, actual_path)
+            self._log(f"Slide captured: {actual_path}")
+        else:
+            self._log(f"Capture failed: {cap_result.get('error', 'Unknown')}")
+
+    def capture_image(self, output_path: str) -> Optional[str]:
+        """截取 HyperView 当前窗口保存到指定路径。返回实际路径或 None。"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return None
+        self._set_state(State.RUNNING)
+        try:
+            result = self.bridge.send_job(cmd="capture_image", params={
+                "output_path": output_path.replace('\\', '/')
+            })
+            if result.get('success', False):
+                path = result.get('image_path', output_path)
+                self._log(f"Image captured: {path}")
+                return path
+            self._log(f"Capture image failed: {result.get('error', 'Unknown')}")
             return None
         finally:
             self._set_state(State.AGENT_READY)
@@ -250,15 +295,20 @@ class Orchestrator:
         self._set_state(State.RUNNING)
         try:
             self._log(f"Capture slide: {label}")
-            result = self.bridge.send_job(cmd="capture_slide", params={
-                "label": label
-            })
-            if result.get('success', False):
-                self._log(f"Capture slide completed: {label}")
-                return True
+            if self.agent_mode == "hwc":
+                result = self.bridge.send_job(cmd="capture_slide", params={
+                    "label": label
+                })
+                if result.get('success', False):
+                    self._log(f"Capture slide completed: {label}")
+                    return True
+                else:
+                    self._log(f"Capture slide failed: {result.get('error', 'Unknown')}")
+                    return False
             else:
-                self._log(f"Capture slide failed: {result.get('error', 'Unknown')}")
-                return False
+                # TCL 模式：截图并添加到 PPT
+                self._capture_and_add_slide(label)
+                return True
         finally:
             self._set_state(State.AGENT_READY)
 
@@ -282,36 +332,55 @@ class Orchestrator:
             self._set_state(State.AGENT_READY)
 
     def report_export(self) -> bool:
-        """通过 TCL 控件触发 HyperView 报告导出"""
+        """导出报告。TCL 模式用 python-pptx 保存，HWC 模式通过 TCL 控件触发。"""
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
         self._set_state(State.RUNNING)
         try:
             self._log("Exporting report...")
-            result = self.bridge.send_job(cmd="report_export", params={})
-            if result.get('success', False):
-                self._log("Report exported successfully")
-                return True
+            if self.agent_mode == "hwc":
+                result = self.bridge.send_job(cmd="report_export", params={})
+                if result.get('success', False):
+                    self._log("Report exported successfully")
+                    return True
+                else:
+                    self._log(f"Report export failed: {result.get('error', 'Unknown')}")
+                    return False
             else:
-                self._log(f"Report export failed: {result.get('error', 'Unknown')}")
-                return False
+                # TCL 模式：用 python-pptx 导出
+                pptx_dir = os.path.join(self.output_dir, "reports")
+                os.makedirs(pptx_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                pptx_path = os.path.join(pptx_dir, f"Report_{timestamp}.pptx")
+                self.pptx_reporter.export(pptx_path)
+                self._log(f"Report exported (python-pptx): {pptx_path}")
+                return True
+        except Exception as e:
+            self._log(f"Report export error: {e}")
+            return False
         finally:
             self._set_state(State.AGENT_READY)
 
     def create_report(self) -> bool:
-        """执行 hwc report create presentation 两条指令"""
+        """创建报告。TCL 模式用 python-pptx，HWC 模式用 hwc report 指令。"""
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
         self._log("Creating report presentation...")
-        result = self.bridge.send_job(cmd="create_report", params={})
-        if result.get('success', False):
-            self._log("Report created successfully")
-            return True
+        if self.agent_mode == "hwc":
+            result = self.bridge.send_job(cmd="create_report", params={})
+            if result.get('success', False):
+                self._log("Report created successfully")
+                return True
+            else:
+                self._log(f"Report creation failed: {result.get('error', 'Unknown')}")
+                return False
         else:
-            self._log(f"Report creation failed: {result.get('error', 'Unknown')}")
-            return False
+            # TCL 模式：初始化 python-pptx 报告
+            self.pptx_reporter.create()
+            self._log("Report created (python-pptx)")
+            return True
 
     def hotspot_find(self, hotspot_name: str) -> bool:
         """Create hotspot, find hotspots, and review"""
@@ -411,24 +480,30 @@ class Orchestrator:
             return False
 
     def add_slide_one_image_only(self, label: str, position: str, file_path: str) -> bool:
-        """执行两条HWC命令: add slide One Image only 并 edit items image"""
+        """添加纯图片幻灯片。TCL 模式直接加入 python-pptx，HWC 模式发 hwc 命令。"""
         if self.state != State.AGENT_READY:
             self._log("HyperView is not ready")
             return False
         self._set_state(State.RUNNING)
         try:
             self._log(f"add_slide_one_image_only: label={label}")
-            result = self.bridge.send_job(cmd="add_slide_one_image_only", params={
-                "label": label,
-                "position": position,
-                "file_path": file_path.replace('\\', '/'),
-            })
-            if result.get('success', False):
-                self._log("add_slide_one_image_only completed")
-                return True
+            if self.agent_mode == "hwc":
+                result = self.bridge.send_job(cmd="add_slide_one_image_only", params={
+                    "label": label,
+                    "position": position,
+                    "file_path": file_path.replace('\\', '/'),
+                })
+                if result.get('success', False):
+                    self._log("add_slide_one_image_only completed")
+                    return True
+                else:
+                    self._log(f"add_slide_one_image_only failed: {result.get('error', 'Unknown')}")
+                    return False
             else:
-                self._log(f"add_slide_one_image_only failed: {result.get('error', 'Unknown')}")
-                return False
+                # TCL 模式：直接添加到 python-pptx
+                self.pptx_reporter.add_image_only_slide(label, file_path)
+                self._log(f"add_slide_one_image_only (python-pptx): {label}")
+                return True
         except Exception as e:
             self._log(f"add_slide_one_image_only error: {e}")
             return False
