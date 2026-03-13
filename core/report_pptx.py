@@ -1,49 +1,75 @@
+"""
+纯 Python 标准库生成 PPTX 文件（无第三方依赖）。
+
+PPTX 本质是 ZIP 包，内含 XML + 媒体文件。
+本模块用 zipfile / xml.etree 手工构建符合 Office Open XML 规范的 .pptx。
+"""
+
 import os
+import struct
+import zipfile
+import mimetypes
 from datetime import datetime
 from typing import List, Optional
-from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
+from xml.etree.ElementTree import Element, SubElement, tostring
+
+# ── Office Open XML 命名空间 ──
+NS = {
+    'a':  'http://schemas.openxmlformats.org/drawingml/2006/main',
+    'r':  'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+    'p':  'http://schemas.openxmlformats.org/presentationml/2006/main',
+    'ct': 'http://schemas.openxmlformats.org/package/2006/content-types',
+    'rel': 'http://schemas.openxmlformats.org/package/2006/relationships',
+}
+
+# EMU 转换常量 (English Metric Units, 1 inch = 914400 EMU)
+EMU_PER_INCH = 914400
+
+def _emu(inches: float) -> int:
+    return int(inches * EMU_PER_INCH)
+
+# 16:9 页面尺寸
+SLIDE_W = _emu(13.333)
+SLIDE_H = _emu(7.5)
+
+
+def _png_dimensions(path: str) -> tuple:
+    """从 PNG 文件头读取宽高（像素），不依赖 PIL。"""
+    with open(path, 'rb') as f:
+        header = f.read(24)
+    if header[:8] == b'\x89PNG\r\n\x1a\n':
+        w, h = struct.unpack('>II', header[16:24])
+        return w, h
+    # 非 PNG 则返回默认尺寸
+    return 1920, 1080
+
+
+def _fit_image(img_w_px: int, img_h_px: int,
+               area_left: int, area_top: int,
+               area_w: int, area_h: int):
+    """计算图片在区域内保持比例居中的 (left, top, width, height) EMU。"""
+    scale = min(area_w / img_w_px, area_h / img_h_px)
+    w = int(img_w_px * scale)
+    h = int(img_h_px * scale)
+    left = area_left + (area_w - w) // 2
+    top = area_top + (area_h - h) // 2
+    return left, top, w, h
 
 
 class PPTXReporter:
-    """用 python-pptx 原生 slide layout 制作 PowerPoint 报告，替代 HWC report 功能。
-
-    默认模板的 slide_layouts:
-        0 - Title Slide           (title + subtitle)
-        1 - Title and Content     (title + body placeholder)
-        2 - Section Header
-        3 - Two Content
-        4 - Comparison
-        5 - Title Only            (title placeholder, 内容区空白)
-        6 - Blank
-        7 - Content with Caption
-        8 - Picture with Caption  (图片 + 标题 + 描述)
-    """
-
-    # Layout 索引常量
-    LAYOUT_TITLE_SLIDE = 0
-    LAYOUT_TITLE_ONLY = 5
-    LAYOUT_BLANK = 6
-    LAYOUT_PIC_WITH_CAPTION = 8
+    """纯标准库实现的 PPTX 生成器。"""
 
     def __init__(self):
-        self._prs: Optional[Presentation] = None
-        self._slides: List[dict] = []  # 收集的幻灯片数据
-
-    # ── 初始化 ──
+        self._slides: List[dict] = []
+        self._images: List[dict] = []  # {'path': ..., 'rId': ..., 'partname': ...}
 
     def create(self):
-        """初始化一个新的 Presentation（对应原 create_report）。"""
-        self._prs = Presentation()
-        # 16:9 宽屏
-        self._prs.slide_width = Inches(13.333)
-        self._prs.slide_height = Inches(7.5)
+        """初始化（清空之前的数据）。"""
         self._slides.clear()
-
-    # ── 添加幻灯片数据 ──
+        self._images.clear()
 
     def add_image_slide(self, label: str, image_path: str):
-        """记录一张图片幻灯片（对应原 "One Image with Caption"）。"""
+        """带标题的图片幻灯片（对应 "One Image with Caption"）。"""
         self._slides.append({
             'type': 'image_with_caption',
             'label': label,
@@ -51,107 +77,472 @@ class PPTXReporter:
         })
 
     def add_image_only_slide(self, label: str, image_path: str):
-        """记录一张纯图片幻灯片（对应原 "One Image only"）。"""
+        """纯图片幻灯片（对应 "One Image only"）。"""
         self._slides.append({
             'type': 'image_only',
             'label': label,
             'image_path': image_path,
         })
 
-    # ── 构建 & 导出 ──
+    def export(self, output_path: str) -> str:
+        """构建并保存 .pptx 文件。"""
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    def build(self):
-        """根据收集的 _slides 数据构建所有 PowerPoint 页面。"""
-        if self._prs is None:
-            self.create()
+        # 收集所有内容页数据（封面 + 用户幻灯片）
+        all_slides = []  # list of (xml_bytes, rels_bytes, images_for_slide)
 
-        # 封面页 — 使用 Layout 0 (Title Slide)
-        self._add_title_slide()
+        # 封面
+        all_slides.append(self._build_title_slide())
 
         # 内容页
-        for slide_data in self._slides:
-            stype = slide_data['type']
-            if stype == 'image_with_caption':
-                self._add_image_caption_slide(slide_data['label'], slide_data['image_path'])
-            elif stype == 'image_only':
-                self._add_image_only_slide(slide_data['label'], slide_data['image_path'])
+        for sd in self._slides:
+            if sd['type'] == 'image_with_caption':
+                all_slides.append(self._build_image_caption_slide(sd['label'], sd['image_path']))
+            elif sd['type'] == 'image_only':
+                all_slides.append(self._build_image_only_slide(sd['label'], sd['image_path']))
 
-    def export(self, output_path: str) -> str:
-        """构建并导出 PPTX 文件。返回输出路径。"""
-        self.build()
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        self._prs.save(output_path)
+        # ── 写 ZIP ──
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # [Content_Types].xml
+            zf.writestr('[Content_Types].xml', self._content_types_xml(len(all_slides)))
+            # _rels/.rels
+            zf.writestr('_rels/.rels', self._root_rels_xml())
+            # ppt/presentation.xml
+            zf.writestr('ppt/presentation.xml', self._presentation_xml(len(all_slides)))
+            # ppt/_rels/presentation.xml.rels
+            zf.writestr('ppt/_rels/presentation.xml.rels',
+                        self._presentation_rels_xml(len(all_slides)))
+            # ppt/slideMasters/slideMaster1.xml + layout + theme (最小骨架)
+            zf.writestr('ppt/slideMasters/slideMaster1.xml', self._slide_master_xml())
+            zf.writestr('ppt/slideMasters/_rels/slideMaster1.xml.rels',
+                        self._slide_master_rels_xml())
+            zf.writestr('ppt/slideLayouts/slideLayout1.xml', self._slide_layout_xml())
+            zf.writestr('ppt/slideLayouts/_rels/slideLayout1.xml.rels',
+                        self._slide_layout_rels_xml())
+            zf.writestr('ppt/theme/theme1.xml', self._theme_xml())
+
+            # 每页幻灯片
+            img_counter = 0
+            for i, (slide_xml, rels_xml, images) in enumerate(all_slides, 1):
+                zf.writestr(f'ppt/slides/slide{i}.xml', slide_xml)
+                # 写图片并生成 rels
+                img_entries = []
+                for img_info in images:
+                    img_counter += 1
+                    ext = os.path.splitext(img_info['path'])[1].lower() or '.png'
+                    part_name = f'image{img_counter}{ext}'
+                    zf.write(img_info['path'], f'ppt/media/{part_name}')
+                    img_entries.append((img_info['rId'], f'../media/{part_name}'))
+
+                zf.writestr(f'ppt/slides/_rels/slide{i}.xml.rels',
+                            self._slide_rels_xml(img_entries))
+
         return output_path
 
-    # ── 内部方法 ──
+    # ── 封面页 ──
 
-    def _add_title_slide(self):
-        """封面页：使用原生 Title Slide layout (index 0)。"""
-        layout = self._prs.slide_layouts[self.LAYOUT_TITLE_SLIDE]
-        slide = self._prs.slides.add_slide(layout)
+    def _build_title_slide(self):
+        """返回 (slide_xml_str, rels_xml_str, images_list)。"""
+        title = "HyperView Post-Processing Report"
+        subtitle = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
 
-        # placeholder 0 = title, placeholder 1 = subtitle
-        slide.placeholders[0].text = "HyperView Post-Processing Report"
-        slide.placeholders[1].text = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+        root = self._new_slide_element()
+        cSld = SubElement(root, _p('cSld'))
+        spTree = SubElement(cSld, _p('spTree'))
+        self._add_grp_sp_pr(spTree)
 
-    def _add_image_caption_slide(self, label: str, image_path: str):
-        """One Image with Caption：使用原生 Title Only layout (index 5) + 图片。"""
-        layout = self._prs.slide_layouts[self.LAYOUT_TITLE_ONLY]
-        slide = self._prs.slides.add_slide(layout)
+        # 标题文本框
+        self._add_textbox(spTree, title,
+                          left=_emu(1.0), top=_emu(2.2),
+                          width=SLIDE_W - _emu(2.0), height=_emu(1.2),
+                          font_size=3600, bold=True,
+                          color='1F3864', align='ctr')
+        # 副标题
+        self._add_textbox(spTree, subtitle,
+                          left=_emu(1.0), top=_emu(3.6),
+                          width=SLIDE_W - _emu(2.0), height=_emu(0.6),
+                          font_size=1600, bold=False,
+                          color='787878', align='ctr')
 
-        # placeholder 0 = title
-        slide.placeholders[0].text = label
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode(), '', []
 
-        # 在标题下方放置图片，保持比例居中
-        if os.path.exists(image_path):
-            slide_w = self._prs.slide_width
-            slide_h = self._prs.slide_height
-            img_area_top = Inches(1.5)
-            img_area_h = slide_h - img_area_top - Inches(0.3)
-            img_area_left = Inches(0.5)
-            img_area_w = slide_w - Inches(1.0)
-            left, top, w, h = self._fit_image(
-                image_path, img_area_left, img_area_top, img_area_w, img_area_h
-            )
-            slide.shapes.add_picture(image_path, left, top, w, h)
+    # ── 带标题的图片页 ──
 
-    def _add_image_only_slide(self, label: str, image_path: str):
-        """One Image only：使用原生 Blank layout (index 6)，图片铺满页面。"""
-        layout = self._prs.slide_layouts[self.LAYOUT_BLANK]
-        slide = self._prs.slides.add_slide(layout)
+    def _build_image_caption_slide(self, label: str, image_path: str):
+        images = []
+        root = self._new_slide_element()
+        cSld = SubElement(root, _p('cSld'))
+        spTree = SubElement(cSld, _p('spTree'))
+        self._add_grp_sp_pr(spTree)
 
-        if os.path.exists(image_path):
-            slide_w = self._prs.slide_width
-            slide_h = self._prs.slide_height
-            margin = Inches(0.2)
-            left, top, w, h = self._fit_image(
-                image_path, margin, margin,
-                slide_w - margin * 2, slide_h - margin * 2
-            )
-            slide.shapes.add_picture(image_path, left, top, w, h)
+        # 标题
+        self._add_textbox(spTree, label,
+                          left=_emu(0.5), top=_emu(0.2),
+                          width=SLIDE_W - _emu(1.0), height=_emu(0.8),
+                          font_size=2000, bold=True,
+                          color='1F3864', align='l')
+
+        # 图片
+        if image_path and os.path.exists(image_path):
+            rId = 'rId2'
+            img_w, img_h = _png_dimensions(image_path)
+            area_left = _emu(0.5)
+            area_top = _emu(1.3)
+            area_w = SLIDE_W - _emu(1.0)
+            area_h = SLIDE_H - _emu(1.6)
+            left, top, w, h = _fit_image(img_w, img_h, area_left, area_top, area_w, area_h)
+            self._add_picture(spTree, rId, left, top, w, h)
+            images.append({'path': image_path, 'rId': rId})
+
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode(), '', images
+
+    # ── 纯图片页 ──
+
+    def _build_image_only_slide(self, label: str, image_path: str):
+        images = []
+        root = self._new_slide_element()
+        cSld = SubElement(root, _p('cSld'))
+        spTree = SubElement(cSld, _p('spTree'))
+        self._add_grp_sp_pr(spTree)
+
+        if image_path and os.path.exists(image_path):
+            rId = 'rId2'
+            img_w, img_h = _png_dimensions(image_path)
+            margin = _emu(0.2)
+            left, top, w, h = _fit_image(img_w, img_h, margin, margin,
+                                         SLIDE_W - margin * 2, SLIDE_H - margin * 2)
+            self._add_picture(spTree, rId, left, top, w, h)
+            images.append({'path': image_path, 'rId': rId})
+
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode(), '', images
+
+    # ── XML 构建辅助 ──
 
     @staticmethod
-    def _fit_image(image_path: str, area_left, area_top, area_w, area_h):
-        """计算图片在给定区域内保持比例的最大尺寸和居中位置。
+    def _new_slide_element() -> Element:
+        return Element(_p('sld'), {
+            'xmlns:a': NS['a'],
+            'xmlns:r': NS['r'],
+            'xmlns:p': NS['p'],
+        })
 
-        Returns (left, top, width, height) as EMU int values.
-        """
-        from PIL import Image
-        with Image.open(image_path) as img:
-            img_w_px, img_h_px = img.size
+    @staticmethod
+    def _add_grp_sp_pr(spTree: Element):
+        """添加必需的 nvGrpSpPr / grpSpPr 骨架。"""
+        nvGrpSpPr = SubElement(spTree, _p('nvGrpSpPr'))
+        cNvPr = SubElement(nvGrpSpPr, _p('cNvPr'), {'id': '1', 'name': ''})
+        SubElement(nvGrpSpPr, _p('cNvGrpSpPr'))
+        SubElement(nvGrpSpPr, _p('nvPr'))
+        grpSpPr = SubElement(spTree, _p('grpSpPr'))
 
-        area_w_emu = int(area_w)
-        area_h_emu = int(area_h)
+    @staticmethod
+    def _add_textbox(spTree: Element, text: str,
+                     left: int, top: int, width: int, height: int,
+                     font_size: int = 1800, bold: bool = False,
+                     color: str = '000000', align: str = 'l'):
+        """添加文本框 shape。"""
+        sp = SubElement(spTree, _p('sp'))
 
-        scale_w = area_w_emu / img_w_px
-        scale_h = area_h_emu / img_h_px
-        scale = min(scale_w, scale_h)
+        # nvSpPr
+        nvSpPr = SubElement(sp, _p('nvSpPr'))
+        SubElement(nvSpPr, _p('cNvPr'), {'id': '0', 'name': 'TextBox'})
+        cNvSpPr = SubElement(nvSpPr, _p('cNvSpPr'), {'txBox': '1'})
+        SubElement(nvSpPr, _p('nvPr'))
 
-        final_w = int(img_w_px * scale)
-        final_h = int(img_h_px * scale)
+        # spPr
+        spPr = SubElement(sp, _p('spPr'))
+        xfrm = SubElement(spPr, _a('xfrm'))
+        SubElement(xfrm, _a('off'), {'x': str(left), 'y': str(top)})
+        SubElement(xfrm, _a('ext'), {'cx': str(width), 'cy': str(height)})
+        SubElement(spPr, _a('prstGeom'), {'prst': 'rect'})
 
-        # 居中
-        left = int(area_left) + (area_w_emu - final_w) // 2
-        top = int(area_top) + (area_h_emu - final_h) // 2
+        # txBody
+        txBody = SubElement(sp, _p('txBody'))
+        bodyPr = SubElement(txBody, _a('bodyPr'), {'wrap': 'square', 'rtlCol': '0'})
+        SubElement(txBody, _a('lstStyle'))
+        p_elem = SubElement(txBody, _a('p'))
+        pPr = SubElement(p_elem, _a('pPr'), {'algn': align})
+        r_elem = SubElement(p_elem, _a('r'))
+        rPr_attrs = {'lang': 'en-US', 'sz': str(font_size), 'dirty': '0'}
+        if bold:
+            rPr_attrs['b'] = '1'
+        rPr = SubElement(r_elem, _a('rPr'), rPr_attrs)
+        solidFill = SubElement(rPr, _a('solidFill'))
+        SubElement(solidFill, _a('srgbClr'), {'val': color})
+        t = SubElement(r_elem, _a('t'))
+        t.text = text
 
-        return left, top, final_w, final_h
+    @staticmethod
+    def _add_picture(spTree: Element, rId: str,
+                     left: int, top: int, width: int, height: int):
+        """添加图片 shape。"""
+        pic = SubElement(spTree, _p('pic'))
+
+        # nvPicPr
+        nvPicPr = SubElement(pic, _p('nvPicPr'))
+        SubElement(nvPicPr, _p('cNvPr'), {'id': '0', 'name': 'Picture'})
+        cNvPicPr = SubElement(nvPicPr, _p('cNvPicPr'))
+        SubElement(cNvPicPr, _a('picLocks'), {'noChangeAspect': '1'})
+        SubElement(nvPicPr, _p('nvPr'))
+
+        # blipFill
+        blipFill = SubElement(pic, _p('blipFill'))
+        SubElement(blipFill, _a('blip'), {_r('embed'): rId})
+        stretch = SubElement(blipFill, _a('stretch'))
+        SubElement(stretch, _a('fillRect'))
+
+        # spPr
+        spPr = SubElement(pic, _p('spPr'))
+        xfrm = SubElement(spPr, _a('xfrm'))
+        SubElement(xfrm, _a('off'), {'x': str(left), 'y': str(top)})
+        SubElement(xfrm, _a('ext'), {'cx': str(width), 'cy': str(height)})
+        SubElement(spPr, _a('prstGeom'), {'prst': 'rect'})
+
+    # ── 包结构 XML ──
+
+    @staticmethod
+    def _content_types_xml(n_slides: int) -> str:
+        root = Element('{%s}Types' % NS['ct'])
+        SubElement(root, '{%s}Default' % NS['ct'],
+                   {'Extension': 'rels', 'ContentType': 'application/vnd.openxmlformats-package.relationships+xml'})
+        SubElement(root, '{%s}Default' % NS['ct'],
+                   {'Extension': 'xml', 'ContentType': 'application/xml'})
+        SubElement(root, '{%s}Default' % NS['ct'],
+                   {'Extension': 'png', 'ContentType': 'image/png'})
+        SubElement(root, '{%s}Default' % NS['ct'],
+                   {'Extension': 'jpg', 'ContentType': 'image/jpeg'})
+        SubElement(root, '{%s}Default' % NS['ct'],
+                   {'Extension': 'jpeg', 'ContentType': 'image/jpeg'})
+        SubElement(root, '{%s}Override' % NS['ct'], {
+            'PartName': '/ppt/presentation.xml',
+            'ContentType': 'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml'
+        })
+        for i in range(1, n_slides + 1):
+            SubElement(root, '{%s}Override' % NS['ct'], {
+                'PartName': f'/ppt/slides/slide{i}.xml',
+                'ContentType': 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml'
+            })
+        SubElement(root, '{%s}Override' % NS['ct'], {
+            'PartName': '/ppt/slideMasters/slideMaster1.xml',
+            'ContentType': 'application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml'
+        })
+        SubElement(root, '{%s}Override' % NS['ct'], {
+            'PartName': '/ppt/slideLayouts/slideLayout1.xml',
+            'ContentType': 'application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml'
+        })
+        SubElement(root, '{%s}Override' % NS['ct'], {
+            'PartName': '/ppt/theme/theme1.xml',
+            'ContentType': 'application/vnd.openxmlformats-officedocument.theme+xml'
+        })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _root_rels_xml() -> str:
+        root = Element('{%s}Relationships' % NS['rel'])
+        SubElement(root, '{%s}Relationship' % NS['rel'], {
+            'Id': 'rId1',
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',
+            'Target': 'ppt/presentation.xml'
+        })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _presentation_xml(n_slides: int) -> str:
+        root = Element(_p('presentation'), {
+            'xmlns:a': NS['a'],
+            'xmlns:r': NS['r'],
+            'xmlns:p': NS['p'],
+        })
+        sldMasterIdLst = SubElement(root, _p('sldMasterIdLst'))
+        SubElement(sldMasterIdLst, _p('sldMasterId'), {
+            'id': '2147483648',
+            _r('id'): 'rId100'
+        })
+        sldIdLst = SubElement(root, _p('sldIdLst'))
+        for i in range(1, n_slides + 1):
+            SubElement(sldIdLst, _p('sldId'), {
+                'id': str(255 + i),
+                _r('id'): f'rId{i}'
+            })
+        sldSz = SubElement(root, _p('sldSz'), {
+            'cx': str(SLIDE_W), 'cy': str(SLIDE_H), 'type': 'custom'
+        })
+        notesSz = SubElement(root, _p('notesSz'), {
+            'cx': str(SLIDE_H), 'cy': str(SLIDE_W)
+        })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _presentation_rels_xml(n_slides: int) -> str:
+        root = Element('{%s}Relationships' % NS['rel'])
+        for i in range(1, n_slides + 1):
+            SubElement(root, '{%s}Relationship' % NS['rel'], {
+                'Id': f'rId{i}',
+                'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide',
+                'Target': f'slides/slide{i}.xml'
+            })
+        SubElement(root, '{%s}Relationship' % NS['rel'], {
+            'Id': 'rId100',
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster',
+            'Target': 'slideMasters/slideMaster1.xml'
+        })
+        SubElement(root, '{%s}Relationship' % NS['rel'], {
+            'Id': 'rId101',
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme',
+            'Target': 'theme/theme1.xml'
+        })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _slide_rels_xml(img_entries: list) -> str:
+        """img_entries: [(rId, target), ...]"""
+        root = Element('{%s}Relationships' % NS['rel'])
+        SubElement(root, '{%s}Relationship' % NS['rel'], {
+            'Id': 'rId1',
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout',
+            'Target': '../slideLayouts/slideLayout1.xml'
+        })
+        for rId, target in img_entries:
+            SubElement(root, '{%s}Relationship' % NS['rel'], {
+                'Id': rId,
+                'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
+                'Target': target
+            })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _slide_master_xml() -> str:
+        root = Element(_p('sldMaster'), {
+            'xmlns:a': NS['a'],
+            'xmlns:r': NS['r'],
+            'xmlns:p': NS['p'],
+        })
+        cSld = SubElement(root, _p('cSld'))
+        bg = SubElement(cSld, _p('bg'))
+        bgPr = SubElement(bg, _p('bgPr'))
+        solidFill = SubElement(bgPr, _a('solidFill'))
+        SubElement(solidFill, _a('srgbClr'), {'val': 'FFFFFF'})
+        SubElement(bgPr, _a('effectLst'))
+        spTree = SubElement(cSld, _p('spTree'))
+        # nvGrpSpPr 骨架
+        nvGrpSpPr = SubElement(spTree, _p('nvGrpSpPr'))
+        SubElement(nvGrpSpPr, _p('cNvPr'), {'id': '1', 'name': ''})
+        SubElement(nvGrpSpPr, _p('cNvGrpSpPr'))
+        SubElement(nvGrpSpPr, _p('nvPr'))
+        SubElement(spTree, _p('grpSpPr'))
+
+        clrMap = SubElement(root, _p('clrMap'), {
+            'bg1': 'lt1', 'tx1': 'dk1', 'bg2': 'lt2', 'tx2': 'dk2',
+            'accent1': 'accent1', 'accent2': 'accent2', 'accent3': 'accent3',
+            'accent4': 'accent4', 'accent5': 'accent5', 'accent6': 'accent6',
+            'hlink': 'hlink', 'folHlink': 'folHlink',
+        })
+        sldLayoutIdLst = SubElement(root, _p('sldLayoutIdLst'))
+        SubElement(sldLayoutIdLst, _p('sldLayoutId'), {
+            'id': '2147483649',
+            _r('id'): 'rId1'
+        })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _slide_master_rels_xml() -> str:
+        root = Element('{%s}Relationships' % NS['rel'])
+        SubElement(root, '{%s}Relationship' % NS['rel'], {
+            'Id': 'rId1',
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout',
+            'Target': '../slideLayouts/slideLayout1.xml'
+        })
+        SubElement(root, '{%s}Relationship' % NS['rel'], {
+            'Id': 'rId2',
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme',
+            'Target': '../theme/theme1.xml'
+        })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _slide_layout_xml() -> str:
+        root = Element(_p('sldLayout'), {
+            'xmlns:a': NS['a'],
+            'xmlns:r': NS['r'],
+            'xmlns:p': NS['p'],
+            'type': 'blank',
+        })
+        cSld = SubElement(root, _p('cSld'))
+        spTree = SubElement(cSld, _p('spTree'))
+        nvGrpSpPr = SubElement(spTree, _p('nvGrpSpPr'))
+        SubElement(nvGrpSpPr, _p('cNvPr'), {'id': '1', 'name': ''})
+        SubElement(nvGrpSpPr, _p('cNvGrpSpPr'))
+        SubElement(nvGrpSpPr, _p('nvPr'))
+        SubElement(spTree, _p('grpSpPr'))
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _slide_layout_rels_xml() -> str:
+        root = Element('{%s}Relationships' % NS['rel'])
+        SubElement(root, '{%s}Relationship' % NS['rel'], {
+            'Id': 'rId1',
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster',
+            'Target': '../slideMasters/slideMaster1.xml'
+        })
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+    @staticmethod
+    def _theme_xml() -> str:
+        """最小化的 Office 主题 XML。"""
+        root = Element(_a('theme'), {
+            'xmlns:a': NS['a'],
+            'name': 'HyperView Theme',
+        })
+        themeElements = SubElement(root, _a('themeElements'))
+
+        # clrScheme
+        clrScheme = SubElement(themeElements, _a('clrScheme'), {'name': 'Custom'})
+        for name, val in [
+            ('dk1', '000000'), ('lt1', 'FFFFFF'), ('dk2', '1F3864'), ('lt2', 'E7E6E6'),
+            ('accent1', '4472C4'), ('accent2', 'ED7D31'), ('accent3', 'A5A5A5'),
+            ('accent4', 'FFC000'), ('accent5', '5B9BD5'), ('accent6', '70AD47'),
+            ('hlink', '0563C1'), ('folHlink', '954F72'),
+        ]:
+            elem = SubElement(clrScheme, _a(name))
+            SubElement(elem, _a('srgbClr'), {'val': val})
+
+        # fontScheme
+        fontScheme = SubElement(themeElements, _a('fontScheme'), {'name': 'Custom'})
+        majorFont = SubElement(fontScheme, _a('majorFont'))
+        SubElement(majorFont, _a('latin'), {'typeface': 'Calibri'})
+        SubElement(majorFont, _a('ea'), {'typeface': ''})
+        SubElement(majorFont, _a('cs'), {'typeface': ''})
+        minorFont = SubElement(fontScheme, _a('minorFont'))
+        SubElement(minorFont, _a('latin'), {'typeface': 'Calibri'})
+        SubElement(minorFont, _a('ea'), {'typeface': ''})
+        SubElement(minorFont, _a('cs'), {'typeface': ''})
+
+        # fmtScheme (最小)
+        fmtScheme = SubElement(themeElements, _a('fmtScheme'), {'name': 'Custom'})
+        fillStyleLst = SubElement(fmtScheme, _a('fillStyleLst'))
+        sf = SubElement(fillStyleLst, _a('solidFill'))
+        SubElement(sf, _a('schemeClr'), {'val': 'phClr'})
+        lnStyleLst = SubElement(fmtScheme, _a('lnStyleLst'))
+        ln = SubElement(lnStyleLst, _a('ln'), {'w': '9525'})
+        sf2 = SubElement(ln, _a('solidFill'))
+        SubElement(sf2, _a('schemeClr'), {'val': 'phClr'})
+        effectStyleLst = SubElement(fmtScheme, _a('effectStyleLst'))
+        effectStyle = SubElement(effectStyleLst, _a('effectStyle'))
+        SubElement(effectStyle, _a('effectLst'))
+        bgFillStyleLst = SubElement(fmtScheme, _a('bgFillStyleLst'))
+        sf3 = SubElement(bgFillStyleLst, _a('solidFill'))
+        SubElement(sf3, _a('schemeClr'), {'val': 'phClr'})
+
+        return tostring(root, xml_declaration=True, encoding='UTF-8').decode()
+
+
+# ── 命名空间快捷函数 ──
+
+def _p(tag: str) -> str:
+    return '{%s}%s' % (NS['p'], tag)
+
+def _a(tag: str) -> str:
+    return '{%s}%s' % (NS['a'], tag)
+
+def _r(attr: str) -> str:
+    return '{%s}%s' % (NS['r'], attr)
