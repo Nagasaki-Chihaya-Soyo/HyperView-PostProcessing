@@ -14,3 +14,12 @@ page ReleaseHandle
 proj ReleaseHandle
 sess ReleaseHandle
 hwi CloseStack
+
+set m [.hw_report.hw_hw_report.mainwardMainWidget0.toolbar.mbcreate cget -menu]
+puts "menu path: $m"
+set last [$m index end]
+for {set i 0} {$i <= $last} {incr i} {
+    catch {set lbl [$m entrycget $i -label]} 
+    catch {set typ [$m type $i]}
+    puts "$i: $typ - $lbl"
+}
