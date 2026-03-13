@@ -1,14 +1,30 @@
 import os
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
-from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
 
 
 class PPTXReporter:
-    """用 python-pptx 制作 PowerPoint 报告，替代 HWC 的 report 功能。"""
+    """用 python-pptx 原生 slide layout 制作 PowerPoint 报告，替代 HWC report 功能。
+
+    默认模板的 slide_layouts:
+        0 - Title Slide           (title + subtitle)
+        1 - Title and Content     (title + body placeholder)
+        2 - Section Header
+        3 - Two Content
+        4 - Comparison
+        5 - Title Only            (title placeholder, 内容区空白)
+        6 - Blank
+        7 - Content with Caption
+        8 - Picture with Caption  (图片 + 标题 + 描述)
+    """
+
+    # Layout 索引常量
+    LAYOUT_TITLE_SLIDE = 0
+    LAYOUT_TITLE_ONLY = 5
+    LAYOUT_BLANK = 6
+    LAYOUT_PIC_WITH_CAPTION = 8
 
     def __init__(self):
         self._prs: Optional[Presentation] = None
@@ -17,9 +33,9 @@ class PPTXReporter:
     # ── 初始化 ──
 
     def create(self):
-        """初始化一个新的空白 Presentation（对应原 create_report）。"""
+        """初始化一个新的 Presentation（对应原 create_report）。"""
         self._prs = Presentation()
-        # 设置为 16:9
+        # 16:9 宽屏
         self._prs.slide_width = Inches(13.333)
         self._prs.slide_height = Inches(7.5)
         self._slides.clear()
@@ -27,7 +43,7 @@ class PPTXReporter:
     # ── 添加幻灯片数据 ──
 
     def add_image_slide(self, label: str, image_path: str):
-        """记录一张图片幻灯片（对应原 add slide "One Image with Caption"）。"""
+        """记录一张图片幻灯片（对应原 "One Image with Caption"）。"""
         self._slides.append({
             'type': 'image_with_caption',
             'label': label,
@@ -35,7 +51,7 @@ class PPTXReporter:
         })
 
     def add_image_only_slide(self, label: str, image_path: str):
-        """记录一张纯图片幻灯片（对应原 add slide "One Image only"）。"""
+        """记录一张纯图片幻灯片（对应原 "One Image only"）。"""
         self._slides.append({
             'type': 'image_only',
             'label': label,
@@ -49,7 +65,7 @@ class PPTXReporter:
         if self._prs is None:
             self.create()
 
-        # 封面页
+        # 封面页 — 使用 Layout 0 (Title Slide)
         self._add_title_slide()
 
         # 内容页
@@ -70,97 +86,60 @@ class PPTXReporter:
     # ── 内部方法 ──
 
     def _add_title_slide(self):
-        """添加封面幻灯片。"""
-        slide_layout = self._prs.slide_layouts[6]  # Blank
-        slide = self._prs.slides.add_slide(slide_layout)
-        slide_w = self._prs.slide_width
-        slide_h = self._prs.slide_height
+        """封面页：使用原生 Title Slide layout (index 0)。"""
+        layout = self._prs.slide_layouts[self.LAYOUT_TITLE_SLIDE]
+        slide = self._prs.slides.add_slide(layout)
 
-        # 标题
-        left = Inches(1)
-        top = Inches(2.5)
-        width = slide_w - Inches(2)
-        height = Inches(1.2)
-        txBox = slide.shapes.add_textbox(left, top, width, height)
-        tf = txBox.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.text = "HyperView Post-Processing Report"
-        p.font.size = Pt(36)
-        p.font.bold = True
-        p.font.color.rgb = RGBColor(31, 56, 100)
-        p.alignment = PP_ALIGN.CENTER
-
-        # 时间
-        top2 = Inches(3.8)
-        txBox2 = slide.shapes.add_textbox(left, top2, width, Inches(0.6))
-        tf2 = txBox2.text_frame
-        p2 = tf2.paragraphs[0]
-        p2.text = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-        p2.font.size = Pt(16)
-        p2.font.color.rgb = RGBColor(120, 120, 120)
-        p2.alignment = PP_ALIGN.CENTER
+        # placeholder 0 = title, placeholder 1 = subtitle
+        slide.placeholders[0].text = "HyperView Post-Processing Report"
+        slide.placeholders[1].text = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
 
     def _add_image_caption_slide(self, label: str, image_path: str):
-        """One Image with Caption: 标题 + 大图。"""
-        slide_layout = self._prs.slide_layouts[6]  # Blank
-        slide = self._prs.slides.add_slide(slide_layout)
-        slide_w = self._prs.slide_width
-        slide_h = self._prs.slide_height
+        """One Image with Caption：使用原生 Title Only layout (index 5) + 图片。"""
+        layout = self._prs.slide_layouts[self.LAYOUT_TITLE_ONLY]
+        slide = self._prs.slides.add_slide(layout)
 
-        # 标题栏
-        txBox = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), slide_w - Inches(1), Inches(0.6))
-        tf = txBox.text_frame
-        p = tf.paragraphs[0]
-        p.text = label
-        p.font.size = Pt(20)
-        p.font.bold = True
-        p.font.color.rgb = RGBColor(31, 56, 100)
+        # placeholder 0 = title
+        slide.placeholders[0].text = label
 
-        # 图片居中放置
+        # 在标题下方放置图片，保持比例居中
         if os.path.exists(image_path):
-            img_max_w = slide_w - Inches(1)
-            img_max_h = slide_h - Inches(1.2)
-            img_left, img_top, img_w, img_h = self._fit_image(
-                image_path, Inches(0.5), Inches(1.0), img_max_w, img_max_h
+            slide_w = self._prs.slide_width
+            slide_h = self._prs.slide_height
+            img_area_top = Inches(1.5)
+            img_area_h = slide_h - img_area_top - Inches(0.3)
+            img_area_left = Inches(0.5)
+            img_area_w = slide_w - Inches(1.0)
+            left, top, w, h = self._fit_image(
+                image_path, img_area_left, img_area_top, img_area_w, img_area_h
             )
-            slide.shapes.add_picture(image_path, img_left, img_top, img_w, img_h)
+            slide.shapes.add_picture(image_path, left, top, w, h)
 
     def _add_image_only_slide(self, label: str, image_path: str):
-        """One Image only: 图片铺满页面，标题在底部。"""
-        slide_layout = self._prs.slide_layouts[6]  # Blank
-        slide = self._prs.slides.add_slide(slide_layout)
-        slide_w = self._prs.slide_width
-        slide_h = self._prs.slide_height
+        """One Image only：使用原生 Blank layout (index 6)，图片铺满页面。"""
+        layout = self._prs.slide_layouts[self.LAYOUT_BLANK]
+        slide = self._prs.slides.add_slide(layout)
 
         if os.path.exists(image_path):
-            img_max_w = slide_w - Inches(0.4)
-            img_max_h = slide_h - Inches(0.8)
-            img_left, img_top, img_w, img_h = self._fit_image(
-                image_path, Inches(0.2), Inches(0.2), img_max_w, img_max_h
+            slide_w = self._prs.slide_width
+            slide_h = self._prs.slide_height
+            margin = Inches(0.2)
+            left, top, w, h = self._fit_image(
+                image_path, margin, margin,
+                slide_w - margin * 2, slide_h - margin * 2
             )
-            slide.shapes.add_picture(image_path, img_left, img_top, img_w, img_h)
-
-        # 底部小标签
-        txBox = slide.shapes.add_textbox(Inches(0.3), slide_h - Inches(0.5), slide_w - Inches(0.6), Inches(0.4))
-        tf = txBox.text_frame
-        p = tf.paragraphs[0]
-        p.text = label
-        p.font.size = Pt(11)
-        p.font.color.rgb = RGBColor(100, 100, 100)
-        p.alignment = PP_ALIGN.LEFT
+            slide.shapes.add_picture(image_path, left, top, w, h)
 
     @staticmethod
     def _fit_image(image_path: str, area_left, area_top, area_w, area_h):
         """计算图片在给定区域内保持比例的最大尺寸和居中位置。
 
-        Returns (left, top, width, height) as Emu values.
+        Returns (left, top, width, height) as EMU int values.
         """
         from PIL import Image
         with Image.open(image_path) as img:
             img_w_px, img_h_px = img.size
 
-        # 转成 Emu 计算比例
         area_w_emu = int(area_w)
         area_h_emu = int(area_h)
 
