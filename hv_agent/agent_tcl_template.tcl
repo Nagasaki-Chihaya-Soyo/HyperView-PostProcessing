@@ -46,6 +46,9 @@ proc do_capture_screen {} {
     incr CAPTURE_SEQ
     set img_path [file join $CAPTURE_DIR "capture ($CAPTURE_SEQ).png"]
 
+    # 等待 1 秒，让前面的 hwc/TCL 指令渲染完毕
+    after 1000
+
     hwi OpenStack
     hwi GetSessionHandle sess
     sess CaptureScreenToSize png $img_path 1920 1080 100
@@ -257,10 +260,6 @@ proc process_job {job_file} {
             }
             "report_run" {
                 puts "TCL>>> report_run: no-op in TCL mode"
-                write_result $job_id {{"success":true}}
-            }
-            "report_run_position" {
-                puts "TCL>>> report_run_position: no-op in TCL mode"
                 write_result $job_id {{"success":true}}
             }
             "capture_slide" {

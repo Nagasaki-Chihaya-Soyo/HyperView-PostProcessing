@@ -888,7 +888,7 @@ class ContourOptionDialog(tk.Toplevel):
             self.comp_var.set(comps[0])
 
     def _execute_contour(self, close_after=False):
-        """执行 apply_contour + report_run_position"""
+        """执行 apply_contour（含截图加入 PPT）"""
         if not self.orchestrator:
             return
         result_type = self.type_var.get()
@@ -900,9 +900,7 @@ class ContourOptionDialog(tk.Toplevel):
             try:
                 print(f"[ContourOptionDialog] Executing apply_contour: {label}")
                 self.orchestrator.apply_contour(result_type, component, label)
-                print("[ContourOptionDialog] apply_contour done, running report_run_position...")
-                self.orchestrator.report_run_position(label)
-                print("[ContourOptionDialog] report_run_position done")
+                print("[ContourOptionDialog] apply_contour done")
             except Exception as e:
                 print(f"[ContourOptionDialog] ERROR in thread: {e}")
             if self.on_execute:
@@ -962,10 +960,6 @@ class ContourOptionDialog(tk.Toplevel):
             if self.on_execute:
                 self.on_execute(config)
             ok = self.orchestrator.hotspot_find(name)
-            try:
-                self.orchestrator.report_run_position(label)
-            except Exception as e:
-                print(f"[FindHotspot] report_run_position error: {e}")
             def done():
                 self.find_btn.config(state=tk.NORMAL)
                 self.prev_btn.config(state=tk.NORMAL)
