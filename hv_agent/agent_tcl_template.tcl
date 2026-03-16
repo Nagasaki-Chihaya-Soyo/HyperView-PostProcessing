@@ -2,9 +2,26 @@ set READY_FILE "{{READY_FILE}}"
 set INBOX_DIR "{{INBOX_DIR}}"
 set OUTBOX_DIR "{{OUTBOX_DIR}}"
 
+# ── 截图计数器 & 临时目录 ──
+set CAPTURE_SEQ 0
+set CAPTURE_DIR "C:/temp/HyperView_Captures"
+
 proc escape_json_string {str} {
     set str [string map {\\ \\\\ \" \\" \n \\n \r \\r \t \\t} $str]
     return $str
+}
+
+proc cleanup_capture_dir {} {
+    global CAPTURE_DIR
+    # 清空截图目录（删除所有 png 文件），防止上次结果污染
+    if {[file isdirectory $CAPTURE_DIR]} {
+        foreach f [glob -nocomplain -directory $CAPTURE_DIR "*.png"] {
+            catch { file delete -force $f }
+        }
+        puts "TCL>>> Capture directory cleaned: $CAPTURE_DIR"
+    }
+    file mkdir $CAPTURE_DIR
+    puts "TCL>>> Capture directory ready: $CAPTURE_DIR"
 }
 
 proc write_ready {} {
@@ -21,6 +38,22 @@ proc write_result {job_id result_json} {
     set f [open $result_file w]
     puts $f $result_json
     close $f
+}
+
+# ── 统一截图过程：sess CaptureScreenToSize + 自增序号 ──
+proc do_capture_screen {} {
+    global CAPTURE_SEQ CAPTURE_DIR
+    incr CAPTURE_SEQ
+    set img_path [file join $CAPTURE_DIR "capture ($CAPTURE_SEQ).png"]
+
+    hwi OpenStack
+    hwi GetSessionHandle sess
+    sess CaptureScreenToSize png $img_path 1920 1080 100
+    sess ReleaseHandle
+    hwi CloseStack
+
+    puts "TCL>>> Screen captured ($CAPTURE_SEQ): $img_path"
+    return $img_path
 }
 
 proc process_job {job_file} {
@@ -132,24 +165,10 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "capture_image" {
-                puts "TCL>>> Capturing image to: $output_path"
-                hwi OpenStack
-                hwi GetSessionHandle sess
-                sess GetProjectHandle proj
-                set pageId [proj GetActivePage]
-                proj GetPageHandle page1 $pageId
-                set winId [page1 GetActiveWindow]
-                page1 GetWindowHandle win1 $winId
-
-                win1 CaptureImage $output_path 0 0 1920 1080
-                puts "TCL>>> Image captured: $output_path"
-
-                win1 ReleaseHandle
-                page1 ReleaseHandle
-                proj ReleaseHandle
-                sess ReleaseHandle
-                hwi CloseStack
-                set escaped_path [escape_json_string $output_path]
+                # 使用 sess CaptureScreenToSize 统一截图
+                puts "TCL>>> capture_image"
+                set img_path [do_capture_screen]
+                set escaped_path [escape_json_string $img_path]
                 write_result $job_id [format {{"success":true,"image_path":"%s"}} $escaped_path]
             }
             "apply_contour" {
@@ -247,26 +266,8 @@ proc process_job {job_file} {
             "capture_slide" {
                 # TCL 截图 → Python PPT，caption = label
                 # (HWC 原代码: hwc report Report add slide "One Image with Caption" label=$label)
-                puts "TCL>>> capture_slide: capturing image for label=$label"
-                hwi OpenStack
-                hwi GetSessionHandle sess
-                sess GetProjectHandle proj
-                set pageId [proj GetActivePage]
-                proj GetPageHandle page1 $pageId
-                set winId [page1 GetActiveWindow]
-                page1 GetWindowHandle win1 $winId
-
-                file mkdir $output_dir
-                set img_path [file join $output_dir "${label}.png"]
-                # 替换空格为下划线
-                set img_path [string map {{ } _} $img_path]
-                win1 CaptureImage $img_path 0 0 1920 1080
-
-                win1 ReleaseHandle
-                page1 ReleaseHandle
-                proj ReleaseHandle
-                sess ReleaseHandle
-                hwi CloseStack
+                puts "TCL>>> capture_slide: label=$label"
+                set img_path [do_capture_screen]
                 set escaped [escape_json_string $img_path]
                 puts "TCL>>> capture_slide done: $img_path"
                 write_result $job_id [format {{"success":true,"image_path":"%s"}} $escaped]
@@ -279,6 +280,8 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true,"message":"pong"}}
             }
             "quit" {
+                # 退出前清空截图目录
+                cleanup_capture_dir
                 write_result $job_id {{"success":true}}
                 exit
             }
@@ -317,5 +320,7 @@ proc listen {} {
 puts "=========================================="
 puts "TCL>>> Starting Agent (TCL mode)"
 puts "=========================================="
+# 启动时清空截图目录，计数器从 1 开始
+cleanup_capture_dir
 after 3000 write_ready
 after 4000 listen
