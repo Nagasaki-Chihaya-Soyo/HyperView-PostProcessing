@@ -954,12 +954,19 @@ class ContourOptionDialog(tk.Toplevel):
 
         def run():
             try:
-                self.orchestrator.apply_contour(result_type, component, label)
+                # 先只画云图（不截图），等 hotspot 出来后再截
+                self.orchestrator.plot_contour_only(result_type, component)
             except Exception as e:
-                print(f"[FindHotspot] apply_contour error: {e}")
+                print(f"[FindHotspot] plot_contour_only error: {e}")
             if self.on_execute:
                 self.on_execute(config)
             ok = self.orchestrator.hotspot_find(name)
+            # hotspot 标签已渲染，现在截图加入 PPT
+            if ok:
+                try:
+                    self.orchestrator.capture_slide(label)
+                except Exception as e:
+                    print(f"[FindHotspot] capture_slide error: {e}")
             def done():
                 self.find_btn.config(state=tk.NORMAL)
                 self.prev_btn.config(state=tk.NORMAL)

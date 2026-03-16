@@ -46,9 +46,6 @@ proc do_capture_screen {} {
     incr CAPTURE_SEQ
     set img_path [file join $CAPTURE_DIR "capture ($CAPTURE_SEQ).png"]
 
-    # 等待 1 秒，让前面的 hwc/TCL 指令渲染完毕
-    after 1000
-
     hwi OpenStack
     hwi GetSessionHandle sess
     sess CaptureScreenToSize png $img_path 1920 1080 100
