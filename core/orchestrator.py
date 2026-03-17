@@ -486,6 +486,37 @@ proc process_job {job_file} {
                 puts "hotspot_navigate completed"
                 write_result $job_id {{"success":true}}
             }
+            "hotspot_delete" {
+                puts "Executing hotspot_delete: hotspot_name=$hotspot_name"
+                if { [catch {
+                    hwc kpi hotspot delete $hotspot_name
+                } err] } {
+                    puts "hotspot_delete error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "hotspot_delete $hotspot_name done"
+                write_result $job_id {{"success":true}}
+            }
+            "add_report_slide" {
+                puts "Executing add_report_slide: label=$label"
+                if { [catch {
+                    hwc report Report add slide "One Image with Caption" label=$label
+                } err] } {
+                    puts "add_report_slide error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "add_report_slide completed"
+                if { [catch {
+                    hwc report Report run position=$label
+                } err2] } {
+                    puts "report run error: $err2"
+                }
+                write_result $job_id {{"success":true}}
+            }
             "quit" {
                 puts "Executing quit command (hwc hwd exit)"
                 write_result $job_id {{"success":true}}
@@ -761,6 +792,46 @@ after 4000 listen
                 return True
             else:
                 self._log(f"Hotspot navigate failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def hotspot_delete(self, hotspot_name: str) -> bool:
+        """删除指定 hotspot，防止标签重叠"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Deleting hotspot: {hotspot_name}")
+            result = self.bridge.send_job(cmd="hotspot_delete", params={
+                "hotspot_name": hotspot_name
+            })
+            if result.get('success', False):
+                self._log(f"Hotspot {hotspot_name} deleted")
+                return True
+            else:
+                self._log(f"Hotspot delete failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
+    def add_report_slide(self, label: str = "Captured Image") -> bool:
+        """在报告中添加当前视图的幻灯片"""
+        if self.state != State.AGENT_READY:
+            self._log("HyperView is not ready")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Adding report slide: {label}")
+            result = self.bridge.send_job(cmd="add_report_slide", params={
+                "label": label
+            })
+            if result.get('success', False):
+                self._log("Report slide added")
+                return True
+            else:
+                self._log(f"Add slide failed: {result.get('error', 'Unknown')}")
                 return False
         finally:
             self._set_state(State.AGENT_READY)

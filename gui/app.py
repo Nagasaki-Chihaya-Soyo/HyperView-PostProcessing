@@ -88,8 +88,12 @@ class Application(tk.Tk):
         self.result_text = tk.Text(result_frame, height=15, state=tk.DISABLED)
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
-        self.report_btn = ttk.Button(result_frame, text="Open Report Files", state=tk.DISABLED, command=self._open_report)
-        self.report_btn.pack(pady=10)
+        report_btn_frame = ttk.Frame(result_frame)
+        report_btn_frame.pack(pady=10)
+        self.report_btn = ttk.Button(report_btn_frame, text="Open Report Files", state=tk.DISABLED, command=self._open_report)
+        self.report_btn.pack(side=tk.LEFT, padx=5)
+        self.insert_img_btn = ttk.Button(report_btn_frame, text="插入图片", state=tk.DISABLED, command=self._insert_image)
+        self.insert_img_btn.pack(side=tk.LEFT, padx=5)
 
     def _browse_model(self):
         filetypes = [("Model Files", "*.h3d"),
@@ -178,6 +182,7 @@ class Application(tk.Tk):
         self.load_btn.config(state=tk.NORMAL)
         if success:
             self.run_btn.config(state=tk.NORMAL)
+            self.insert_img_btn.config(state=tk.NORMAL)
         else:
             messagebox.showerror(title="ERROR", message="Failed to load model. Check log for details.")
 
@@ -220,6 +225,20 @@ Report Path:{result['report_path']}
     def _open_report(self):
         if self.current_report_path and os.path.exists(self.current_report_path):
             webbrowser.open(f"file://{self.current_report_path}")
+
+    def _insert_image(self):
+        """将当前 HyperView 视图截图插入到报告幻灯片"""
+        self.insert_img_btn.config(state=tk.DISABLED)
+
+        def run():
+            try:
+                label = "Captured Image"
+                self.orchestrator.add_report_slide(label)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", f"Insert image failed: {e}"))
+            self.after(0, lambda: self.insert_img_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _create_parts_tab(self):
         tab = ttk.Frame(self.notebook)
@@ -441,15 +460,25 @@ Report Path:{result['report_path']}
         text, color = state_text.get(state, ("Unknown", "gray"))
         self.status_label.config(text=text, foreground=color)
 
-        # Sequential unlock: enable Model View button when HyperView is ready
+        # Sequential unlock: enable buttons based on current state and existing paths
         if state == State.AGENT_READY:
             self.model_view_btn.config(state=tk.NORMAL)
+            # 如果路径栏已有路径，恢复对应按钮的解锁状态
+            model_path = self.model_entry.get().strip()
+            result_path = self.result_entry.get().strip()
+            if model_path:
+                self.result_view_btn.config(state=tk.NORMAL)
+                self.load_btn.config(state=tk.NORMAL)
+            if model_path and result_path:
+                self.result_view_btn.config(state=tk.NORMAL)
+                self.load_btn.config(state=tk.NORMAL)
         elif state in (State.IDLE, State.FAILED, State.EXITED):
             # Reset all buttons to disabled when HyperView is not connected
             self.model_view_btn.config(state=tk.DISABLED)
             self.result_view_btn.config(state=tk.DISABLED)
             self.load_btn.config(state=tk.DISABLED)
             self.run_btn.config(state=tk.DISABLED)
+            self.insert_img_btn.config(state=tk.DISABLED)
 
     def _on_close(self):
         self.orchestrator.shutdown()
@@ -632,6 +661,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.on_execute = on_execute
         self.result = None
         self._hotspot_counter = 0
+        self._prev_hotspot_name = None
         self._create_ui()
         self.wait_window()
 
@@ -756,6 +786,7 @@ class ContourOptionDialog(tk.Toplevel):
             return
         self._hotspot_counter += 1
         name = f"hotspot{self._hotspot_counter}"
+        prev_name = self._prev_hotspot_name
         result_type = self.type_var.get()
         component = self.comp_var.get()
         label = f"{result_type} - {component} (view hotspot)"
@@ -764,6 +795,12 @@ class ContourOptionDialog(tk.Toplevel):
         self.hotspot_status_var.set(f"Applying contour & finding {name}...")
 
         def run():
+            # 删除上一个 hotspot 标签，防止标签重叠
+            if prev_name:
+                try:
+                    self.orchestrator.hotspot_delete(prev_name)
+                except Exception as e:
+                    print(f"[FindHotspot] delete prev hotspot error: {e}")
             try:
                 self.orchestrator.apply_contour(result_type, component, label)
             except Exception as e:
@@ -771,6 +808,7 @@ class ContourOptionDialog(tk.Toplevel):
             if self.on_execute:
                 self.on_execute(config)
             ok = self.orchestrator.hotspot_find(name)
+            self._prev_hotspot_name = name
             def done():
                 self.find_btn.config(state=tk.NORMAL)
                 self.prev_btn.config(state=tk.NORMAL)
@@ -1028,14 +1066,20 @@ class AnalysisDialog(tk.Toplevel):
         })
 
     def _run_compare(self):
-        """执行 Material Compare 分析 + report Run"""
+        """执行 Material Compare 分析 + 将生成的图片拼接到 PPT"""
         self.opt_btn_compare.config(state=tk.DISABLED)
         self._set_status("Comparing with material standards...")
 
         def run():
             result = self.orchestrator.run_analysis(self.model_path, self.result_path)
             if result and result.get('success'):
-                self.orchestrator.report_run()
+                # 将分析生成的图片作为 slide 添加到 PPT 报告
+                analysis = result.get('analysis')
+                label = "Material Compare"
+                if analysis:
+                    status = "PASSED" if analysis.passed else "FAILED"
+                    label = f"Material Compare - {status} (Peak={analysis.peak_value:.2f})"
+                self.orchestrator.add_report_slide(label)
                 self.after(0, lambda: self._completed_results.append({
                     'type': 'compare', 'success': True, 'result': result
                 }))
