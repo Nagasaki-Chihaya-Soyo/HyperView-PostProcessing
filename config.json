@@ -1,4 +1,7 @@
 {
+    "output": {
+        "root": "C:/HyperView-PostProcessing"
+    },
     "hyperview": {
         "shortcut_pattern": "HyperView*.lnk",
         "search_paths": [

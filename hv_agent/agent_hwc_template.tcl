@@ -2,7 +2,7 @@ package require Tk
 set READY_FILE "{{READY_FILE}}"
 set INBOX_DIR "{{INBOX_DIR}}"
 set OUTBOX_DIR "{{OUTBOX_DIR}}"
-set REPORT_DIR "C:/Temp/HyperView_Report"
+set REPORT_DIR "{{REPORT_DIR}}"
 set MAX_VALUE 0.0
 set MAX_ID 0
 proc write_ready {} {

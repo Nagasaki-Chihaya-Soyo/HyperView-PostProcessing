@@ -33,11 +33,20 @@ class Orchestrator:
             self.config = json.load(f)
         self.inbox_dir = os.path.join(base_dir, self.config['workdir']['inbox'])
         self.outbox_dir = os.path.join(base_dir, self.config['workdir']['outbox'])
-        self.logs_dir = os.path.join(base_dir, self.config['workdir']['logs'])
-        # 用户结果文件输出到 Documents/HyperView-PostProcessing，与程序安装位置解耦
-        self.output_dir = os.path.join(os.path.expanduser("~"), "Documents", "HyperView-PostProcessing")
-        self.runs_dir = os.path.join(self.output_dir, "runs")
-        for d in [self.inbox_dir, self.outbox_dir, self.logs_dir, self.output_dir, self.runs_dir]:
+        # 统一输出根目录（可通过 config.json 的 output.root 配置）
+        self.output_root = self.config.get('output', {}).get('root', 'C:/HyperView-PostProcessing')
+        self.output_dir = self.output_root  # 向后兼容别名
+        # 按功能划分子目录
+        self.runs_dir = os.path.join(self.output_root, "runs")
+        self.reports_dir = os.path.join(self.output_root, "reports")
+        self.captures_dir = os.path.join(self.output_root, "captures")
+        self.csv_dir = os.path.join(self.output_root, "csv")
+        self.png_dir = os.path.join(self.output_root, "png")
+        self.logs_dir = os.path.join(self.output_root, "logs")
+        self.hwc_template_dir = os.path.join(self.output_root, "hwc_template")
+        for d in [self.inbox_dir, self.outbox_dir,
+                  self.runs_dir, self.reports_dir, self.captures_dir,
+                  self.csv_dir, self.png_dir, self.logs_dir, self.hwc_template_dir]:
             os.makedirs(d, exist_ok=True)
         self.hv_process = HVProcess(self.config['hyperview'])
         self.bridge = HVBridge(self.inbox_dir, self.outbox_dir,
@@ -77,6 +86,8 @@ class Orchestrator:
         code = code.replace('{{READY_FILE}}', self.ready_signal.ready_file.replace('\\', '/'))
         code = code.replace('{{INBOX_DIR}}', self.inbox_dir.replace('\\', '/'))
         code = code.replace('{{OUTBOX_DIR}}', self.outbox_dir.replace('\\', '/'))
+        code = code.replace('{{CAPTURE_DIR}}', self.captures_dir.replace('\\', '/'))
+        code = code.replace('{{REPORT_DIR}}', self.hwc_template_dir.replace('\\', '/'))
         with open(agent_path, 'w', encoding='utf-8') as f:
             f.write(code)
         return agent_path
@@ -232,7 +243,7 @@ class Orchestrator:
 
     def _capture_and_add_slide(self, label: str):
         """TCL 模式下截取 HyperView 窗口并添加到 python-pptx 报告。"""
-        img_dir = os.path.join(self.output_dir, "reports", "captures")
+        img_dir = self.captures_dir
         os.makedirs(img_dir, exist_ok=True)
         safe_label = label.replace(" ", "_").replace("/", "_")
         img_path = os.path.join(img_dir, f"{safe_label}.png")
@@ -349,7 +360,7 @@ class Orchestrator:
                     return False
             else:
                 # TCL 模式：用 python-pptx 导出
-                pptx_dir = os.path.join(self.output_dir, "reports")
+                pptx_dir = self.reports_dir
                 os.makedirs(pptx_dir, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 pptx_path = os.path.join(pptx_dir, f"Report_{timestamp}.pptx")

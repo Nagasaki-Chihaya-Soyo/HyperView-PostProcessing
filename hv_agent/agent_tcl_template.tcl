@@ -4,7 +4,7 @@ set OUTBOX_DIR "{{OUTBOX_DIR}}"
 
 # ── 截图计数器 & 临时目录 ──
 set CAPTURE_SEQ 0
-set CAPTURE_DIR "C:/temp/HyperView_Captures"
+set CAPTURE_DIR "{{CAPTURE_DIR}}"
 
 proc escape_json_string {str} {
     set str [string map {\\ \\\\ \" \\" \n \\n \r \\r \t \\t} $str]

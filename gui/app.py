@@ -1377,7 +1377,7 @@ class ReadMaxValueDialog(tk.Toplevel):
 
         import datetime
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        csv_dir = os.path.join(self.orchestrator.runs_dir, f"maxval_{ts}")
+        csv_dir = os.path.join(self.orchestrator.csv_dir, f"maxval_{ts}")
         os.makedirs(csv_dir, exist_ok=True)
         csv_path = os.path.join(csv_dir, "result.csv").replace('\\', '/')
 
@@ -1651,9 +1651,9 @@ Write-Host "Saved: $outPath"
             return ""
 
         if not output_dir:
-            output_dir = os.path.join(os.path.expanduser("~"), "Documents", "HyperView-PostProcessing")
+            output_dir = "C:/HyperView-PostProcessing"
         ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        png_dir   = os.path.join(output_dir, 'reports', 'png', ts)
+        png_dir   = os.path.join(output_dir, 'png', ts)
         os.makedirs(png_dir, exist_ok=True)
         img_path  = os.path.join(png_dir, 'comparison.png')
         ps_file   = img_path + '.ps1'
@@ -2180,7 +2180,7 @@ class CompareOptionDialog(tk.Toplevel):
     def _generate_report(self, report_rows):
         """Generate PNG screenshot from analysis comparison results."""
         # ── 计算唯一序号（跨程序多次启动不重复）──
-        png_base = os.path.join(self.orchestrator.output_dir, 'reports', 'png')
+        png_base = self.orchestrator.png_dir
         os.makedirs(png_base, exist_ok=True)
         seq = 1
         if os.path.isdir(png_base):
