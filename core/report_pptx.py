@@ -84,6 +84,151 @@ class PPTXReporter:
             'image_path': image_path,
         })
 
+    @staticmethod
+    def insert_slides_to_pptx(pptx_path: str, file_paths: List[str]) -> str:
+        """向已有 PPTX 末尾插入图片幻灯片。
+
+        读取原 PPTX，解析现有幻灯片数量和媒体，
+        追加新的幻灯片后重新写入同一文件。
+        file_paths 按顺序插入，每个文件一页（带文件名标题）。
+        """
+        import shutil
+        import tempfile
+        from xml.etree.ElementTree import parse as ET_parse, register_namespace
+
+        # 注册命名空间以避免 ns0/ns1 前缀
+        for prefix, uri in NS.items():
+            register_namespace(prefix, uri)
+
+        # 读取原 PPTX 到临时目录
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            with zipfile.ZipFile(pptx_path, 'r') as zf:
+                zf.extractall(tmp_dir)
+
+            # ── 计算现有幻灯片数 ──
+            slides_dir = os.path.join(tmp_dir, 'ppt', 'slides')
+            os.makedirs(slides_dir, exist_ok=True)
+            existing_slides = [f for f in os.listdir(slides_dir)
+                               if f.startswith('slide') and f.endswith('.xml')]
+            n_existing = len(existing_slides)
+
+            # ── 计算现有媒体编号 ──
+            media_dir = os.path.join(tmp_dir, 'ppt', 'media')
+            os.makedirs(media_dir, exist_ok=True)
+            existing_media = os.listdir(media_dir)
+            img_counter = len(existing_media)
+
+            # ── 为每个文件创建幻灯片 ──
+            reporter = PPTXReporter()
+            new_slide_indices = []
+
+            for file_path in file_paths:
+                if not os.path.exists(file_path):
+                    continue
+
+                n_existing += 1
+                slide_idx = n_existing
+                new_slide_indices.append(slide_idx)
+
+                # 拷贝媒体文件
+                img_counter += 1
+                ext = os.path.splitext(file_path)[1].lower() or '.png'
+                media_name = f'image{img_counter}{ext}'
+                shutil.copy2(file_path, os.path.join(media_dir, media_name))
+
+                # 构建幻灯片 XML
+                label = os.path.splitext(os.path.basename(file_path))[0]
+                slide_xml, _, _ = reporter._build_image_caption_slide(label, file_path)
+
+                # 写 slide XML
+                slide_file = os.path.join(slides_dir, f'slide{slide_idx}.xml')
+                with open(slide_file, 'w', encoding='utf-8') as f:
+                    f.write(slide_xml)
+
+                # 写 slide rels
+                rels_dir = os.path.join(slides_dir, '_rels')
+                os.makedirs(rels_dir, exist_ok=True)
+                rels_xml = reporter._slide_rels_xml(
+                    [('rId2', f'../media/{media_name}')])
+                with open(os.path.join(rels_dir, f'slide{slide_idx}.xml.rels'),
+                          'w', encoding='utf-8') as f:
+                    f.write(rels_xml)
+
+            if not new_slide_indices:
+                return pptx_path
+
+            # ── 更新 presentation.xml — 添加新 slide 引用 ──
+            pres_path = os.path.join(tmp_dir, 'ppt', 'presentation.xml')
+            pres_tree = ET_parse(pres_path)
+            pres_root = pres_tree.getroot()
+
+            sldIdLst = pres_root.find(_p('sldIdLst'))
+            if sldIdLst is None:
+                sldIdLst = SubElement(pres_root, _p('sldIdLst'))
+
+            for slide_idx in new_slide_indices:
+                SubElement(sldIdLst, _p('sldId'), {
+                    'id': str(255 + slide_idx),
+                    _r('id'): f'rId{slide_idx}'
+                })
+
+            pres_tree.write(pres_path, xml_declaration=True, encoding='UTF-8')
+
+            # ── 更新 presentation.xml.rels — 添加新 slide 关系 ──
+            pres_rels_path = os.path.join(tmp_dir, 'ppt', '_rels',
+                                          'presentation.xml.rels')
+            rels_tree = ET_parse(pres_rels_path)
+            rels_root = rels_tree.getroot()
+
+            for slide_idx in new_slide_indices:
+                SubElement(rels_root, '{%s}Relationship' % NS['rel'], {
+                    'Id': f'rId{slide_idx}',
+                    'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide',
+                    'Target': f'slides/slide{slide_idx}.xml'
+                })
+
+            rels_tree.write(pres_rels_path, xml_declaration=True, encoding='UTF-8')
+
+            # ── 更新 [Content_Types].xml — 添加新 slide 条目 ──
+            ct_path = os.path.join(tmp_dir, '[Content_Types].xml')
+            ct_tree = ET_parse(ct_path)
+            ct_root = ct_tree.getroot()
+
+            # 确保有图片扩展名的 Default
+            existing_exts = {e.get('Extension') for e in ct_root
+                             if e.tag.endswith('Default')}
+            for ext_name in ['png', 'jpg', 'jpeg', 'gif', 'bmp']:
+                if ext_name not in existing_exts:
+                    ct_map = {'png': 'image/png', 'jpg': 'image/jpeg',
+                              'jpeg': 'image/jpeg', 'gif': 'image/gif',
+                              'bmp': 'image/bmp'}
+                    if ext_name in ct_map:
+                        SubElement(ct_root, '{%s}Default' % NS['ct'], {
+                            'Extension': ext_name,
+                            'ContentType': ct_map[ext_name]
+                        })
+
+            for slide_idx in new_slide_indices:
+                SubElement(ct_root, '{%s}Override' % NS['ct'], {
+                    'PartName': f'/ppt/slides/slide{slide_idx}.xml',
+                    'ContentType': 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml'
+                })
+
+            ct_tree.write(ct_path, xml_declaration=True, encoding='UTF-8')
+
+            # ── 重新打包为 PPTX ──
+            with zipfile.ZipFile(pptx_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for root_dir, dirs, files in os.walk(tmp_dir):
+                    for file in files:
+                        full_path = os.path.join(root_dir, file)
+                        arcname = os.path.relpath(full_path, tmp_dir)
+                        zf.write(full_path, arcname)
+
+            return pptx_path
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     def export(self, output_path: str) -> str:
         """构建并保存 .pptx 文件。"""
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

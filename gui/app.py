@@ -2341,6 +2341,8 @@ class AnalysisDialog(tk.Toplevel):
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.close_btn = ttk.Button(btn_frame, text="Close", command=self.destroy, width=15, state=tk.DISABLED)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
+        self.insert_btn = ttk.Button(btn_frame, text="Insert", command=self._insert_to_pptx, width=15)
+        self.insert_btn.pack(side=tk.RIGHT, padx=5)
         self.run_btn = ttk.Button(btn_frame, text="Export", command=self._export_report, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
         self.create_report_btn = ttk.Button(btn_frame, text="Create Report", command=self._create_report, width=15)
@@ -2440,6 +2442,54 @@ class AnalysisDialog(tk.Toplevel):
             self.after(0, self._update_parent_results)
 
         threading.Thread(target=export, daemon=True).start()
+
+    def _insert_to_pptx(self):
+        """选择图片/GIF/视频文件，再选择 PPT，将文件按顺序插入 PPT 末尾。"""
+        from core.report_pptx import PPTXReporter
+
+        # Step 1: 选择要插入的文件（可多选）
+        file_paths = filedialog.askopenfilenames(
+            title="Select files to insert",
+            filetypes=[
+                ("Images", "*.png;*.jpg;*.jpeg;*.bmp;*.gif"),
+                ("Videos", "*.mp4;*.avi;*.wmv"),
+                ("All Files", "*.*"),
+            ],
+            parent=self,
+        )
+        if not file_paths:
+            return
+
+        # Step 2: 选择目标 PPT 文件
+        pptx_path = filedialog.askopenfilename(
+            title="Select PowerPoint file",
+            filetypes=[
+                ("PowerPoint", "*.pptx"),
+                ("All Files", "*.*"),
+            ],
+            parent=self,
+        )
+        if not pptx_path:
+            return
+
+        # Step 3: 插入
+        self.insert_btn.config(state=tk.DISABLED)
+        self._set_status("Inserting files into PPT...")
+
+        def do_insert():
+            try:
+                ordered_files = list(file_paths)  # askopenfilenames 已按选择顺序
+                PPTXReporter.insert_slides_to_pptx(pptx_path, ordered_files)
+                self.after(0, lambda: self._set_status(
+                    f"Inserted {len(ordered_files)} slide(s) into {os.path.basename(pptx_path)}"))
+            except Exception as e:
+                self.after(0, lambda: self._set_status(f"Insert failed: {e}"))
+                self.after(0, lambda: messagebox.showerror(
+                    "Insert Failed", str(e), parent=self))
+            finally:
+                self.after(0, lambda: self.insert_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=do_insert, daemon=True).start()
 
     # ── 工具方法 ──
 
