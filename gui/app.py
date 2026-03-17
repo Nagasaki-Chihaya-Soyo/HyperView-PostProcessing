@@ -25,6 +25,7 @@ class Application(tk.Tk):
         self.title(t("app.title"))
         self.geometry("900x650")
         self.minsize(width=800, height=600)
+        self.wm_attributes('-topmost', True)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.orchestrator = Orchestrator(base_dir)
         self.orchestrator.on_log = self._on_log
