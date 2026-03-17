@@ -197,6 +197,12 @@ proc process_job {job_file} {
                 puts "TCL>>> display_contour completed"
                 write_result $job_id {{"success":true,"message":"Contour displayed"}}
             }
+            "hotspot_delete" {
+                puts "TCL>>> hotspot_delete: hotspot_name=$hotspot_name"
+                hwc kpi hotspot delete $hotspot_name
+                puts "TCL>>> hotspot_delete completed"
+                write_result $job_id {{"success":true}}
+            }
             "hotspot_find" {
                 # ── 从 agent_hwc_template.tcl 复制 ──
                 puts "TCL>>> hotspot_find: hotspot_name=$hotspot_name"
