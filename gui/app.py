@@ -8,6 +8,7 @@ import signal
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.orchestrator import Orchestrator, State
 from core.db_store import DBStore
+from gui.i18n import t, register, set_language, toggle_language, current_language
 
 
 def _safe_float(value):
@@ -21,7 +22,8 @@ def _safe_float(value):
 class Application(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("HyperView Post-Processing Tools")
+        self.title(t("app.title"))
+        register(self, "app.title", "title")
         self.geometry("900x650")
         self.minsize(width=800, height=600)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -62,11 +64,19 @@ class Application(tk.Tk):
     def _create_status_bar(self):
         frame = ttk.Frame(self)
         frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(frame, text="HyperView Now:").pack(side=tk.LEFT)
-        self.status_label = ttk.Label(frame, text="Disconnected", foreground="gray")
+        lbl_hv = ttk.Label(frame, text=t("status.hv_now"))
+        lbl_hv.pack(side=tk.LEFT)
+        register(lbl_hv, "status.hv_now")
+        self.status_label = ttk.Label(frame, text=t("status.disconnected"), foreground="gray")
         self.status_label.pack(side=tk.LEFT, padx=5)
-        self.connect_btn = ttk.Button(frame, text="Starting HyperView", command=self._start_hv)
+        self.connect_btn = ttk.Button(frame, text=t("btn.start_hv"), command=self._start_hv)
         self.connect_btn.pack(side=tk.RIGHT)
+        register(self.connect_btn, "btn.start_hv")
+        # Language toggle button
+        self.lang_btn = ttk.Button(frame, text=t("lang.toggle"), width=4,
+                                   command=self._toggle_language)
+        self.lang_btn.pack(side=tk.RIGHT, padx=(0, 10))
+        register(self.lang_btn, "lang.toggle")
         # Agent mode selector (TCL / HWC)
         self.agent_mode_var = tk.StringVar(value="TCL")
         self.agent_mode_cb = ttk.Combobox(
@@ -74,56 +84,71 @@ class Application(tk.Tk):
             values=["TCL", "HWC"], width=6, state=tk.DISABLED
         )
         self.agent_mode_cb.pack(side=tk.RIGHT, padx=(0, 10))
-        ttk.Label(frame, text="Agent:").pack(side=tk.RIGHT)
+        lbl_agent = ttk.Label(frame, text=t("label.agent"))
+        lbl_agent.pack(side=tk.RIGHT)
+        register(lbl_agent, "label.agent")
 
     def _create_run_tab(self):
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="Run Application")
-        file_frame = ttk.LabelFrame(tab, text="Select Files", padding=10)
+        self.notebook.add(tab, text=t("tab.run"))
+        self._run_tab = tab
+        register((self.notebook, tab), "tab.run", "tab")
+        file_frame = ttk.LabelFrame(tab, text=t("frame.select_files"), padding=10)
         file_frame.pack(fill=tk.X, padx=10, pady=10)
+        register(file_frame, "frame.select_files")
 
-        ttk.Label(file_frame, text="Model Files:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        lbl_model = ttk.Label(file_frame, text=t("label.model_files"))
+        lbl_model.grid(row=0, column=0, sticky=tk.W, pady=5)
+        register(lbl_model, "label.model_files")
         self.model_entry = ttk.Entry(file_frame, width=60)
         self.model_entry.grid(row=0, column=1, padx=5, pady=5)
-        self.model_view_btn = ttk.Button(file_frame, text="View...", command=self._browse_model, state=tk.DISABLED)
+        self.model_view_btn = ttk.Button(file_frame, text=t("btn.view"), command=self._browse_model, state=tk.DISABLED)
         self.model_view_btn.grid(row=0, column=2, pady=5)
+        register(self.model_view_btn, "btn.view")
 
-        ttk.Label(file_frame, text="Result Files:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        lbl_result = ttk.Label(file_frame, text=t("label.result_files"))
+        lbl_result.grid(row=1, column=0, sticky=tk.W, pady=5)
+        register(lbl_result, "label.result_files")
         self.result_entry = ttk.Entry(file_frame, width=60)
         self.result_entry.grid(row=1, column=1, padx=5, pady=5)
-        self.result_view_btn = ttk.Button(file_frame, text="View...", command=self._browse_result, state=tk.DISABLED)
+        self.result_view_btn = ttk.Button(file_frame, text=t("btn.view"), command=self._browse_result, state=tk.DISABLED)
         self.result_view_btn.grid(row=1, column=2, pady=5)
+        register(self.result_view_btn, "btn.view")
 
         btn_frame = ttk.Frame(tab)
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        self.load_btn = ttk.Button(btn_frame, text="Load Model", padding=10, command=self._load_model, state=tk.DISABLED)
+        self.load_btn = ttk.Button(btn_frame, text=t("btn.load_model"), padding=10, command=self._load_model, state=tk.DISABLED)
         self.load_btn.pack(side=tk.LEFT, padx=10)
+        register(self.load_btn, "btn.load_model")
 
-        self.run_btn = ttk.Button(btn_frame, text="Analysing", padding=10, command=self._run_analysis, state=tk.DISABLED)
+        self.run_btn = ttk.Button(btn_frame, text=t("btn.analysing"), padding=10, command=self._run_analysis, state=tk.DISABLED)
         self.run_btn.pack(side=tk.LEFT, padx=20)
+        register(self.run_btn, "btn.analysing")
 
         self.progress = ttk.Progressbar(btn_frame, mode='determinate', length=200, maximum=100)
         self.progress.pack(side=tk.LEFT, padx=20)
         self._progress_running = False
 
-        # 自动最小化选项
         self.auto_minimize_var = tk.BooleanVar(value=True)
         self.auto_minimize_cb = ttk.Checkbutton(
             btn_frame,
-            text="Auto Minimize",
+            text=t("chk.auto_minimize"),
             variable=self.auto_minimize_var
         )
         self.auto_minimize_cb.pack(side=tk.LEFT, padx=20)
+        register(self.auto_minimize_cb, "chk.auto_minimize")
 
-        result_frame = ttk.LabelFrame(tab, text="Analysing Result", padding=10)
+        result_frame = ttk.LabelFrame(tab, text=t("frame.analysis_result"), padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        register(result_frame, "frame.analysis_result")
 
         self.result_text = tk.Text(result_frame, height=15, state=tk.DISABLED)
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
-        self.report_btn = ttk.Button(result_frame, text="Open Result File Folder", command=self._open_report)
+        self.report_btn = ttk.Button(result_frame, text=t("btn.open_result_folder"), command=self._open_report)
         self.report_btn.pack(pady=10)
+        register(self.report_btn, "btn.open_result_folder")
 
     def _browse_model(self):
         filetypes = [("Model Files (*.h3d)", "*.h3d"),
@@ -134,7 +159,7 @@ class Application(tk.Tk):
                      ("ANSYS Results (*.rst)", "*.rst"),
                      ("All Files (*.*)", "*.*")
         ]
-        path = filedialog.askopenfilename(title="Select Model Files", filetypes=filetypes)
+        path = filedialog.askopenfilename(title=t("dlg.select_model"), filetypes=filetypes)
         if path:
             self.model_entry.delete(0, tk.END)
             self.model_entry.insert(0, path)
@@ -155,7 +180,7 @@ class Application(tk.Tk):
             ("ANSYS Results (*.rst)", "*.rst"),
             ("All Files (*.*)", "*.*")
         ]
-        path = filedialog.askopenfilename(title="Select ResultFiles", filetypes=filetypes)
+        path = filedialog.askopenfilename(title=t("dlg.select_result"), filetypes=filetypes)
         if path:
             self.result_entry.delete(0, tk.END)
             self.result_entry.insert(0, path)
@@ -164,7 +189,7 @@ class Application(tk.Tk):
         model_path = self.model_entry.get().strip()
         result_path = self.result_entry.get().strip()
         if not model_path:
-            messagebox.showwarning(title="WARNING", message="Select a model file first")
+            messagebox.showwarning(title="WARNING", message=t("msg.select_model"))
             return
         if self.auto_minimize_var.get():
             self.iconify()
@@ -196,7 +221,7 @@ class Application(tk.Tk):
         model_path = self.model_entry.get().strip()
         result_path = self.result_entry.get().strip()
         if not model_path:
-            messagebox.showwarning(title="WARNING", message="Select a model file first")
+            messagebox.showwarning(title="WARNING", message=t("msg.select_model"))
             return
         self.load_btn.config(state=tk.DISABLED)
         self._start_progress()
@@ -213,7 +238,7 @@ class Application(tk.Tk):
         if success:
             self.run_btn.config(state=tk.NORMAL)
         else:
-            messagebox.showerror(title="ERROR", message="Failed to load model. Check log for details.")
+            messagebox.showerror(title="ERROR", message=t("msg.load_fail"))
 
 
     def _show_result(self, result):
@@ -261,27 +286,43 @@ Report Path:{result['report_path']}
 
     def _create_parts_tab(self):
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="Standard Repository")
+        self.notebook.add(tab, text=t("tab.parts"))
+        self._parts_tab = tab
+        register((self.notebook, tab), "tab.parts", "tab")
 
         # ── Toolbar ──
         toolbar = ttk.Frame(tab)
         toolbar.pack(fill=tk.X, padx=10, pady=(8, 2))
-        ttk.Button(toolbar, text="Add",    command=self._add_part).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Edit",   command=self._edit_part).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Delete", command=self._delete_part).pack(side=tk.LEFT, padx=2)
+        btn_add = ttk.Button(toolbar, text=t("btn.add"), command=self._add_part)
+        btn_add.pack(side=tk.LEFT, padx=2)
+        register(btn_add, "btn.add")
+        btn_edit = ttk.Button(toolbar, text=t("btn.edit"), command=self._edit_part)
+        btn_edit.pack(side=tk.LEFT, padx=2)
+        register(btn_edit, "btn.edit")
+        btn_del = ttk.Button(toolbar, text=t("btn.delete"), command=self._delete_part)
+        btn_del.pack(side=tk.LEFT, padx=2)
+        register(btn_del, "btn.delete")
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
-        ttk.Button(toolbar, text="Import CSV", command=self._import_parts_csv).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Export CSV", command=self._export_parts_csv).pack(side=tk.LEFT, padx=2)
+        btn_imp = ttk.Button(toolbar, text=t("btn.import_csv"), command=self._import_parts_csv)
+        btn_imp.pack(side=tk.LEFT, padx=2)
+        register(btn_imp, "btn.import_csv")
+        btn_exp = ttk.Button(toolbar, text=t("btn.export_csv"), command=self._export_parts_csv)
+        btn_exp.pack(side=tk.LEFT, padx=2)
+        register(btn_exp, "btn.export_csv")
 
         # ── Search / Filter bar ──
         search_frame = ttk.Frame(tab)
         search_frame.pack(fill=tk.X, padx=10, pady=(2, 4))
-        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
+        lbl_search = ttk.Label(search_frame, text=t("label.search"))
+        lbl_search.pack(side=tk.LEFT)
+        register(lbl_search, "label.search")
         self._parts_search_var = tk.StringVar()
         self._parts_search_var.trace_add('write', lambda *_: self._refresh_parts())
         ttk.Entry(search_frame, textvariable=self._parts_search_var, width=30).pack(side=tk.LEFT, padx=5)
-        ttk.Button(search_frame, text="Clear",
-                   command=lambda: self._parts_search_var.set('')).pack(side=tk.LEFT)
+        btn_clear = ttk.Button(search_frame, text=t("btn.clear"),
+                   command=lambda: self._parts_search_var.set(''))
+        btn_clear.pack(side=tk.LEFT)
+        register(btn_clear, "btn.clear")
 
         # ── Tree frame (Treeview + vertical scrollbar side by side) ──
         tree_frame = ttk.Frame(tab)
@@ -291,17 +332,19 @@ Report Path:{result['report_path']}
         self.parts_tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
                                        selectmode='browse')
 
-        for col, text, w in [
-            ('part_no',       'Parts ID',            80),
-            ('name',          'Name',               160),
-            ('allowable_vm',  'Allowable Stress',   130),
-            ('safety_factor', 'Safety Factor',      100),
-            ('effective',     'Effective (÷SF)',    120),
-            ('units',         'Unit',                60),
-            ('notes',         'Notes',              180),
-        ]:
-            self.parts_tree.heading(col, text=text, anchor='center')
+        _col_i18n = [
+            ('part_no',       'col.part_no',       80),
+            ('name',          'col.name',          160),
+            ('allowable_vm',  'col.allowable_vm',  130),
+            ('safety_factor', 'col.safety_factor', 100),
+            ('effective',     'col.effective',      120),
+            ('units',         'col.units',          60),
+            ('notes',         'col.notes',         180),
+        ]
+        for col, key, w in _col_i18n:
+            self.parts_tree.heading(col, text=t(key), anchor='center')
             self.parts_tree.column(col, width=w, minwidth=50, anchor='center')
+            register((self.parts_tree, col), key, "heading")
 
         self.parts_tree.tag_configure('odd',  background='#dbeafe', foreground='#1e3a5f')
         self.parts_tree.tag_configure('even', background='#ffffff', foreground='#1f2937')
@@ -317,8 +360,10 @@ Report Path:{result['report_path']}
         self._parts_count_var = tk.StringVar(value="0 parts")
         ttk.Label(status_frame, textvariable=self._parts_count_var,
                   foreground='gray').pack(side=tk.LEFT)
-        ttk.Label(status_frame, text="  |  Drag rows to reorder",
-                  foreground='gray').pack(side=tk.LEFT)
+        lbl_drag = ttk.Label(status_frame, text=t("label.drag_hint"),
+                  foreground='gray')
+        lbl_drag.pack(side=tk.LEFT)
+        register(lbl_drag, "label.drag_hint")
 
         self._refresh_parts()
 
@@ -393,7 +438,7 @@ Report Path:{result['report_path']}
         self._drag_original_order = []
 
     def _add_part(self):
-        dialog = PartDialog(self, title="Add Material")
+        dialog = PartDialog(self, title=t("dialog.add_material"))
         if dialog.result:
             self.db.add_part(part_no=self.db.get_next_part_no(), **dialog.result)
             self._refresh_parts()
@@ -401,7 +446,7 @@ Report Path:{result['report_path']}
     def _edit_part(self):
         selection = self.parts_tree.selection()
         if not selection:
-            messagebox.showwarning(title="WARNING", message="SELECT A PART FIRST")
+            messagebox.showwarning(title="WARNING", message=t("msg.select_part"))
             return
         values = self.parts_tree.item(selection[0])['values']
         part_no = str(values[0])
@@ -412,7 +457,7 @@ Report Path:{result['report_path']}
             'name': values[4],
             'notes': values[5]
         }
-        dialog = PartDialog(self, title="Edit Material", data=data)
+        dialog = PartDialog(self, title=t("dialog.edit_material"), data=data)
         if dialog.result:
             self.db.update_part(part_no=part_no, **dialog.result)
             self._refresh_parts()
@@ -420,9 +465,9 @@ Report Path:{result['report_path']}
     def _delete_part(self):
         selection = self.parts_tree.selection()
         if not selection:
-            messagebox.showwarning(title="WARNING", message="SELECT A PART FIRST")
+            messagebox.showwarning(title="WARNING", message=t("msg.select_part"))
             return
-        if messagebox.askyesno(title="Confirm", message="Are you sure you want to delete the selected parts?This action can not be undone"):
+        if messagebox.askyesno(title="Confirm", message=t("msg.confirm_delete")):
             for sel in selection:
                 part_no = self.parts_tree.item(sel)['values'][0]
                 self.db.delete_part(part_no)
@@ -433,27 +478,29 @@ Report Path:{result['report_path']}
 
     def _import_parts_csv(self):
         path = filedialog.askopenfilename(
-            title="Select CSV Files",
+            title=t("dlg.select_csv"),
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
         )
         if path:
             count = self.db.import_parts_csv(path)
-            messagebox.showinfo(title="Complete", message=f"Import Files {count} Successfully")
+            messagebox.showinfo(title="Complete", message=t("msg.import_ok", count=count))
             self._refresh_parts()
 
     def _export_parts_csv(self):
         path = filedialog.asksaveasfilename(
-            title="Save CSV Files",
+            title=t("dlg.save_csv"),
             defaultextension=".csv",
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
         )
         if path:
             self.db.export_parts_csv(path)
-            messagebox.showinfo(title="Complete", message=f"Export Files {path} Successfully")
+            messagebox.showinfo(title="Complete", message=t("msg.export_ok", path=path))
 
     def _create_log_tab(self):
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="Logs")
+        self.notebook.add(tab, text=t("tab.logs"))
+        self._log_tab = tab
+        register((self.notebook, tab), "tab.logs", "tab")
 
         self.log_text = tk.Text(tab, state=tk.DISABLED, wrap=tk.WORD)
         self.log_text.tag_configure('error', foreground='red')
@@ -467,7 +514,9 @@ Report Path:{result['report_path']}
 
         btn_frame = ttk.Frame(tab)
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(btn_frame, text="Clear Logs", command=self._clear_log).pack(side=tk.RIGHT)
+        btn_clear_logs = ttk.Button(btn_frame, text=t("btn.clear_logs"), command=self._clear_log)
+        btn_clear_logs.pack(side=tk.RIGHT)
+        register(btn_clear_logs, "btn.clear_logs")
 
     def _clear_log(self):
         self.log_text.config(state=tk.NORMAL)
@@ -499,6 +548,10 @@ Report Path:{result['report_path']}
             self.agent_mode_var.set("HWC")
             self.agent_mode_cb.config(state="readonly")
 
+    def _toggle_language(self):
+        """Switch UI language between Chinese and English."""
+        toggle_language()
+
     def _start_hv(self):
         self.connect_btn.config(state=tk.DISABLED)
         self.agent_mode_cb.config(state=tk.DISABLED)
@@ -512,18 +565,19 @@ Report Path:{result['report_path']}
         self.connect_btn.config(state=tk.NORMAL)
         if not success:
             self._update_agent_mode_selector()
-            messagebox.showerror(title="ERROR", message="HyperView Failed to Start")
+            messagebox.showerror(title="ERROR", message=t("msg.hv_start_fail"))
 
     def _on_state_change(self, state: State):
         state_text = {
-            State.IDLE: ("Disconnected", "gray"),
-            State.STARTING: ("Starting...", "orange"),
-            State.AGENT_READY: ("Ready", "green"),
-            State.RUNNING: ("Running...", "blue"),
-            State.FAILED: ("Failed", "red"),
-            State.EXITED: ("Exit", "gray"),
+            State.IDLE: ("status.disconnected", "gray"),
+            State.STARTING: ("status.starting", "orange"),
+            State.AGENT_READY: ("status.ready", "green"),
+            State.RUNNING: ("status.running", "blue"),
+            State.FAILED: ("status.failed", "red"),
+            State.EXITED: ("status.exited", "gray"),
         }
-        text, color = state_text.get(state, ("Unknown", "gray"))
+        key, color = state_text.get(state, ("status.unknown", "gray"))
+        text = t(key)
         self.status_label.config(text=text, foreground=color)
 
         # Sequential unlock: enable Model View button when HyperView is ready
@@ -564,44 +618,44 @@ class PartDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="Allowable Stress").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=t("label.allowable_stress")).grid(row=0, column=0, sticky=tk.W, pady=5)
         self.allowable_entry = ttk.Entry(frame, width=30)
         self.allowable_entry.grid(row=0, column=1, pady=5)
         self.allowable_entry.insert(0, self.data.get('allowable_vm', ''))
 
-        ttk.Label(frame, text="Safety Factor").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=t("label.safety_factor")).grid(row=1, column=0, sticky=tk.W, pady=5)
         self.safety_factor = ttk.Entry(frame, width=30)
         self.safety_factor.grid(row=1, column=1, pady=5)
         self.safety_factor.insert(0, self.data.get('safety_factor', '1.0'))
 
         # Live preview: Effective allowable = allowable / safety_factor
         self._effective_var = tk.StringVar(value='—')
-        ttk.Label(frame, text="Effective (÷SF)").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=t("label.effective_sf")).grid(row=2, column=0, sticky=tk.W, pady=5)
         ttk.Label(frame, textvariable=self._effective_var,
                   foreground='#1d6fa4', font=('TkDefaultFont', 9, 'bold')
                   ).grid(row=2, column=1, sticky=tk.W, pady=5, padx=4)
 
-        ttk.Label(frame, text="Unit").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=t("label.unit")).grid(row=3, column=0, sticky=tk.W, pady=5)
         _UNITS = ['Pa', 'kPa', 'MPa', 'GPa', 'psi', 'ksi']
         self.units_cb = ttk.Combobox(frame, width=28, values=_UNITS, state='readonly')
         self.units_cb.grid(row=3, column=1, pady=5)
         current_unit = self.data.get('units', 'MPa')
         self.units_cb.set(current_unit if current_unit in _UNITS else 'MPa')
 
-        ttk.Label(frame, text="Name").grid(row=4, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=t("label.name")).grid(row=4, column=0, sticky=tk.W, pady=5)
         self.name_entry = ttk.Entry(frame, width=30)
         self.name_entry.grid(row=4, column=1, pady=5)
         self.name_entry.insert(0, self.data.get('name', ''))
 
-        ttk.Label(frame, text="Notes").grid(row=5, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=t("label.notes")).grid(row=5, column=0, sticky=tk.W, pady=5)
         self.notes_entry = ttk.Entry(frame, width=30)
         self.notes_entry.grid(row=5, column=1, pady=5)
         self.notes_entry.insert(0, self.data.get('notes', ''))
 
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=6, column=0, columnspan=2, pady=15)
-        ttk.Button(btn_frame, text="Confirm", command=self._ok).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="Cancel",  command=self.destroy).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text=t("btn.confirm"), command=self._ok).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text=t("btn.cancel"),  command=self.destroy).pack(side=tk.LEFT, padx=10)
 
         # Wire up live preview
         self.allowable_entry.bind('<KeyRelease>', lambda e: self._update_effective())
@@ -734,7 +788,7 @@ class ContourOptionDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator=None, on_execute=None,
                  applied_model_path=None, current_model_path=None):
         super().__init__(parent)
-        self.title("Contour & Hotspot Settings")
+        self.title(t("dialog.contour_settings"))
         self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
@@ -760,24 +814,23 @@ class ContourOptionDialog(tk.Toplevel):
         self.wait_window()
 
     def _create_ui(self):
-        # ── Contour 设置区域 ──
-        contour_frame = ttk.LabelFrame(self, text="Contour Settings", padding=10)
+        contour_frame = ttk.LabelFrame(self, text=t("frame.contour_settings"), padding=10)
         contour_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
 
-        ttk.Label(contour_frame, text="Category:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(contour_frame, text=t("label.category")).grid(row=0, column=0, sticky=tk.W, pady=5)
         cats = list(self.CATEGORIES.keys())
         self.cat_var = tk.StringVar(value=cats[0])
         self.cat_cb = ttk.Combobox(contour_frame, textvariable=self.cat_var, values=cats, width=35, state="readonly")
         self.cat_cb.grid(row=0, column=1, pady=5, padx=5)
         self.cat_cb.bind("<<ComboboxSelected>>", self._on_cat_changed)
 
-        ttk.Label(contour_frame, text="Data Type:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(contour_frame, text=t("label.data_type")).grid(row=1, column=0, sticky=tk.W, pady=5)
         self.type_var = tk.StringVar()
         self.type_cb = ttk.Combobox(contour_frame, textvariable=self.type_var, width=35, state="readonly")
         self.type_cb.grid(row=1, column=1, pady=5, padx=5)
         self.type_cb.bind("<<ComboboxSelected>>", self._on_type_changed)
 
-        ttk.Label(contour_frame, text="Component:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(contour_frame, text=t("label.component")).grid(row=2, column=0, sticky=tk.W, pady=5)
         self.comp_var = tk.StringVar()
         self.comp_cb = ttk.Combobox(contour_frame, textvariable=self.comp_var, width=35, state="readonly")
         self.comp_cb.grid(row=2, column=1, pady=5, padx=5)
@@ -786,34 +839,33 @@ class ContourOptionDialog(tk.Toplevel):
 
         contour_btn_frame = ttk.Frame(contour_frame)
         contour_btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
-        ttk.Button(contour_btn_frame, text="Confirm", command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(contour_btn_frame, text="Apply", command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(contour_btn_frame, text="Cancel", command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
+        ttk.Button(contour_btn_frame, text=t("btn.confirm"), command=self._on_confirm, width=12).pack(side=tk.LEFT, padx=10)
+        ttk.Button(contour_btn_frame, text=t("btn.apply"), command=self._on_apply, width=12).pack(side=tk.LEFT, padx=10)
+        ttk.Button(contour_btn_frame, text=t("btn.cancel"), command=self.destroy, width=12).pack(side=tk.LEFT, padx=10)
 
-        # ── Hotspot 分析区域 ──
-        hotspot_frame = ttk.LabelFrame(self, text="Hotspot Analysis", padding=8)
+        hotspot_frame = ttk.LabelFrame(self, text=t("frame.hotspot"), padding=8)
         hotspot_frame.pack(fill=tk.X, padx=10, pady=(2, 8))
 
         nav = ttk.Frame(hotspot_frame)
         nav.pack(pady=5, fill=tk.X)
-        self.prev_btn = ttk.Button(nav, text="< Previous",
+        self.prev_btn = ttk.Button(nav, text=t("btn.prev"),
                                    command=self._on_prev, width=12, state=tk.DISABLED)
         self.prev_btn.pack(side=tk.LEFT)
-        self.find_btn = ttk.Button(nav, text="Find Hotspot",
+        self.find_btn = ttk.Button(nav, text=t("btn.find_hotspot"),
                                    command=self._on_find_hotspot, width=14, state=tk.DISABLED)
         self.find_btn.pack(side=tk.LEFT, expand=True)
-        self.next_btn = ttk.Button(nav, text="Next >",
+        self.next_btn = ttk.Button(nav, text=t("btn.next"),
                                    command=self._on_next, width=12, state=tk.DISABLED)
         self.next_btn.pack(side=tk.RIGHT)
 
-        self.hotspot_status_var = tk.StringVar(value="Apply contour first to unlock")
+        self.hotspot_status_var = tk.StringVar(value=t("hint.apply_first"))
         ttk.Label(hotspot_frame, textvariable=self.hotspot_status_var,
                   foreground="gray").pack(pady=(5, 0), anchor=tk.W)
 
         # ── View Mode CheckBoxes (kpi hotspot display viewmode) ──
         viewmode_frame = ttk.Frame(hotspot_frame)
         viewmode_frame.pack(fill=tk.X, pady=(6, 0))
-        ttk.Label(viewmode_frame, text="View Mode:").pack(side=tk.LEFT)
+        ttk.Label(viewmode_frame, text=t("label.view_mode")).pack(side=tk.LEFT)
         self._vm_comp_cbtn = ttk.Checkbutton(
             viewmode_frame, text="Component",
             variable=self._vm_component_var,
@@ -836,32 +888,30 @@ class ContourOptionDialog(tk.Toplevel):
         )
         self._vm_local_cbtn.pack(side=tk.LEFT, padx=(8, 0))
 
-        # ── View Mode Option 下拉栏 ──
         vm_option_row = ttk.Frame(hotspot_frame)
         vm_option_row.pack(fill=tk.X, pady=(4, 0))
-        ttk.Label(vm_option_row, text="Option:").pack(side=tk.LEFT)
+        ttk.Label(vm_option_row, text=t("label.option") + ":").pack(side=tk.LEFT)
         self._vm_option_cb = ttk.Combobox(
             vm_option_row, textvariable=self._vm_option_var,
             state="disabled", width=24,
         )
         self._vm_option_cb.pack(side=tk.LEFT, padx=(8, 0))
 
-        # ── Change View + Capture 按钮（同一行）──
         vm_btn_row = ttk.Frame(hotspot_frame)
         vm_btn_row.pack(pady=(6, 2))
         self._change_view_btn = ttk.Button(
-            vm_btn_row, text="Change View",
+            vm_btn_row, text=t("btn.change_view"),
             command=self._on_change_view, state=tk.DISABLED, width=14,
         )
         self._change_view_btn.pack(side=tk.LEFT, padx=(0, 6))
         self._capture_btn = ttk.Button(
-            vm_btn_row, text="Capture",
+            vm_btn_row, text=t("btn.capture"),
             command=self._on_capture, state=tk.DISABLED, width=10,
         )
         self._capture_btn.pack(side=tk.LEFT)
         unlock_state = tk.NORMAL if self._can_unlock else tk.DISABLED
         self._unlock_btn = ttk.Button(
-            vm_btn_row, text="Unlock",
+            vm_btn_row, text=t("btn.unlock"),
             command=self._on_unlock, state=unlock_state, width=8,
         )
         self._unlock_btn.pack(side=tk.LEFT, padx=(6, 0))
@@ -917,7 +967,7 @@ class ContourOptionDialog(tk.Toplevel):
     def _unlock_hotspot_buttons(self):
         """Contour 已应用后解锁 Hotspot 按钮及 View Mode CheckBox"""
         self.find_btn.config(state=tk.NORMAL)
-        self.hotspot_status_var.set("Click Find Hotspot to start")
+        self.hotspot_status_var.set(t("hint.click_find"))
         self._vm_comp_cbtn.config(state=tk.NORMAL)
         self._vm_global_cbtn.config(state=tk.NORMAL)
         self._vm_local_cbtn.config(state=tk.NORMAL)
@@ -1073,7 +1123,7 @@ class ReadMaxValueDialog(tk.Toplevel):
     def __init__(self, parent, orchestrator, db, model_path, result_path="",
                  on_add_result=None):
         super().__init__(parent)
-        self.title("Read Max Value")
+        self.title(t("dialog.read_max"))
         self.geometry("560x680")
         self.resizable(True, True)
         self.minsize(480, 580)
@@ -1096,11 +1146,10 @@ class ReadMaxValueDialog(tk.Toplevel):
     # ── UI construction ──
 
     def _create_ui(self):
-        # ── Contour Settings ──
-        contour_frame = ttk.LabelFrame(self, text="Contour Settings", padding=10)
+        contour_frame = ttk.LabelFrame(self, text=t("frame.contour_settings"), padding=10)
         contour_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
 
-        ttk.Label(contour_frame, text="Category:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(contour_frame, text=t("label.category")).grid(row=0, column=0, sticky=tk.W, pady=5)
         cats = list(self.CATEGORIES.keys())
         self.cat_var = tk.StringVar(value=cats[0])
         self.cat_cb = ttk.Combobox(contour_frame, textvariable=self.cat_var,
@@ -1108,26 +1157,25 @@ class ReadMaxValueDialog(tk.Toplevel):
         self.cat_cb.grid(row=0, column=1, pady=5, padx=5)
         self.cat_cb.bind("<<ComboboxSelected>>", self._on_cat_changed)
 
-        ttk.Label(contour_frame, text="Data Type:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(contour_frame, text=t("label.data_type")).grid(row=1, column=0, sticky=tk.W, pady=5)
         self.type_var = tk.StringVar()
         self.type_cb = ttk.Combobox(contour_frame, textvariable=self.type_var,
                                     width=35, state="readonly")
         self.type_cb.grid(row=1, column=1, pady=5, padx=5)
         self.type_cb.bind("<<ComboboxSelected>>", self._on_type_changed)
 
-        ttk.Label(contour_frame, text="Component:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(contour_frame, text=t("label.component")).grid(row=2, column=0, sticky=tk.W, pady=5)
         self.comp_var = tk.StringVar()
         self.comp_cb = ttk.Combobox(contour_frame, textvariable=self.comp_var,
                                     width=35, state="readonly")
         self.comp_cb.grid(row=2, column=1, pady=5, padx=5)
         self._update_types()
 
-        # ── Read button row ──
         action_row = ttk.Frame(self, padding=(10, 4))
         action_row.pack(fill=tk.X)
-        self._read_btn = ttk.Button(action_row, text="Read", command=self._do_read, width=10)
+        self._read_btn = ttk.Button(action_row, text=t("btn.read"), command=self._do_read, width=10)
         self._read_btn.pack(side=tk.LEFT)
-        self._status_var = tk.StringVar(value="Configure contour settings and click Read.")
+        self._status_var = tk.StringVar(value=t("hint.configure_read"))
         ttk.Label(action_row, textvariable=self._status_var,
                   foreground='gray').pack(side=tk.LEFT, padx=8)
 
@@ -1135,47 +1183,44 @@ class ReadMaxValueDialog(tk.Toplevel):
         self._progress = ttk.Progressbar(self, mode='determinate', maximum=100, value=0)
         # (packed/unpacked dynamically)
 
-        # ── Result section ──
-        res_frame = ttk.LabelFrame(self, text="Peak Value Result", padding=10)
+        res_frame = ttk.LabelFrame(self, text=t("frame.peak_result"), padding=10)
         res_frame.pack(fill=tk.X, padx=10, pady=(4, 2))
 
-        ttk.Label(res_frame, text="Peak Stress:").grid(row=0, column=0, sticky=tk.W, pady=4)
+        ttk.Label(res_frame, text=t("label.peak_stress")).grid(row=0, column=0, sticky=tk.W, pady=4)
         self._max_val_var = tk.StringVar(value="—")
         ttk.Label(res_frame, textvariable=self._max_val_var,
                   foreground='#1e3a5f',
                   font=('Arial', 10, 'bold')).grid(row=0, column=1, sticky=tk.W, padx=6)
 
-        ttk.Label(res_frame, text="Entity ID:").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Label(res_frame, text=t("label.entity_id")).grid(row=1, column=0, sticky=tk.W, pady=4)
         self._entity_var = tk.StringVar(value="—")
         ttk.Label(res_frame, textvariable=self._entity_var,
                   foreground='gray').grid(row=1, column=1, sticky=tk.W, padx=6)
 
-        # ── Add to Mapping section ──
-        map_frame = ttk.LabelFrame(self, text="Add to Mapping", padding=10)
+        map_frame = ttk.LabelFrame(self, text=t("frame.add_mapping"), padding=10)
         map_frame.pack(fill=tk.X, padx=10, pady=2)
 
-        ttk.Label(map_frame, text="材料:").grid(row=0, column=0, sticky=tk.W, pady=4)
+        ttk.Label(map_frame, text=t("label.material")).grid(row=0, column=0, sticky=tk.W, pady=4)
         self._part_var = tk.StringVar()
         self._part_cb = ttk.Combobox(map_frame, textvariable=self._part_var,
                                      state="readonly", width=36)
         self._part_cb.grid(row=0, column=1, columnspan=2, sticky=tk.W, padx=6, pady=4)
         self._refresh_parts()
 
-        ttk.Label(map_frame, text="Max Value:").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Label(map_frame, text=t("label.max_value")).grid(row=1, column=0, sticky=tk.W, pady=4)
         self._map_val_var = tk.StringVar()
         ttk.Entry(map_frame, textvariable=self._map_val_var,
                   state="readonly", width=24).grid(row=1, column=1, sticky=tk.W, padx=6, pady=4)
-        ttk.Label(map_frame, text="(contour max value)",
+        ttk.Label(map_frame, text=t("hint.contour_max"),
                   foreground='gray').grid(row=1, column=2, sticky=tk.W, padx=4)
 
-        # ── Bottom buttons ──
         btn_frame = ttk.Frame(self, padding=(10, 6))
         btn_frame.pack(fill=tk.X)
-        self._add_run_btn = ttk.Button(btn_frame, text="Add Result",
+        self._add_run_btn = ttk.Button(btn_frame, text=t("btn.add_result"),
                                        command=self._add_and_run, width=30,
                                        state=tk.DISABLED)
         self._add_run_btn.pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(btn_frame, text="Close",
+        ttk.Button(btn_frame, text=t("btn.close"),
                    command=self.destroy, width=10).pack(side=tk.LEFT)
 
     # ── Contour dropdowns ──
@@ -1315,7 +1360,7 @@ class ReadMaxValueDialog(tk.Toplevel):
         if img_path:
             print(f"[table image] {img_path}")
 
-        self._status_var.set("Done. Select material and click Add Result.")
+        self._status_var.set(t("hint.done_select"))
         self._add_run_btn.config(state=tk.NORMAL)
 
     @staticmethod
@@ -1537,20 +1582,20 @@ Write-Host "Saved: $outPath"
                     f"{sf:.2f}",
                     f"{eff:.2f}",
                     f"{peak_value:.4f}",
-                    '\u8d85\u51fa' if exceeded else '\u672a\u8d85\u51fa',
+                    t('rpt.exceeded') if exceeded else t('rpt.not_exceeded'),
                     f"{margin:.2f}",
                 ],
                 'color': color,
             })
 
         data = {
-            'title':    '\u5cf0\u503c\u4e0e\u6750\u6599\u8bb8\u7528\u503c\u6bd4\u8f83',
-            'subtitle': f'\u5cf0\u503c: {peak_value:.4f} {unit}',
+            'title':    t('rpt.peak_compare'),
+            'subtitle': f"{t('rpt.peak')}: {peak_value:.4f} {unit}",
             'headers':  [
-                '\u7f16\u53f7', '\u6750\u6599\u540d\u79f0',
-                f'\u8bb8\u7528\u503c({unit})', '\u5b89\u5168\u7cfb\u6570',
-                f'\u6709\u6548\u8bb8\u7528\u503c({unit})', f'\u5cf0\u503c({unit})',
-                '\u6bd4\u8f83\u7ed3\u679c', f'\u5dee\u503c({unit})',
+                t('rpt.no'), t('rpt.material_name'),
+                f"{t('rpt.allowable')}({unit})", t('rpt.safety_factor'),
+                f"{t('rpt.effective_allowable')}({unit})", f"{t('rpt.peak')}({unit})",
+                t('rpt.compare_result'), f"{t('rpt.diff')}({unit})",
             ],
             'rows': rows_data,
         }
@@ -1666,21 +1711,21 @@ Write-Host 'Saved'
     def _add_and_run(self):
         if self._peak_value is None:
             messagebox.showwarning(title="Warning",
-                                   message="No peak value available. Click Read first.",
+                                   message=t("msg.no_peak"),
                                    parent=self)
             return
 
         sel_idx = self._part_cb.current()
         if sel_idx < 0 or not self._parts_data:
             messagebox.showwarning(title="Warning",
-                                   message="Select a material standard first.", parent=self)
+                                   message=t("msg.select_material"), parent=self)
             return
         part = self._parts_data[sel_idx]
 
         map_value = self._map_val_var.get().strip()
         if not map_value:
             messagebox.showwarning(title="Warning",
-                                   message="Max Value is empty. Click Read first.", parent=self)
+                                   message=t("msg.max_empty"), parent=self)
             return
 
         # Compare peak_value against ALL parts in database → PNG table
@@ -1705,14 +1750,14 @@ Write-Host 'Saved'
         self._entity_var.set("—")
         self._map_val_var.set("")
         self._add_run_btn.config(state=tk.DISABLED)
-        self._status_var.set("Result added. Click Read for the next value.")
+        self._status_var.set(t("hint.result_added"))
 
 class CompareOptionDialog(tk.Toplevel):
     """Compare with Material Standards 选项对话框"""
 
     def __init__(self, parent, orchestrator, db, model_path, result_path="", on_complete=None):
         super().__init__(parent)
-        self.title("Compare with Material Standards")
+        self.title(t("dialog.compare"))
         self.geometry("660x780")
         self.resizable(True, True)
         self.minsize(520, 600)
@@ -1730,22 +1775,21 @@ class CompareOptionDialog(tk.Toplevel):
         self.wait_window()
 
     def _create_ui(self):
-        # ── Standards Overview with CRUD toolbar ──
-        std_outer = ttk.LabelFrame(self, text="Standards Overview", padding=8)
+        std_outer = ttk.LabelFrame(self, text=t("frame.standards"), padding=8)
         std_outer.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 4))
 
         std_toolbar = ttk.Frame(std_outer)
         std_toolbar.pack(fill=tk.X, pady=(0, 4))
-        ttk.Button(std_toolbar, text="Add",    width=6,
+        ttk.Button(std_toolbar, text=t("btn.add"),    width=6,
                    command=self._std_add).pack(side=tk.LEFT, padx=2)
-        ttk.Button(std_toolbar, text="Edit",   width=6,
+        ttk.Button(std_toolbar, text=t("btn.edit"),   width=6,
                    command=self._std_edit).pack(side=tk.LEFT, padx=2)
-        ttk.Button(std_toolbar, text="Delete", width=6,
+        ttk.Button(std_toolbar, text=t("btn.delete"), width=6,
                    command=self._std_delete).pack(side=tk.LEFT, padx=2)
         ttk.Separator(std_toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
-        ttk.Button(std_toolbar, text="Import CSV", width=10,
+        ttk.Button(std_toolbar, text=t("btn.import_csv"), width=10,
                    command=self._std_import_csv).pack(side=tk.LEFT, padx=2)
-        ttk.Button(std_toolbar, text="Export CSV", width=10,
+        ttk.Button(std_toolbar, text=t("btn.export_csv"), width=10,
                    command=self._std_export_csv).pack(side=tk.LEFT, padx=2)
 
         std_tree_frame = ttk.Frame(std_outer)
@@ -1776,18 +1820,17 @@ class CompareOptionDialog(tk.Toplevel):
 
         self._refresh_std()
 
-        # ── Results ──
-        res_outer = ttk.LabelFrame(self, text="Results", padding=8)
+        res_outer = ttk.LabelFrame(self, text=t("frame.results"), padding=8)
         res_outer.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 2))
 
         res_cols = ('no', 'material', 'value', 'unit')
         self._res_tree = ttk.Treeview(res_outer, columns=res_cols, show='headings',
                                       selectmode='browse', height=4)
         for col, text, w in [
-            ('no',       '结果编号',  70),
-            ('material', '材料',     200),
-            ('value',    '结果值',   120),
-            ('unit',     '单位',      70),
+            ('no',       t('col.res_no'),       70),
+            ('material', t('col.res_material'), 200),
+            ('value',    t('col.res_value'),    120),
+            ('unit',     t('col.res_unit'),      70),
         ]:
             self._res_tree.heading(col, text=text, anchor='center')
             self._res_tree.column(col, width=w, minwidth=40, anchor='center')
@@ -1799,8 +1842,7 @@ class CompareOptionDialog(tk.Toplevel):
         self._res_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         res_sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # ── Analysis Result ──
-        result_frame = ttk.LabelFrame(self, text="Analysis Result", padding=8)
+        result_frame = ttk.LabelFrame(self, text=t("frame.analysis_result_box"), padding=8)
         result_frame.pack(fill=tk.X, padx=10, pady=4)
 
         self._result_text = tk.Text(result_frame, height=5, state=tk.DISABLED,
@@ -1821,17 +1863,17 @@ class CompareOptionDialog(tk.Toplevel):
         btn_frame = ttk.Frame(self, padding=(10, 4))
         btn_frame.pack(fill=tk.X)
         can_run = bool(self.db.get_all_parts())
-        self._run_btn = ttk.Button(btn_frame, text="Run Analysis",
+        self._run_btn = ttk.Button(btn_frame, text=t("btn.run_analysis"),
                                    command=self._run, width=14,
                                    state=tk.NORMAL if can_run else tk.DISABLED)
         self._run_btn.pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(btn_frame, text="Read Max Value",
+        ttk.Button(btn_frame, text=t("btn.read_max_value"),
                    command=self._read_max_value, width=16).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(btn_frame, text="Close",
+        ttk.Button(btn_frame, text=t("btn.close"),
                    command=self.destroy, width=10).pack(side=tk.LEFT)
 
         if not can_run:
-            self._set_result("  Add material standards above, then click Run Analysis.", 'dim')
+            self._set_result(t("hint.add_standards"), 'dim')
 
     def _add_result_row(self, material: str, value: float, unit: str):
         self._res_counter += 1
@@ -1858,7 +1900,7 @@ class CompareOptionDialog(tk.Toplevel):
             ), tags=(tag,))
 
     def _std_add(self):
-        dialog = PartDialog(self, title="Add Material")
+        dialog = PartDialog(self, title=t("dialog.add_material"))
         if dialog.result:
             self.db.add_part(part_no=self.db.get_next_part_no(), **dialog.result)
             self._refresh_std()
@@ -1867,7 +1909,7 @@ class CompareOptionDialog(tk.Toplevel):
     def _std_edit(self):
         sel = self._std_tree.selection()
         if not sel:
-            messagebox.showwarning(title="WARNING", message="Select a standard first", parent=self)
+            messagebox.showwarning(title="WARNING", message=t("msg.select_standard"), parent=self)
             return
         values = self._std_tree.item(sel[0])['values']
         part_no = str(values[0])
@@ -1881,7 +1923,7 @@ class CompareOptionDialog(tk.Toplevel):
         part = self.db.get_part(part_no)
         if part:
             data['notes'] = part.get('notes', '')
-        dialog = PartDialog(self, title="Edit Material", data=data)
+        dialog = PartDialog(self, title=t("dialog.edit_material"), data=data)
         if dialog.result:
             self.db.update_part(part_no=part_no, **dialog.result)
             self._refresh_std()
@@ -1889,10 +1931,10 @@ class CompareOptionDialog(tk.Toplevel):
     def _std_delete(self):
         sel = self._std_tree.selection()
         if not sel:
-            messagebox.showwarning(title="WARNING", message="Select a standard first", parent=self)
+            messagebox.showwarning(title="WARNING", message=t("msg.select_standard"), parent=self)
             return
         if messagebox.askyesno(title="Confirm",
-                               message="Delete selected standard? This cannot be undone.",
+                               message=t("msg.confirm_delete_std"),
                                parent=self):
             part_no = str(self._std_tree.item(sel[0])['values'][0])
             self.db.delete_part(part_no)
@@ -1905,27 +1947,27 @@ class CompareOptionDialog(tk.Toplevel):
     def _std_import_csv(self):
         from tkinter import filedialog
         path = filedialog.askopenfilename(
-            title="Select CSV File",
+            title=t("dlg.select_csv"),
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
             parent=self)
         if path:
             count = self.db.import_parts_csv(path)
             messagebox.showinfo(title="Complete",
-                                message=f"Imported {count} parts successfully", parent=self)
+                                message=t("msg.imported_parts", count=count), parent=self)
             self._refresh_std()
             self._update_run_btn()
 
     def _std_export_csv(self):
         from tkinter import filedialog
         path = filedialog.asksaveasfilename(
-            title="Save CSV File",
+            title=t("dlg.save_csv"),
             defaultextension=".csv",
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
             parent=self)
         if path:
             self.db.export_parts_csv(path)
             messagebox.showinfo(title="Complete",
-                                message=f"Exported to {path} successfully", parent=self)
+                                message=t("msg.exported_to", path=path), parent=self)
 
     def _read_max_value(self):
         """Open ReadMaxValueDialog — plot contour, export hotspot CSV, compare to material."""
@@ -1942,7 +1984,7 @@ class CompareOptionDialog(tk.Toplevel):
         can_run = bool(self.db.get_all_parts())
         self._run_btn.config(state=tk.NORMAL if can_run else tk.DISABLED)
         if not can_run:
-            self._set_result("  Add material standards above, then click Run Analysis.", 'dim')
+            self._set_result(t("hint.add_standards"), 'dim')
 
     # ── Helpers ──
 
@@ -1971,7 +2013,7 @@ class CompareOptionDialog(tk.Toplevel):
 
         if not result_rows:
             messagebox.showwarning(title="WARNING",
-                                   message="No results to analyze.\nUse 'Read Max Value' first.",
+                                   message=t("hint.no_results"),
                                    parent=self)
             return
 
@@ -2000,7 +2042,7 @@ class CompareOptionDialog(tk.Toplevel):
             value = row['value']
             unit = row['unit'] or part.get('units') or 'MPa'
             pct = (value - allowable) / allowable * 100 if allowable else 0
-            pct_str = f"超出 {abs(pct):.2f}%" if value > allowable else f"不足 {abs(pct):.2f}%"
+            pct_str = f"{t('pct.exceed')} {abs(pct):.2f}%" if value > allowable else f"{t('pct.under')} {abs(pct):.2f}%"
 
             if value > allowable:
                 verdict = f"Result ({value:.4f}) > Allowable ({allowable:.4f}) — FAILED  [{pct_str}]"
@@ -2100,17 +2142,17 @@ class CompareOptionDialog(tk.Toplevel):
         data_file = img_path + '.json'
 
         data = {
-            'title':   '\u5206\u6790\u7ed3\u679c',  # 分析结果
+            'title':   t('rpt.title'),
             'headers': [
-                '\u7f16\u53f7',            # 编号
-                '\u6750\u6599\u540d\u79f0',  # 材料名称
-                '\u8bb8\u7528\u503c',        # 许用值
-                '\u5b89\u5168\u56e0\u5b50',  # 安全因子
-                '\u6709\u6548\u8bb8\u7528\u503c',  # 有效许用值
-                '\u5b9e\u9645\u503c',        # 实际值
-                '\u5dee\u503c',              # 差值
-                '\u8d85\u51fa/\u4e0d\u8db3\u5360\u6bd4',  # 超出/不足占比
-                '\u72b6\u6001',              # 状态
+                t('rpt.no'),
+                t('rpt.material_name'),
+                t('rpt.allowable'),
+                t('rpt.safety_factor'),
+                t('rpt.effective_allowable'),
+                t('rpt.actual'),
+                t('rpt.diff'),
+                t('rpt.pct'),
+                t('rpt.status'),
             ],
             'rows': [
                 {
@@ -2246,7 +2288,7 @@ class AnalysisDialog(tk.Toplevel):
 
     def __init__(self, parent, orchestrator, model_path, result_path=""):
         super().__init__(parent)
-        self.title("Analysis Options")
+        self.title(t("dialog.analysis_options"))
         self.geometry("550x500")
         self.resizable(width=False, height=False)
         # 不使用 transient 和 grab_set，让窗口独立运行
@@ -2272,20 +2314,17 @@ class AnalysisDialog(tk.Toplevel):
         main_frame = ttk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 标题
         title_frame = ttk.Frame(main_frame, padding=10)
         title_frame.pack(fill=tk.X)
-        ttk.Label(title_frame, text="Analysis Options", font=('Arial', 12, 'bold')).pack()
+        ttk.Label(title_frame, text=t("dialog.analysis_options"), font=('Arial', 12, 'bold')).pack()
 
-        # 模型信息
-        info_frame = ttk.LabelFrame(main_frame, text="Model Information", padding=10)
+        info_frame = ttk.LabelFrame(main_frame, text=t("frame.model_info"), padding=10)
         info_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(info_frame, text=f"Model: {os.path.basename(self.model_path)}", wraplength=450).pack(anchor=tk.W)
         if self.result_path:
             ttk.Label(info_frame, text=f"Result: {os.path.basename(self.result_path)}", wraplength=450).pack(anchor=tk.W)
 
-        # Checkbox 选项区域
-        opt_frame = ttk.LabelFrame(main_frame, text="Select Analysis Items", padding=10)
+        opt_frame = ttk.LabelFrame(main_frame, text=t("frame.select_items"), padding=10)
         opt_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         self.chk_contour = tk.BooleanVar(value=False)
@@ -2296,27 +2335,27 @@ class AnalysisDialog(tk.Toplevel):
         row1 = ttk.Frame(opt_frame)
         row1.pack(fill=tk.X, pady=4)
         self.chk_btn_contour = ttk.Checkbutton(
-            row1, text="Plot Contour",
+            row1, text=t("chk.plot_contour"),
             variable=self.chk_contour, state=tk.DISABLED,
             command=self._on_checkbox_toggled)
         self.chk_btn_contour.pack(side=tk.LEFT)
-        self.opt_btn_contour = ttk.Button(row1, text="Option", width=8, state=tk.DISABLED,
+        self.opt_btn_contour = ttk.Button(row1, text=t("label.option"), width=8, state=tk.DISABLED,
                                           command=self._open_contour_option)
         self.opt_btn_contour.pack(side=tk.RIGHT)
-        ttk.Label(opt_frame, text="    Plot contour on the model and find stress hotspots",
+        ttk.Label(opt_frame, text=t("hint.plot_contour"),
                   foreground='gray').pack(anchor=tk.W)
 
         row3 = ttk.Frame(opt_frame)
         row3.pack(fill=tk.X, pady=4)
         self.chk_btn_compare = ttk.Checkbutton(
-            row3, text="Compare with Material Standards",
+            row3, text=t("chk.compare"),
             variable=self.chk_compare, state=tk.DISABLED,
             command=self._on_checkbox_toggled)
         self.chk_btn_compare.pack(side=tk.LEFT)
-        self.opt_btn_compare = ttk.Button(row3, text="Option", width=8, state=tk.DISABLED,
+        self.opt_btn_compare = ttk.Button(row3, text=t("label.option"), width=8, state=tk.DISABLED,
                                            command=self._run_compare)
         self.opt_btn_compare.pack(side=tk.RIGHT)
-        ttk.Label(opt_frame, text="    Compare peak stress with allowable values from database",
+        ttk.Label(opt_frame, text=t("hint.compare"),
                   foreground='gray').pack(anchor=tk.W)
 
         # 结果追踪
@@ -2326,8 +2365,7 @@ class AnalysisDialog(tk.Toplevel):
         bottom_frame = ttk.Frame(self)
         bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # 状态栏
-        self.status_var = tk.StringVar(value="Step 1: Click Create Report")
+        self.status_var = tk.StringVar(value=t("status.step1"))
         status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W, padding=5)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
@@ -2335,14 +2373,13 @@ class AnalysisDialog(tk.Toplevel):
         self.progress = ttk.Progressbar(bottom_frame, mode='determinate', length=480, maximum=100)
         self.progress.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
 
-        # 按钮区域
         btn_frame = ttk.Frame(bottom_frame, padding=10)
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        self.close_btn = ttk.Button(btn_frame, text="Close", command=self.destroy, width=15, state=tk.DISABLED)
+        self.close_btn = ttk.Button(btn_frame, text=t("btn.close"), command=self.destroy, width=15, state=tk.DISABLED)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
-        self.run_btn = ttk.Button(btn_frame, text="Export", command=self._export_report, width=15, state=tk.DISABLED)
+        self.run_btn = ttk.Button(btn_frame, text=t("btn.export"), command=self._export_report, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
-        self.create_report_btn = ttk.Button(btn_frame, text="Create Report", command=self._create_report, width=15)
+        self.create_report_btn = ttk.Button(btn_frame, text=t("btn.create_report"), command=self._create_report, width=15)
         self.create_report_btn.pack(side=tk.RIGHT, padx=5)
 
     # ── Step 1: Create Report ──
@@ -2352,12 +2389,12 @@ class AnalysisDialog(tk.Toplevel):
         self.create_report_btn.config(state=tk.DISABLED)
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
-        self._set_status("Step 1: Creating report...")
+        self._set_status(t("status.step1_creating"))
 
         def do_create():
             self._setup_thread.join()
             self.orchestrator.create_report()
-            self.after(0, lambda: self._set_status("Report created. Waiting for HyperView..."))
+            self.after(0, lambda: self._set_status(t("status.waiting_hv")))
             self.after(0, lambda: self.after(20000, self._unlock_after_create))
 
         threading.Thread(target=do_create, daemon=True).start()
@@ -2371,7 +2408,7 @@ class AnalysisDialog(tk.Toplevel):
         self.chk_btn_contour.config(state=tk.NORMAL)
         self.chk_btn_compare.config(state=tk.NORMAL)
         # Option buttons stay disabled until their checkbox is ticked
-        self._set_status("Step 2: Tick items and click Option to configure, then Step 3: Export PPT")
+        self._set_status(t("status.step2"))
 
     def _on_checkbox_toggled(self):
         """Checkbox 状态变化时，同步更新对应 Option 按钮的启用/禁用"""
@@ -2429,11 +2466,11 @@ class AnalysisDialog(tk.Toplevel):
         """导出 PPT"""
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
-        self._set_status("Exporting report...")
+        self._set_status(t("status.exporting"))
 
         def export():
             self.orchestrator.report_export()
-            self.after(0, lambda: self._set_status("All done! Report exported."))
+            self.after(0, lambda: self._set_status(t("status.all_done")))
             self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
             self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
             self.after(0, self._update_parent_results)
