@@ -197,6 +197,7 @@ _STRINGS = {
     "ana.create_report":            {"zh": "创建报告", "en": "Create Report"},
     "ana.export":                   {"zh": "导出", "en": "Export"},
     "ana.insert":                   {"zh": "插入", "en": "Insert"},
+    "run.insert_image":             {"zh": "插入图片", "en": "Insert Image"},
 
     # AnalysisDialog - 状态
     "ana.step1_click":              {"zh": "步骤 1: 点击 创建报告", "en": "Step 1: Click Create Report"},

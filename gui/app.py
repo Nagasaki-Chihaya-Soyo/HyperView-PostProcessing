@@ -111,6 +111,7 @@ class Application(tk.Tk):
         self.auto_minimize_cb.config(text=t("run.auto_minimize"))
         self._result_frame.config(text=t("run.result_title"))
         self.report_btn.config(text=t("run.open_folder"))
+        self.insert_image_btn.config(text=t("run.insert_image"))
         # Parts tab
         self._parts_add_btn.config(text=t("parts.add"))
         self._parts_edit_btn.config(text=t("parts.edit"))
@@ -172,8 +173,12 @@ class Application(tk.Tk):
         self.result_text = tk.Text(self._result_frame, height=15, state=tk.DISABLED)
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
-        self.report_btn = ttk.Button(self._result_frame, text=t("run.open_folder"), command=self._open_report)
-        self.report_btn.pack(pady=10)
+        result_btn_frame = ttk.Frame(self._result_frame)
+        result_btn_frame.pack(pady=10)
+        self.report_btn = ttk.Button(result_btn_frame, text=t("run.open_folder"), command=self._open_report)
+        self.report_btn.pack(side=tk.LEFT, padx=5)
+        self.insert_image_btn = ttk.Button(result_btn_frame, text=t("run.insert_image"), command=self._insert_image_to_pptx)
+        self.insert_image_btn.pack(side=tk.LEFT, padx=5)
 
     def _browse_model(self):
         filetypes = [("Model Files (*.h3d)", "*.h3d"),
@@ -308,6 +313,48 @@ Report Path:{result['report_path']}
             os.startfile(reports_dir)
         except AttributeError:
             subprocess.Popen(['xdg-open', reports_dir])
+
+    def _insert_image_to_pptx(self):
+        """选择图片文件，再选择 PPT，将文件按顺序插入 PPT 末尾。"""
+        from core.report_pptx import PPTXReporter
+
+        file_paths = filedialog.askopenfilenames(
+            title=t("ana.select_files"),
+            filetypes=[
+                ("Images", "*.png;*.jpg;*.jpeg;*.bmp;*.gif"),
+                ("Videos", "*.mp4;*.avi;*.wmv"),
+                ("All Files", "*.*"),
+            ],
+        )
+        if not file_paths:
+            return
+
+        pptx_path = filedialog.askopenfilename(
+            title=t("ana.select_pptx"),
+            filetypes=[
+                ("PowerPoint", "*.pptx"),
+                ("All Files", "*.*"),
+            ],
+        )
+        if not pptx_path:
+            return
+
+        self.insert_image_btn.config(state=tk.DISABLED)
+
+        def do_insert():
+            try:
+                ordered_files = list(file_paths)
+                PPTXReporter.insert_slides_to_pptx(pptx_path, ordered_files)
+                n = len(ordered_files)
+                fname = os.path.basename(pptx_path)
+                self.after(0, lambda: self._on_log(t("ana.inserted", n=n, file=fname)))
+            except Exception as e:
+                err_msg = str(e)
+                self.after(0, lambda: messagebox.showerror(t("ana.insert_failed"), err_msg))
+            finally:
+                self.after(0, lambda: self.insert_image_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=do_insert, daemon=True).start()
 
     def _create_parts_tab(self):
         self._parts_tab = ttk.Frame(self.notebook)
@@ -571,8 +618,17 @@ Report Path:{result['report_path']}
     def _on_hv_started(self, success: bool):
         self.connect_btn.config(state=tk.NORMAL)
         if not success:
-            self._update_agent_mode_selector()
+            # 启动失败，重新启用模式选择（保留用户已选模式，不重置）
+            self._restore_agent_mode_selector()
             messagebox.showerror(title=t("title.error"), message=t("run.hv_start_failed"))
+
+    def _restore_agent_mode_selector(self):
+        """重新启用模式选择器但保留当前已选模式（不重置为版本默认值）。"""
+        version_year = self.orchestrator.hv_process.get_version_year()
+        if version_year <= 2022:
+            self.agent_mode_cb.config(state=tk.DISABLED)
+        else:
+            self.agent_mode_cb.config(state="readonly")
 
     def _on_state_change(self, state: State):
         state_map = {
@@ -589,13 +645,20 @@ Report Path:{result['report_path']}
         # Sequential unlock: enable Model View button when HyperView is ready
         if state == State.AGENT_READY:
             self.model_view_btn.config(state=tk.NORMAL)
+            # 如果路径栏已经有路径，同时解锁 result_view 和 load_model
+            if self.model_entry.get().strip():
+                self.result_view_btn.config(state=tk.NORMAL)
+                self.load_btn.config(state=tk.NORMAL)
+            # 连接成功后锁定模式选择
+            self.agent_mode_cb.config(state=tk.DISABLED)
         elif state in (State.IDLE, State.FAILED, State.EXITED):
             # Reset all buttons to disabled when HyperView is not connected
             self.model_view_btn.config(state=tk.DISABLED)
             self.result_view_btn.config(state=tk.DISABLED)
             self.load_btn.config(state=tk.DISABLED)
             self.run_btn.config(state=tk.DISABLED)
-            self._update_agent_mode_selector()
+            # 重新启用模式选择但保留用户已选模式
+            self._restore_agent_mode_selector()
 
     def _on_close(self):
         if self._is_closing:
@@ -1010,6 +1073,7 @@ class ContourOptionDialog(tk.Toplevel):
     def _on_find_hotspot(self):
         if not self.orchestrator:
             return
+        prev_name = f"hotspot{self._hotspot_counter}" if self._hotspot_counter > 0 else None
         self._hotspot_counter += 1
         name = f"hotspot{self._hotspot_counter}"
         result_type = self.type_var.get()
@@ -1020,6 +1084,12 @@ class ContourOptionDialog(tk.Toplevel):
         self.hotspot_status_var.set(t("contour.finding", name=name))
 
         def run():
+            # 删除前一个 hotspot 标签，防止标签重叠无法看清
+            if prev_name:
+                try:
+                    self.orchestrator.hotspot_delete(prev_name)
+                except Exception as e:
+                    print(f"[FindHotspot] hotspot_delete error: {e}")
             try:
                 # 先只画云图（不截图），等 hotspot 出来后再截
                 self.orchestrator.plot_contour_only(result_type, component)
@@ -2149,7 +2219,7 @@ class CompareOptionDialog(tk.Toplevel):
                 parent=self,
             )
 
-        # ── HWC: add slide One Image only + edit items image ──
+        # ── 将分析结果图片拼接到 PPT（HWC 通过 hwc 命令，TCL 通过 python-pptx）──
         if png and self.orchestrator:
             position = f"{label},Image1"
             self.orchestrator.add_slide_one_image_only(label, position, img_path)
@@ -2407,8 +2477,6 @@ class AnalysisDialog(tk.Toplevel):
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.close_btn = ttk.Button(btn_frame, text=t("btn.close"), command=self.destroy, width=15, state=tk.DISABLED)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
-        self.insert_btn = ttk.Button(btn_frame, text=t("ana.insert"), command=self._insert_to_pptx, width=15)
-        self.insert_btn.pack(side=tk.RIGHT, padx=5)
         self.run_btn = ttk.Button(btn_frame, text=t("ana.export"), command=self._export_report, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
         self.create_report_btn = ttk.Button(btn_frame, text=t("ana.create_report"), command=self._create_report, width=15)
@@ -2508,56 +2576,6 @@ class AnalysisDialog(tk.Toplevel):
             self.after(0, self._update_parent_results)
 
         threading.Thread(target=export, daemon=True).start()
-
-    def _insert_to_pptx(self):
-        """选择图片/GIF/视频文件，再选择 PPT，将文件按顺序插入 PPT 末尾。"""
-        from core.report_pptx import PPTXReporter
-
-        # Step 1: 选择要插入的文件（可多选）
-        file_paths = filedialog.askopenfilenames(
-            title=t("ana.select_files"),
-            filetypes=[
-                ("Images", "*.png;*.jpg;*.jpeg;*.bmp;*.gif"),
-                ("Videos", "*.mp4;*.avi;*.wmv"),
-                ("All Files", "*.*"),
-            ],
-            parent=self,
-        )
-        if not file_paths:
-            return
-
-        # Step 2: 选择目标 PPT 文件
-        pptx_path = filedialog.askopenfilename(
-            title=t("ana.select_pptx"),
-            filetypes=[
-                ("PowerPoint", "*.pptx"),
-                ("All Files", "*.*"),
-            ],
-            parent=self,
-        )
-        if not pptx_path:
-            return
-
-        # Step 3: 插入
-        self.insert_btn.config(state=tk.DISABLED)
-        self._set_status(t("ana.inserting"))
-
-        def do_insert():
-            try:
-                ordered_files = list(file_paths)  # askopenfilenames 已按选择顺序
-                PPTXReporter.insert_slides_to_pptx(pptx_path, ordered_files)
-                n = len(ordered_files)
-                fname = os.path.basename(pptx_path)
-                self.after(0, lambda: self._set_status(t("ana.inserted", n=n, file=fname)))
-            except Exception as e:
-                err_msg = str(e)
-                self.after(0, lambda: self._set_status(f"{t('ana.insert_failed')}: {err_msg}"))
-                self.after(0, lambda: messagebox.showerror(
-                    t("ana.insert_failed"), err_msg, parent=self))
-            finally:
-                self.after(0, lambda: self.insert_btn.config(state=tk.NORMAL))
-
-        threading.Thread(target=do_insert, daemon=True).start()
 
     # ── 工具方法 ──
 

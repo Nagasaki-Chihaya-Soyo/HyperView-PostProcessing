@@ -382,6 +382,26 @@ class Orchestrator:
             self._log("Report created (python-pptx)")
             return True
 
+    def hotspot_delete(self, hotspot_name: str) -> bool:
+        """Delete a hotspot: hwc kpi hotspot delete <name>"""
+        if self.state != State.AGENT_READY:
+            self._log(f"HyperView is not ready (state={self.state})")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log(f"Deleting hotspot: {hotspot_name}")
+            result = self.bridge.send_job(cmd="hotspot_delete", params={
+                "hotspot_name": hotspot_name,
+            })
+            if result.get('success', False):
+                self._log(f"Hotspot {hotspot_name} deleted")
+                return True
+            else:
+                self._log(f"Hotspot delete failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
     def hotspot_find(self, hotspot_name: str) -> bool:
         """Create hotspot, find hotspots, and review"""
         print(f"[hotspot_find] called: name={hotspot_name}, state={self.state}")
