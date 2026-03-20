@@ -338,7 +338,6 @@ proc process_job {job_file} {
                     hwc result scalar edit "Current Contour" type=$result_type component=$result_component
                     hwc result scalar plot "Current Contour"
                     hwc report Report add slide "One Image with Caption" label=$label
-                    hwc report Report run position=$label
                 } err] } {
                     puts "apply_contour error: $err"
                     set escaped_err [escape_json_string $err]
@@ -483,7 +482,6 @@ proc process_job {job_file} {
                 puts "hwc kpi hotspot $hotspot_name review done"
                 if { $label ne "" } {
                     hwc report Report add slide "One Image with Caption" label=$label
-                    hwc report Report run position=$label
                     puts "hotspot_find: captured slide label=$label"
                 }
                 puts "hotspot_find completed successfully"
