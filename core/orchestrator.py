@@ -379,9 +379,13 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "report_run" {
-                puts "Executing report_run command"
+                puts "Executing report_run command label=$label"
                 if { [catch {
-                    hwc report Report run
+                    if {$label ne ""} {
+                        hwc report Report run position=$label
+                    } else {
+                        hwc report Report run
+                    }
                 } err] } {
                     puts "report_run error: $err"
                     set escaped_err [escape_json_string $err]
@@ -671,15 +675,15 @@ after 4000 listen
         finally:
             self._set_state(State.AGENT_READY)
 
-    def report_run(self) -> bool:
+    def report_run(self, label: str = "") -> bool:
         """执行 hwc report Report Run"""
         if self.state != State.AGENT_READY:
             self._log(f"report_run: HyperView is not ready (state={self.state})")
             return False
         self._set_state(State.RUNNING)
         try:
-            self._log("Running report...")
-            result = self.bridge.send_job(cmd="report_run", params={})
+            self._log(f"Running report... label={label}")
+            result = self.bridge.send_job(cmd="report_run", params={"label": label})
             if result.get('success', False):
                 self._log("Report run completed")
                 return True
