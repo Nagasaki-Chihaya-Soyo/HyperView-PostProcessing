@@ -172,14 +172,15 @@ proc process_job {job_file} {
                 write_result $job_id [format {{"success":true,"image_path":"%s"}} $escaped_path]
             }
             "apply_contour" {
-                # ── 从 agent_hwc_template.tcl 复制，去掉 hwc report 行 ──
-                # 原 HWC: hwc report Report add slide "One Image with Caption" label=$label
-                # 截图由 Python 侧 _capture_and_add_slide(label) 完成，caption = label
-                puts "TCL>>> apply_contour: type=$result_type component=$result_component"
+                # TCL 模式：绘图后立即截图（避免分两个 job 导致标签被清除）
+                puts "TCL>>> apply_contour: type=$result_type component=$result_component label=$label"
                 hwc result scalar edit "Current Contour" type=$result_type component=$result_component
                 hwc result scalar plot "Current Contour"
-                puts "TCL>>> apply_contour completed"
-                write_result $job_id {{"success":true}}
+                puts "TCL>>> apply_contour: contour plotted, capturing screenshot"
+                set img_path [do_capture_screen]
+                puts "TCL>>> apply_contour completed, image=$img_path"
+                set escaped [escape_json_string $img_path]
+                write_result $job_id [format {{"success":true,"image_path":"%s"}} $escaped]
             }
             "plot_contour_only" {
                 # ── 从 agent_hwc_template.tcl 复制 ──
@@ -232,8 +233,15 @@ proc process_job {job_file} {
                     return
                 }
                 puts "TCL>>> hotspot review done"
-                puts "TCL>>> hotspot_find completed"
-                write_result $job_id {{"success":true}}
+                if { $label ne "" } {
+                    set img_path [do_capture_screen]
+                    puts "TCL>>> hotspot_find: captured screenshot label=$label path=$img_path"
+                    set escaped [escape_json_string $img_path]
+                    write_result $job_id [format {{"success":true,"image_path":"%s"}} $escaped]
+                } else {
+                    puts "TCL>>> hotspot_find completed"
+                    write_result $job_id {{"success":true}}
+                }
             }
             "hotspot_navigate" {
                 # ── 从 agent_hwc_template.tcl 复制 ──

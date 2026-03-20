@@ -231,9 +231,14 @@ class Orchestrator:
                 self._log(f"apply_contour failed: {result.get('error', 'Unknown')}")
                 return None
             self._log("Contour applied successfully")
-            # TCL 模式：额外截图并加入 PPT
+            # TCL 模式：截图已在 TCL 侧完成，直接用返回的 image_path 加入 PPT
             if self.agent_mode != "hwc":
-                self._capture_and_add_slide(label)
+                img_path = result.get('image_path', '')
+                if img_path:
+                    self.pptx_reporter.add_image_slide(label, img_path)
+                    self._log(f"Slide added: {img_path}")
+                else:
+                    self._log("apply_contour: no image_path in result, skip slide")
             return {'success': True}
         except Exception as e:
             self._log(f"apply_contour error: {str(e)}")
@@ -430,9 +435,12 @@ class Orchestrator:
             if result.get('success', False):
                 self._log(f"Hotspot {hotspot_name} found successfully")
                 # HWC 模式: TCL 内已执行 add slide + run position
-                # TCL 模式: 需要 Python 侧截图并添加到 PPT
+                # TCL 模式: 截图已在 TCL 侧完成，直接用返回的 image_path 加入 PPT
                 if label and self.agent_mode != "hwc":
-                    self._capture_and_add_slide(label)
+                    img_path = result.get('image_path', '')
+                    if img_path:
+                        self.pptx_reporter.add_image_slide(label, img_path)
+                        self._log(f"Slide added: {img_path}")
                 return True
             else:
                 self._log(f"Hotspot find failed: {result.get('error', 'Unknown')}")
