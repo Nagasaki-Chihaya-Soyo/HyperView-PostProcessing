@@ -481,6 +481,11 @@ proc process_job {job_file} {
                     return
                 }
                 puts "hwc kpi hotspot $hotspot_name review done"
+                if { $label ne "" } {
+                    hwc report Report add slide "One Image with Caption" label=$label
+                    hwc report Report run position=$label
+                    puts "hotspot_find: captured slide label=$label"
+                }
                 puts "hotspot_find completed successfully"
                 write_result $job_id {{"success":true}}
             }

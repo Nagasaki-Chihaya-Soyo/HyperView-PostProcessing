@@ -413,9 +413,9 @@ class Orchestrator:
         finally:
             self._set_state(State.AGENT_READY)
 
-    def hotspot_find(self, hotspot_name: str) -> bool:
-        """Create hotspot, find hotspots, and review"""
-        print(f"[hotspot_find] called: name={hotspot_name}, state={self.state}")
+    def hotspot_find(self, hotspot_name: str, label: str = "") -> bool:
+        """Create hotspot, find hotspots, review, and optionally capture slide"""
+        print(f"[hotspot_find] called: name={hotspot_name}, label={label}, state={self.state}")
         if self.state != State.AGENT_READY:
             self._log(f"HyperView is not ready (state={self.state})")
             return False
@@ -424,6 +424,7 @@ class Orchestrator:
             self._log(f"Finding hotspot: {hotspot_name}")
             result = self.bridge.send_job(cmd="hotspot_find", params={
                 "hotspot_name": hotspot_name,
+                "label": label,
             })
             print(f"[hotspot_find] result={result}")
             if result.get('success', False):
