@@ -204,11 +204,34 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "hotspot_find" {
-                # ── 从 agent_hwc_template.tcl 复制 ──
-                puts "TCL>>> hotspot_find: hotspot_name=$hotspot_name"
-                hwc kpi hotspot create $hotspot_name
-                hwc kpi hotspot $hotspot_name findhotspots
-                hwc kpi hotspot $hotspot_name review
+                puts "TCL>>> hotspot_find: hotspot_name=$hotspot_name label=$label"
+                if { [catch {
+                    hwc kpi hotspot create $hotspot_name
+                } err] } {
+                    puts "TCL>>> hotspot create error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"kpi create failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "TCL>>> hotspot create $hotspot_name done"
+                if { [catch {
+                    hwc kpi hotspot $hotspot_name findhotspots
+                } err] } {
+                    puts "TCL>>> hotspot findhotspots error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"findhotspots failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "TCL>>> hotspot findhotspots done"
+                if { [catch {
+                    hwc kpi hotspot $hotspot_name review
+                } err] } {
+                    puts "TCL>>> hotspot review error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"review failed: %s"}} $escaped_err]
+                    return
+                }
+                puts "TCL>>> hotspot review done"
                 puts "TCL>>> hotspot_find completed"
                 write_result $job_id {{"success":true}}
             }
@@ -227,28 +250,41 @@ proc process_job {job_file} {
                 write_result $job_id {{"success":true}}
             }
             "read_max_value" {
-                # ── 从 agent_hwc_template.tcl 复制 ──
                 puts "TCL>>> read_max_value: type=$result_type comp=$result_component"
-                hwc result scalar edit "Current Contour" type=$result_type component=$result_component
-                hwc result scalar plot "Current Contour"
-                hwc kpi hotspot create $hotspot_name
-                hwc kpi hotspot $hotspot_name findhotspots
-                hwc kpi hotspot $hotspot_name review
-                hwc show component all
-                hwc hide component all
-                hwc show element all
-                hwc kpi hotspot $hotspot_name export $csv_path
+                puts "TCL>>> hotspot_name=$hotspot_name csv_path=$csv_path"
+                if { [catch {
+                    hwc result scalar edit "Current Contour" type=$result_type component=$result_component
+                    hwc result scalar plot "Current Contour"
+                    hwc kpi hotspot create $hotspot_name
+                    hwc kpi hotspot $hotspot_name findhotspots
+                    hwc kpi hotspot $hotspot_name review
+                    hwc show component all
+                    hwc hide component all
+                    hwc show element all
+                    hwc kpi hotspot $hotspot_name export $csv_path
+                } err] } {
+                    puts "TCL>>> read_max_value error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
                 puts "TCL>>> read_max_value completed"
                 set escaped_csv [escape_json_string $csv_path]
                 write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]
             }
             "export_hotspot_csv" {
-                # ── 从 agent_hwc_template.tcl 复制 ──
                 puts "TCL>>> export_hotspot_csv: hotspot=$hotspot_name csv=$csv_path"
-                hwc show component all
-                hwc hide component all
-                hwc show element all
-                hwc kpi hotspot $hotspot_name export $csv_path
+                if { [catch {
+                    hwc show component all
+                    hwc hide component all
+                    hwc show element all
+                    hwc kpi hotspot $hotspot_name export $csv_path
+                } err] } {
+                    puts "TCL>>> export_hotspot_csv error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
                 puts "TCL>>> export_hotspot_csv completed"
                 set escaped_csv [escape_json_string $csv_path]
                 write_result $job_id [format {{"success":true,"csv_path":"%s"}} $escaped_csv]

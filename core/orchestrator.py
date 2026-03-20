@@ -429,6 +429,10 @@ class Orchestrator:
             print(f"[hotspot_find] result={result}")
             if result.get('success', False):
                 self._log(f"Hotspot {hotspot_name} found successfully")
+                # HWC 模式: TCL 内已执行 add slide + run position
+                # TCL 模式: 需要 Python 侧截图并添加到 PPT
+                if label and self.agent_mode != "hwc":
+                    self._capture_and_add_slide(label)
                 return True
             else:
                 self._log(f"Hotspot find failed: {result.get('error', 'Unknown')}")
