@@ -1079,7 +1079,7 @@ class ContourOptionDialog(tk.Toplevel):
         name = f"hotspot{self._hotspot_counter}"
         result_type = self.type_var.get()
         component = self.comp_var.get()
-        label = f"{result_type} - {component} (view hotspot)"
+        label = f"{result_type} - {component} (view hotspot) [{self._hotspot_counter}]"
         config = {'type': result_type, 'component': component}
         self.find_btn.config(state=tk.DISABLED)
         self.hotspot_status_var.set(t("contour.finding", name=name))
