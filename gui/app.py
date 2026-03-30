@@ -2391,11 +2391,14 @@ class AnalysisDialog(tk.Toplevel):
         # model path recorded when Apply/Confirm last succeeded; None if never done
         self._contour_applied_model: str | None = None
 
+        self._busy = False
+
         # 启动 setup_view 线程
         self._setup_thread = threading.Thread(target=self.orchestrator.setup_view, daemon=True)
         self._setup_thread.start()
 
         self._create_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         # 等待窗口关闭
         self.wait_window()
 
@@ -2481,6 +2484,7 @@ class AnalysisDialog(tk.Toplevel):
 
     def _create_report(self):
         """Step 1: 创建报告模板，完成后解锁 Option 和 Run"""
+        self._busy = True
         self.create_report_btn.config(state=tk.DISABLED)
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
@@ -2489,6 +2493,8 @@ class AnalysisDialog(tk.Toplevel):
         def do_create():
             self._setup_thread.join()
             self.orchestrator.create_report()
+            if not self.winfo_exists():
+                return
             self.after(0, lambda: self._set_status(t("ana.report_created")))
             self.after(0, self._unlock_after_create)
 
@@ -2496,6 +2502,7 @@ class AnalysisDialog(tk.Toplevel):
 
     def _unlock_after_create(self):
         """Create Report 完成后解锁 Checkbox 和 Run/Close"""
+        self._busy = False
         self._report_created = True
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
@@ -2559,22 +2566,43 @@ class AnalysisDialog(tk.Toplevel):
 
     def _export_report(self):
         """导出 PPT"""
+        self._busy = True
         self.run_btn.config(state=tk.DISABLED)
         self.close_btn.config(state=tk.DISABLED)
         self._set_status(t("ana.exporting"))
 
         def export():
-            self.orchestrator.report_export()
-            self.after(0, lambda: self._set_status(t("ana.all_done")))
-            self.after(0, lambda: self.run_btn.config(state=tk.NORMAL))
-            self.after(0, lambda: self.close_btn.config(state=tk.NORMAL))
-            self.after(0, self._update_parent_results)
+            try:
+                success = self.orchestrator.report_export()
+                if not self.winfo_exists():
+                    return
+                if success:
+                    self.after(0, lambda: self._set_status(t("ana.all_done")))
+                    self.after(0, self._update_parent_results)
+                else:
+                    self.after(0, lambda: self._set_status(t("ana.export_failed")))
+            finally:
+                if self.winfo_exists():
+                    self.after(0, self._finish_busy)
 
         threading.Thread(target=export, daemon=True).start()
 
+    def _finish_busy(self):
+        """操作完成后解锁按钮"""
+        self._busy = False
+        self.run_btn.config(state=tk.NORMAL)
+        self.close_btn.config(state=tk.NORMAL)
+
     # ── 工具方法 ──
 
+    def _on_close(self):
+        """防止在操作期间关闭对话框"""
+        if not self._busy:
+            self.destroy()
+
     def _set_status(self, msg):
+        if not self.winfo_exists():
+            return
         self.status_var.set(msg)
         self.update()
 
