@@ -2490,7 +2490,7 @@ class AnalysisDialog(tk.Toplevel):
             self._setup_thread.join()
             self.orchestrator.create_report()
             self.after(0, lambda: self._set_status(t("ana.report_created")))
-            self.after(0, lambda: self.after(20000, self._unlock_after_create))
+            self.after(0, self._unlock_after_create)
 
         threading.Thread(target=do_create, daemon=True).start()
 
