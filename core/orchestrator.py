@@ -418,6 +418,24 @@ class Orchestrator:
         finally:
             self._set_state(State.AGENT_READY)
 
+    def hotspot_clear(self) -> bool:
+        """Clear all hotspots: hwc kpi hotspot clear"""
+        if self.state != State.AGENT_READY:
+            self._log(f"HyperView is not ready (state={self.state})")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log("Clearing all hotspots")
+            result = self.bridge.send_job(cmd="hotspot_clear", params={})
+            if result.get('success', False):
+                self._log("All hotspots cleared")
+                return True
+            else:
+                self._log(f"Hotspot clear failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
     def hotspot_find(self, hotspot_name: str, label: str = "") -> bool:
         """Create hotspot, find hotspots, review, and optionally capture slide"""
         print(f"[hotspot_find] called: name={hotspot_name}, label={label}, state={self.state}")

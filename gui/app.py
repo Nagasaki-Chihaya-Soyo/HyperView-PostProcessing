@@ -874,6 +874,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.result = None
         self._hotspot_counter = 0
         self._capture_counter = 0
+        self._last_applied_component = None
         self._viewmode_var = tk.StringVar(value="")  # "component" | "global" | "local" | ""
         self._vm_component_var = tk.IntVar(value=0)
         self._vm_global_var = tk.IntVar(value=0)
@@ -1027,6 +1028,16 @@ class ContourOptionDialog(tk.Toplevel):
         config = {'type': result_type, 'component': component}
 
         def run():
+            # 如果 component 改变且存在 hotspot，先清除
+            if (self._hotspot_counter > 0
+                    and self._last_applied_component is not None
+                    and self._last_applied_component != component):
+                try:
+                    self.orchestrator.hotspot_clear()
+                except Exception as e:
+                    print(f"[ContourOptionDialog] hotspot_clear error: {e}")
+                self._hotspot_counter = 0
+            self._last_applied_component = component
             try:
                 print(f"[ContourOptionDialog] Executing apply_contour: {label}")
                 self.orchestrator.apply_contour(result_type, component, label)

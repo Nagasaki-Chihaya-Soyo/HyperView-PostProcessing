@@ -439,6 +439,19 @@ proc process_job {job_file} {
                 puts "create_report completed successfully"
                 write_result $job_id {{"success":true}}
             }
+            "hotspot_clear" {
+                puts "Executing hotspot_clear"
+                if { [catch {
+                    hwc kpi hotspot clear
+                } err] } {
+                    puts "hotspot_clear error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "hotspot_clear completed"
+                write_result $job_id {{"success":true}}
+            }
             "hotspot_delete" {
                 puts "Executing hotspot_delete: hotspot_name=$hotspot_name"
                 if { [catch {
