@@ -400,7 +400,18 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                write_result $job_id {{"success":true}}
+                # 尝试获取导出路径
+                set export_path ""
+                catch {
+                    set export_path [hwc report Report export]
+                }
+                puts "report_export path: $export_path"
+                if { $export_path ne "" } {
+                    set escaped_path [escape_json_string $export_path]
+                    write_result $job_id [format {{"success":true,"export_path":"%s"}} $escaped_path]
+                } else {
+                    write_result $job_id {{"success":true}}
+                }
             }
             "display_contour" {
                 puts "Executing display_contour command"

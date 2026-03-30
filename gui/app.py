@@ -1865,6 +1865,7 @@ class CompareOptionDialog(tk.Toplevel):
         self.result_path = result_path
         self.on_complete = on_complete
         self._res_counter = 0
+        self._analysis_image_path = None
 
         self._create_ui()
         self.wait_window()
@@ -2222,10 +2223,14 @@ class CompareOptionDialog(tk.Toplevel):
                 parent=self,
             )
 
-        # ── 将分析结果图片拼接到 PPT（HWC 通过 hwc 命令，TCL 通过 python-pptx）──
+        # ── 将分析结果图片拼接到 PPT ──
         if png and self.orchestrator:
-            position = f"{label},Image1"
-            self.orchestrator.add_slide_one_image_only(label, position, img_path)
+            if self.orchestrator.agent_mode == "hwc":
+                # HWC 模式：暂存图片路径，导出后由 Python 插入到 PPT 末尾
+                self._analysis_image_path = img_path
+            else:
+                position = f"{label},Image1"
+                self.orchestrator.add_slide_one_image_only(label, position, img_path)
 
 
     @staticmethod
@@ -2396,6 +2401,7 @@ class AnalysisDialog(tk.Toplevel):
         self.model_path = model_path
         self.result_path = result_path
         self.result = None
+        self._pending_images = []  # HWC 模式下待插入的分析图片路径
         # model path recorded when Apply/Confirm last succeeded; None if never done
         self._contour_applied_model: str | None = None
 
@@ -2548,7 +2554,7 @@ class AnalysisDialog(tk.Toplevel):
 
     def _run_compare(self):
         """打开 Compare Options 对话框"""
-        CompareOptionDialog(
+        dlg = CompareOptionDialog(
             self,
             orchestrator=self.orchestrator,
             db=self.orchestrator.db,
@@ -2556,6 +2562,10 @@ class AnalysisDialog(tk.Toplevel):
             result_path=self.result_path,
             on_complete=self._on_compare_done,
         )
+        # wait_window() 在 CompareOptionDialog.__init__ 中阻塞，dialog 关闭后继续
+        # HWC 模式下收集待插入的分析图片路径
+        if hasattr(dlg, '_analysis_image_path') and dlg._analysis_image_path:
+            self._pending_images.append(dlg._analysis_image_path)
 
     def _on_compare_done(self, result):
         """CompareOptionDialog 分析完成后的回调"""
@@ -2587,6 +2597,13 @@ class AnalysisDialog(tk.Toplevel):
                 if success:
                     self.after(0, lambda: self._set_status(t("ana.all_done")))
                     self.after(0, self._update_parent_results)
+                    # HWC 模式：导出后插入分析图片到 PPT 末尾
+                    if self._pending_images and self.orchestrator.agent_mode == "hwc":
+                        export_path = getattr(self.orchestrator, '_last_export_path', '')
+                        if export_path:
+                            self.after(0, lambda: self._insert_pending_images(export_path))
+                        else:
+                            self.after(0, self._insert_pending_images_with_dialog)
                 else:
                     self.after(0, lambda: self._set_status(t("ana.export_failed")))
             finally:
@@ -2600,6 +2617,29 @@ class AnalysisDialog(tk.Toplevel):
         self._busy = False
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
+
+    def _insert_pending_images(self, pptx_path):
+        """将分析图片插入到已导出的 PPT 末尾"""
+        try:
+            from core.report_pptx import PPTXReporter
+            PPTXReporter.insert_slides_to_pptx(pptx_path, self._pending_images)
+            self._set_status(t("ana.images_inserted"))
+        except Exception as e:
+            self._set_status(f"Insert failed: {e}")
+        self._pending_images.clear()
+
+    def _insert_pending_images_with_dialog(self):
+        """回退方案：弹出文件选择对话框选择已导出的 PPT"""
+        from tkinter import filedialog
+        pptx_path = filedialog.askopenfilename(
+            title=t("ana.select_pptx"),
+            filetypes=[("PowerPoint", "*.pptx")],
+            parent=self,
+        )
+        if pptx_path:
+            self._insert_pending_images(pptx_path)
+        else:
+            self._pending_images.clear()
 
     # ── 工具方法 ──
 

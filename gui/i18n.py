@@ -209,6 +209,7 @@ _STRINGS = {
     "ana.exporting":                {"zh": "正在导出报告...", "en": "Exporting report..."},
     "ana.all_done":                 {"zh": "全部完成！报告已导出。", "en": "All done! Report exported."},
     "ana.export_failed":            {"zh": "导出失败，请重试。", "en": "Export failed. Please retry."},
+    "ana.images_inserted":          {"zh": "分析图片已插入 PPT 末尾。", "en": "Analysis images inserted at end of PPT."},
 
     # AnalysisDialog - Insert
     "ana.select_files":             {"zh": "选择要插入的文件", "en": "Select files to insert"},

@@ -358,7 +358,12 @@ class Orchestrator:
             if self.agent_mode == "hwc":
                 result = self.bridge.send_job(cmd="report_export", params={})
                 if result.get('success', False):
-                    self._log("Report exported successfully")
+                    export_path = result.get('export_path', '')
+                    if export_path:
+                        self._last_export_path = export_path
+                        self._log(f"Report exported: {export_path}")
+                    else:
+                        self._log("Report exported successfully")
                     return True
                 else:
                     self._log(f"Report export failed: {result.get('error', 'Unknown')}")
