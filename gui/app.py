@@ -867,8 +867,7 @@ class ContourOptionDialog(tk.Toplevel):
         super().__init__(parent)
         self.title(t("contour.title"))
         self.resizable(True, True)
-        self.transient(parent)
-        self.grab_set()
+        # 不使用 transient 和 grab_set，让窗口独立运行
 
         self.orchestrator = orchestrator
         self.on_execute = on_execute
@@ -1848,8 +1847,7 @@ class CompareOptionDialog(tk.Toplevel):
         self.geometry("660x780")
         self.resizable(True, True)
         self.minsize(520, 600)
-        self.transient(parent)
-        self.grab_set()
+        # 不使用 transient 和 grab_set，让窗口独立运行
 
         self.orchestrator = orchestrator
         self.db = db
