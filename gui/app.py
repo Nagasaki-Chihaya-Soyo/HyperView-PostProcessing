@@ -1220,8 +1220,7 @@ class ReadMaxValueDialog(tk.Toplevel):
         self.geometry("560x680")
         self.resizable(True, True)
         self.minsize(480, 580)
-        self.transient(parent)
-        self.grab_set()
+        # 不使用 transient 和 grab_set，让窗口独立运行
 
         self.orchestrator = orchestrator
         self.db = db
