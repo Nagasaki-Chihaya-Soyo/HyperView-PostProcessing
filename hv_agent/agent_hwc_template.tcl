@@ -400,22 +400,7 @@ proc process_job {job_file} {
                     write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
                     return
                 }
-                # 尝试获取导出路径
-                set export_path ""
-                catch {
-                    set export_path [hwc report export]
-                }
-                puts "report_export path: $export_path"
-                # 如果返回值包含 file="路径" 格式，提取路径
-                if { [regexp {file="([^"]+)"} $export_path -> extracted] } {
-                    set export_path $extracted
-                }
-                if { $export_path ne "" } {
-                    set escaped_path [escape_json_string $export_path]
-                    write_result $job_id [format {{"success":true,"export_path":"%s"}} $escaped_path]
-                } else {
-                    write_result $job_id {{"success":true}}
-                }
+                write_result $job_id {{"success":true}}
             }
             "display_contour" {
                 puts "Executing display_contour command"

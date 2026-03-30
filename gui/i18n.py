@@ -210,6 +210,11 @@ _STRINGS = {
     "ana.all_done":                 {"zh": "全部完成！报告已导出。", "en": "All done! Report exported."},
     "ana.export_failed":            {"zh": "导出失败，请重试。", "en": "Export failed. Please retry."},
     "ana.images_inserted":          {"zh": "分析图片已插入 PPT 末尾。", "en": "Analysis images inserted at end of PPT."},
+    "ana.export_done_pending":      {"zh": "报告已导出。请关闭 PPT 后点击「插入分析图片」。", "en": "Report exported. Close PPT then click Insert Analysis Images."},
+    "ana.insert_images":            {"zh": "插入分析图片", "en": "Insert Analysis Images"},
+    "ana.insert_title":             {"zh": "插入分析图片", "en": "Insert Analysis Images"},
+    "ana.insert_hint":              {"zh": "请选择刚导出的 PPT 文件（确保已关闭该文件）。", "en": "Please select the exported PPT file (make sure it is closed)."},
+    "ana.file_locked":              {"zh": "文件被占用，请先关闭 PPT 后重试。", "en": "File is locked. Please close the PPT and try again."},
 
     # AnalysisDialog - Insert
     "ana.select_files":             {"zh": "选择要插入的文件", "en": "Select files to insert"},

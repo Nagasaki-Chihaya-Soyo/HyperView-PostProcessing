@@ -2476,6 +2476,8 @@ class AnalysisDialog(tk.Toplevel):
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.close_btn = ttk.Button(btn_frame, text=t("btn.close"), command=self.destroy, width=15, state=tk.DISABLED)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
+        self.insert_btn = ttk.Button(btn_frame, text=t("ana.insert_images"), command=self._on_insert_images, width=18, state=tk.DISABLED)
+        self.insert_btn.pack(side=tk.RIGHT, padx=5)
         self.run_btn = ttk.Button(btn_frame, text=t("ana.export"), command=self._export_report, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
         self.create_report_btn = ttk.Button(btn_frame, text=t("ana.create_report"), command=self._create_report, width=15)
@@ -2582,15 +2584,14 @@ class AnalysisDialog(tk.Toplevel):
                 if not self.winfo_exists():
                     return
                 if success:
-                    self.after(0, lambda: self._set_status(t("ana.all_done")))
-                    self.after(0, self._update_parent_results)
-                    # HWC 模式：导出后插入分析图片到 PPT 末尾
                     if self._pending_images and self.orchestrator.agent_mode == "hwc":
-                        export_path = getattr(self.orchestrator, '_last_export_path', '')
-                        if export_path:
-                            self.after(0, lambda: self._insert_pending_images(export_path))
-                        else:
-                            self.after(0, self._insert_pending_images_with_dialog)
+                        self.after(0, lambda: self._set_status(t("ana.export_done_pending")))
+                    else:
+                        self.after(0, lambda: self._set_status(t("ana.all_done")))
+                    self.after(0, self._update_parent_results)
+                    # HWC 模式：有待插入图片时启用插入按钮
+                    if self._pending_images and self.orchestrator.agent_mode == "hwc":
+                        self.after(0, lambda: self.insert_btn.config(state=tk.NORMAL))
                 else:
                     self.after(0, lambda: self._set_status(t("ana.export_failed")))
             finally:
@@ -2605,28 +2606,48 @@ class AnalysisDialog(tk.Toplevel):
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
 
-    def _insert_pending_images(self, pptx_path):
-        """将分析图片插入到已导出的 PPT 末尾"""
-        try:
-            from core.report_pptx import PPTXReporter
-            PPTXReporter.insert_slides_to_pptx(pptx_path, self._pending_images)
-            self._set_status(t("ana.images_inserted"))
-        except Exception as e:
-            self._set_status(f"Insert failed: {e}")
-        self._pending_images.clear()
+    def _on_insert_images(self):
+        """手动插入分析图片到已导出的 PPT"""
+        from tkinter import filedialog, messagebox
 
-    def _insert_pending_images_with_dialog(self):
-        """回退方案：弹出文件选择对话框选择已导出的 PPT"""
-        from tkinter import filedialog
+        messagebox.showinfo(
+            title=t("ana.insert_title"),
+            message=t("ana.insert_hint"),
+            parent=self,
+        )
+
         pptx_path = filedialog.askopenfilename(
             title=t("ana.select_pptx"),
             filetypes=[("PowerPoint", "*.pptx")],
             parent=self,
         )
-        if pptx_path:
-            self._insert_pending_images(pptx_path)
-        else:
+        if not pptx_path:
+            return
+
+        # 检测文件是否被占用
+        try:
+            with open(pptx_path, 'r+b'):
+                pass
+        except (PermissionError, OSError):
+            messagebox.showwarning(
+                title=t("ana.insert_title"),
+                message=t("ana.file_locked"),
+                parent=self,
+            )
+            return
+
+        try:
+            from core.report_pptx import PPTXReporter
+            PPTXReporter.insert_slides_to_pptx(pptx_path, self._pending_images)
             self._pending_images.clear()
+            self.insert_btn.config(state=tk.DISABLED)
+            self._set_status(t("ana.images_inserted"))
+        except Exception as e:
+            messagebox.showerror(
+                title=t("ana.insert_title"),
+                message=f"Insert failed: {e}",
+                parent=self,
+            )
 
     # ── 工具方法 ──
 
