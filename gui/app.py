@@ -874,7 +874,6 @@ class ContourOptionDialog(tk.Toplevel):
         self.result = None
         self._hotspot_counter = 0
         self._capture_counter = 0
-        self._last_applied_component = None
         self._viewmode_var = tk.StringVar(value="")  # "component" | "global" | "local" | ""
         self._vm_component_var = tk.IntVar(value=0)
         self._vm_global_var = tk.IntVar(value=0)
@@ -1028,16 +1027,6 @@ class ContourOptionDialog(tk.Toplevel):
         config = {'type': result_type, 'component': component}
 
         def run():
-            # 如果 component 改变且存在 hotspot，先清除
-            if (self._hotspot_counter > 0
-                    and self._last_applied_component is not None
-                    and self._last_applied_component != component):
-                try:
-                    self.orchestrator.hotspot_clear()
-                except Exception as e:
-                    print(f"[ContourOptionDialog] hotspot_clear error: {e}")
-                self._hotspot_counter = 0
-            self._last_applied_component = component
             try:
                 print(f"[ContourOptionDialog] Executing apply_contour: {label}")
                 self.orchestrator.apply_contour(result_type, component, label)
@@ -1084,7 +1073,6 @@ class ContourOptionDialog(tk.Toplevel):
     def _on_find_hotspot(self):
         if not self.orchestrator:
             return
-        prev_name = f"hotspot{self._hotspot_counter}" if self._hotspot_counter > 0 else None
         self._hotspot_counter += 1
         name = f"hotspot{self._hotspot_counter}"
         result_type = self.type_var.get()
@@ -1095,12 +1083,11 @@ class ContourOptionDialog(tk.Toplevel):
         self.hotspot_status_var.set(t("contour.finding", name=name))
 
         def run():
-            # 删除前一个 hotspot 标签，防止标签重叠无法看清
-            if prev_name:
-                try:
-                    self.orchestrator.hotspot_delete(prev_name)
-                except Exception as e:
-                    print(f"[FindHotspot] hotspot_delete error: {e}")
+            # 每次 find 前清除所有 hotspot
+            try:
+                self.orchestrator.hotspot_clear()
+            except Exception as e:
+                print(f"[FindHotspot] hotspot_clear error: {e}")
             try:
                 # 先只画云图（不截图），等 hotspot 出来后再截
                 self.orchestrator.plot_contour_only(result_type, component)
