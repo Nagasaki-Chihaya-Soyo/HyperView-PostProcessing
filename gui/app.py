@@ -112,7 +112,6 @@ class Application(tk.Tk):
         self.auto_minimize_cb.config(text=t("run.auto_minimize"))
         self._result_frame.config(text=t("run.result_title"))
         self.report_btn.config(text=t("run.open_folder"))
-        self.insert_image_btn.config(text=t("run.insert_image"))
         # Parts tab
         self._parts_add_btn.config(text=t("parts.add"))
         self._parts_edit_btn.config(text=t("parts.edit"))
@@ -178,8 +177,6 @@ class Application(tk.Tk):
         result_btn_frame.pack(pady=10)
         self.report_btn = ttk.Button(result_btn_frame, text=t("run.open_folder"), command=self._open_report)
         self.report_btn.pack(side=tk.LEFT, padx=5)
-        self.insert_image_btn = ttk.Button(result_btn_frame, text=t("run.insert_image"), command=self._insert_image_to_pptx)
-        self.insert_image_btn.pack(side=tk.LEFT, padx=5)
 
     def _browse_model(self):
         filetypes = [("Model Files (*.h3d)", "*.h3d"),
@@ -314,48 +311,6 @@ Report Path:{result['report_path']}
             os.startfile(reports_dir)
         except AttributeError:
             subprocess.Popen(['xdg-open', reports_dir])
-
-    def _insert_image_to_pptx(self):
-        """选择图片文件，再选择 PPT，将文件按顺序插入 PPT 末尾。"""
-        from core.report_pptx import PPTXReporter
-
-        file_paths = filedialog.askopenfilenames(
-            title=t("ana.select_files"),
-            filetypes=[
-                ("Images", "*.png;*.jpg;*.jpeg;*.bmp;*.gif"),
-                ("Videos", "*.mp4;*.avi;*.wmv"),
-                ("All Files", "*.*"),
-            ],
-        )
-        if not file_paths:
-            return
-
-        pptx_path = filedialog.askopenfilename(
-            title=t("ana.select_pptx"),
-            filetypes=[
-                ("PowerPoint", "*.pptx"),
-                ("All Files", "*.*"),
-            ],
-        )
-        if not pptx_path:
-            return
-
-        self.insert_image_btn.config(state=tk.DISABLED)
-
-        def do_insert():
-            try:
-                ordered_files = list(file_paths)
-                PPTXReporter.insert_slides_to_pptx(pptx_path, ordered_files)
-                n = len(ordered_files)
-                fname = os.path.basename(pptx_path)
-                self.after(0, lambda: self._on_log(t("ana.inserted", n=n, file=fname)))
-            except Exception as e:
-                err_msg = str(e)
-                self.after(0, lambda: messagebox.showerror(t("ana.insert_failed"), err_msg))
-            finally:
-                self.after(0, lambda: self.insert_image_btn.config(state=tk.NORMAL))
-
-        threading.Thread(target=do_insert, daemon=True).start()
 
     def _create_parts_tab(self):
         self._parts_tab = ttk.Frame(self.notebook)
@@ -2476,7 +2431,7 @@ class AnalysisDialog(tk.Toplevel):
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.close_btn = ttk.Button(btn_frame, text=t("btn.close"), command=self.destroy, width=15, state=tk.DISABLED)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
-        self.insert_btn = ttk.Button(btn_frame, text=t("ana.insert_images"), command=self._on_insert_images, width=18, state=tk.DISABLED)
+        self.insert_btn = ttk.Button(btn_frame, text=t("run.insert_image"), command=self._on_insert_images, width=18)
         self.insert_btn.pack(side=tk.RIGHT, padx=5)
         self.run_btn = ttk.Button(btn_frame, text=t("ana.export"), command=self._export_report, width=15, state=tk.DISABLED)
         self.run_btn.pack(side=tk.RIGHT, padx=5)
@@ -2589,9 +2544,6 @@ class AnalysisDialog(tk.Toplevel):
                     else:
                         self.after(0, lambda: self._set_status(t("ana.all_done")))
                     self.after(0, self._update_parent_results)
-                    # HWC 模式：有待插入图片时启用插入按钮
-                    if self._pending_images and self.orchestrator.agent_mode == "hwc":
-                        self.after(0, lambda: self.insert_btn.config(state=tk.NORMAL))
                 else:
                     self.after(0, lambda: self._set_status(t("ana.export_failed")))
             finally:
@@ -2607,18 +2559,27 @@ class AnalysisDialog(tk.Toplevel):
         self.close_btn.config(state=tk.NORMAL)
 
     def _on_insert_images(self):
-        """手动插入分析图片到已导出的 PPT"""
+        """选择图片文件，再选择 PPT，将文件按顺序插入 PPT 末尾。"""
         from tkinter import filedialog, messagebox
 
-        messagebox.showinfo(
-            title=t("ana.insert_title"),
-            message=t("ana.insert_hint"),
+        file_paths = filedialog.askopenfilenames(
+            title=t("ana.select_files"),
+            filetypes=[
+                ("Images", "*.png;*.jpg;*.jpeg;*.bmp;*.gif"),
+                ("Videos", "*.mp4;*.avi;*.wmv"),
+                ("All Files", "*.*"),
+            ],
             parent=self,
         )
+        if not file_paths:
+            return
 
         pptx_path = filedialog.askopenfilename(
             title=t("ana.select_pptx"),
-            filetypes=[("PowerPoint", "*.pptx")],
+            filetypes=[
+                ("PowerPoint", "*.pptx"),
+                ("All Files", "*.*"),
+            ],
             parent=self,
         )
         if not pptx_path:
@@ -2636,18 +2597,23 @@ class AnalysisDialog(tk.Toplevel):
             )
             return
 
-        try:
-            from core.report_pptx import PPTXReporter
-            PPTXReporter.insert_slides_to_pptx(pptx_path, self._pending_images)
-            self._pending_images.clear()
-            self.insert_btn.config(state=tk.DISABLED)
-            self._set_status(t("ana.images_inserted"))
-        except Exception as e:
-            messagebox.showerror(
-                title=t("ana.insert_title"),
-                message=f"Insert failed: {e}",
-                parent=self,
-            )
+        self.insert_btn.config(state=tk.DISABLED)
+
+        def do_insert():
+            try:
+                from core.report_pptx import PPTXReporter
+                ordered_files = list(file_paths)
+                PPTXReporter.insert_slides_to_pptx(pptx_path, ordered_files)
+                n = len(ordered_files)
+                fname = os.path.basename(pptx_path)
+                self.after(0, lambda: self._set_status(t("ana.inserted", n=n, file=fname)))
+            except Exception as e:
+                err_msg = str(e)
+                self.after(0, lambda: messagebox.showerror(t("ana.insert_title"), err_msg, parent=self))
+            finally:
+                self.after(0, lambda: self.insert_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=do_insert, daemon=True).start()
 
     # ── 工具方法 ──
 
