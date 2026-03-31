@@ -827,6 +827,7 @@ class ContourOptionDialog(tk.Toplevel):
         self.orchestrator = orchestrator
         self.on_execute = on_execute
         self.result = None
+        self._contour_counter = 0
         self._hotspot_counter = 0
         self._capture_counter = 0
         self._viewmode_var = tk.StringVar(value="")  # "component" | "global" | "local" | ""
@@ -978,7 +979,8 @@ class ContourOptionDialog(tk.Toplevel):
             return
         result_type = self.type_var.get()
         component = self.comp_var.get()
-        label = f"{result_type} - {component}"
+        self._contour_counter += 1
+        label = f"{result_type} - {component} [{self._contour_counter}]"
         config = {'type': result_type, 'component': component}
 
         def run():
