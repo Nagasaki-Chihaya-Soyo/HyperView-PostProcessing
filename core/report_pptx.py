@@ -121,12 +121,19 @@ class PPTXReporter:
                 except (ValueError, TypeError):
                     pass
 
-            # ── 计算现有幻灯片数 ──
+            # ── 计算现有幻灯片最大编号（避免覆盖已有页面）──
             slides_dir = os.path.join(tmp_dir, 'ppt', 'slides')
             os.makedirs(slides_dir, exist_ok=True)
             existing_slides = [f for f in os.listdir(slides_dir)
                                if f.startswith('slide') and f.endswith('.xml')]
-            n_existing = len(existing_slides)
+            max_slide_num = 0
+            for f in existing_slides:
+                m = re.match(r'slide(\d+)\.xml', f)
+                if m:
+                    num = int(m.group(1))
+                    if num > max_slide_num:
+                        max_slide_num = num
+            n_existing = max_slide_num
 
             # ── 计算现有媒体编号 ──
             media_dir = os.path.join(tmp_dir, 'ppt', 'media')

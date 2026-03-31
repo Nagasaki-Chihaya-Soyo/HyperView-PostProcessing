@@ -827,8 +827,8 @@ class ContourOptionDialog(tk.Toplevel):
         self.orchestrator = orchestrator
         self.on_execute = on_execute
         self.result = None
-        self._contour_counter = 0
-        self._hotspot_counter = 0
+        self._contour_counters = {}   # {result_type: int}
+        self._hotspot_counters = {}   # {result_type: int}
         self._capture_counter = 0
         self._viewmode_var = tk.StringVar(value="")  # "component" | "global" | "local" | ""
         self._vm_component_var = tk.IntVar(value=0)
@@ -979,8 +979,8 @@ class ContourOptionDialog(tk.Toplevel):
             return
         result_type = self.type_var.get()
         component = self.comp_var.get()
-        self._contour_counter += 1
-        label = f"{result_type} - {component} [{self._contour_counter}]"
+        self._contour_counters[result_type] = self._contour_counters.get(result_type, 0) + 1
+        label = f"{result_type} - {component} [{self._contour_counters[result_type]}]"
         config = {'type': result_type, 'component': component}
 
         def run():
@@ -1030,11 +1030,12 @@ class ContourOptionDialog(tk.Toplevel):
     def _on_find_hotspot(self):
         if not self.orchestrator:
             return
-        self._hotspot_counter += 1
-        name = f"hotspot{self._hotspot_counter}"
         result_type = self.type_var.get()
         component = self.comp_var.get()
-        label = f"{result_type} - {component} (view hotspot) [{self._hotspot_counter}]"
+        self._hotspot_counters[result_type] = self._hotspot_counters.get(result_type, 0) + 1
+        counter = self._hotspot_counters[result_type]
+        name = f"hotspot{counter}"
+        label = f"{result_type} - {component} (view hotspot) [{counter}]"
         config = {'type': result_type, 'component': component}
         self.find_btn.config(state=tk.DISABLED)
         self.hotspot_status_var.set(t("contour.finding", name=name))
@@ -2593,12 +2594,14 @@ class AnalysisDialog(tk.Toplevel):
         if not file_paths:
             return
 
+        desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
         pptx_path = filedialog.askopenfilename(
             title=t("ana.select_pptx"),
             filetypes=[
                 ("PowerPoint", "*.pptx"),
                 ("All Files", "*.*"),
             ],
+            initialdir=desktop_dir,
             parent=self,
         )
         if not pptx_path:
