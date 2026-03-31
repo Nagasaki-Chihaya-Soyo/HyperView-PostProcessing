@@ -86,12 +86,13 @@ class PPTXReporter:
 
     @staticmethod
     def insert_slides_to_pptx(pptx_path: str, file_paths: List[str]) -> str:
-        """向已有 PPTX 末尾插入图片幻灯片。
+        """向已有 PPTX 末尾插入图片幻灯片（新建空白页 + 居中适配图片）。
 
-        读取原 PPTX，解析现有幻灯片数量和媒体，
+        读取原 PPTX，解析现有幻灯片数量、媒体、ID，
         追加新的幻灯片后重新写入同一文件。
-        file_paths 按顺序插入，每个文件一页（带文件名标题）。
+        file_paths 按顺序插入，每个文件一页（纯图片，居中缩放适配）。
         """
+        import re
         import shutil
         import tempfile
         from xml.etree.ElementTree import parse as ET_parse, register_namespace
@@ -106,6 +107,20 @@ class PPTXReporter:
             with zipfile.ZipFile(pptx_path, 'r') as zf:
                 zf.extractall(tmp_dir)
 
+            # ── 读取幻灯片尺寸 ──
+            pres_path = os.path.join(tmp_dir, 'ppt', 'presentation.xml')
+            pres_tree = ET_parse(pres_path)
+            pres_root = pres_tree.getroot()
+
+            slide_w, slide_h = SLIDE_W, SLIDE_H  # 默认 16:9
+            sldSz = pres_root.find(_p('sldSz'))
+            if sldSz is not None:
+                try:
+                    slide_w = int(sldSz.get('cx', SLIDE_W))
+                    slide_h = int(sldSz.get('cy', SLIDE_H))
+                except (ValueError, TypeError):
+                    pass
+
             # ── 计算现有幻灯片数 ──
             slides_dir = os.path.join(tmp_dir, 'ppt', 'slides')
             os.makedirs(slides_dir, exist_ok=True)
@@ -119,9 +134,36 @@ class PPTXReporter:
             existing_media = os.listdir(media_dir)
             img_counter = len(existing_media)
 
+            # ── 计算最大 sldId（避免 ID 冲突）──
+            sldIdLst = pres_root.find(_p('sldIdLst'))
+            if sldIdLst is None:
+                sldIdLst = SubElement(pres_root, _p('sldIdLst'))
+            max_sld_id = 256
+            for sldId in sldIdLst:
+                try:
+                    sid = int(sldId.get('id', '0'))
+                    if sid > max_sld_id:
+                        max_sld_id = sid
+                except (ValueError, TypeError):
+                    pass
+
+            # ── 计算最大 rId（避免关系 ID 冲突）──
+            pres_rels_path = os.path.join(tmp_dir, 'ppt', '_rels',
+                                          'presentation.xml.rels')
+            rels_tree = ET_parse(pres_rels_path)
+            rels_root = rels_tree.getroot()
+            max_rId = 0
+            for rel in rels_root:
+                rid_str = rel.get('Id', '')
+                m = re.match(r'rId(\d+)', rid_str)
+                if m:
+                    rid_num = int(m.group(1))
+                    if rid_num > max_rId:
+                        max_rId = rid_num
+
             # ── 为每个文件创建幻灯片 ──
             reporter = PPTXReporter()
-            new_slide_indices = []
+            new_slide_entries = []  # (slide_idx, sld_id, rId_str)
 
             for file_path in file_paths:
                 if not os.path.exists(file_path):
@@ -129,7 +171,11 @@ class PPTXReporter:
 
                 n_existing += 1
                 slide_idx = n_existing
-                new_slide_indices.append(slide_idx)
+                max_sld_id += 1
+                max_rId += 1
+                sld_id = max_sld_id
+                rId_str = f'rId{max_rId}'
+                new_slide_entries.append((slide_idx, sld_id, rId_str))
 
                 # 拷贝媒体文件
                 img_counter += 1
@@ -137,9 +183,21 @@ class PPTXReporter:
                 media_name = f'image{img_counter}{ext}'
                 shutil.copy2(file_path, os.path.join(media_dir, media_name))
 
-                # 构建幻灯片 XML
-                label = os.path.splitext(os.path.basename(file_path))[0]
-                slide_xml, _, _ = reporter._build_image_caption_slide(label, file_path)
+                # 构建纯图片幻灯片 XML（居中适配）
+                root = reporter._new_slide_element()
+                cSld = SubElement(root, _p('cSld'))
+                spTree = SubElement(cSld, _p('spTree'))
+                reporter._add_grp_sp_pr(spTree)
+
+                img_w, img_h = _png_dimensions(file_path)
+                margin = _emu(0.2)
+                left, top, w, h = _fit_image(
+                    img_w, img_h, margin, margin,
+                    slide_w - margin * 2, slide_h - margin * 2)
+                reporter._add_picture(spTree, 'rId2', left, top, w, h)
+
+                slide_xml = tostring(root, xml_declaration=True,
+                                     encoding='UTF-8').decode()
 
                 # 写 slide XML
                 slide_file = os.path.join(slides_dir, f'slide{slide_idx}.xml')
@@ -155,35 +213,22 @@ class PPTXReporter:
                           'w', encoding='utf-8') as f:
                     f.write(rels_xml)
 
-            if not new_slide_indices:
+            if not new_slide_entries:
                 return pptx_path
 
             # ── 更新 presentation.xml — 添加新 slide 引用 ──
-            pres_path = os.path.join(tmp_dir, 'ppt', 'presentation.xml')
-            pres_tree = ET_parse(pres_path)
-            pres_root = pres_tree.getroot()
-
-            sldIdLst = pres_root.find(_p('sldIdLst'))
-            if sldIdLst is None:
-                sldIdLst = SubElement(pres_root, _p('sldIdLst'))
-
-            for slide_idx in new_slide_indices:
+            for slide_idx, sld_id, rId_str in new_slide_entries:
                 SubElement(sldIdLst, _p('sldId'), {
-                    'id': str(255 + slide_idx),
-                    _r('id'): f'rId{slide_idx}'
+                    'id': str(sld_id),
+                    _r('id'): rId_str
                 })
 
             pres_tree.write(pres_path, xml_declaration=True, encoding='UTF-8')
 
             # ── 更新 presentation.xml.rels — 添加新 slide 关系 ──
-            pres_rels_path = os.path.join(tmp_dir, 'ppt', '_rels',
-                                          'presentation.xml.rels')
-            rels_tree = ET_parse(pres_rels_path)
-            rels_root = rels_tree.getroot()
-
-            for slide_idx in new_slide_indices:
+            for slide_idx, sld_id, rId_str in new_slide_entries:
                 SubElement(rels_root, '{%s}Relationship' % NS['rel'], {
-                    'Id': f'rId{slide_idx}',
+                    'Id': rId_str,
                     'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide',
                     'Target': f'slides/slide{slide_idx}.xml'
                 })
@@ -209,7 +254,7 @@ class PPTXReporter:
                             'ContentType': ct_map[ext_name]
                         })
 
-            for slide_idx in new_slide_indices:
+            for slide_idx, sld_id, rId_str in new_slide_entries:
                 SubElement(ct_root, '{%s}Override' % NS['ct'], {
                     'PartName': f'/ppt/slides/slide{slide_idx}.xml',
                     'ContentType': 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml'
