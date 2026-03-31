@@ -2558,9 +2558,25 @@ class AnalysisDialog(tk.Toplevel):
         self.run_btn.config(state=tk.NORMAL)
         self.close_btn.config(state=tk.NORMAL)
 
+    def _get_latest_png_subdir(self):
+        """返回 png 目录下修改时间最新的子文件夹路径，无则返回 png 目录本身。"""
+        png_base = self.orchestrator.png_dir
+        if not os.path.isdir(png_base):
+            return png_base
+        subdirs = [
+            os.path.join(png_base, d)
+            for d in os.listdir(png_base)
+            if os.path.isdir(os.path.join(png_base, d))
+        ]
+        if not subdirs:
+            return png_base
+        return max(subdirs, key=os.path.getmtime)
+
     def _on_insert_images(self):
         """选择图片文件，再选择 PPT，将文件按顺序插入 PPT 末尾。"""
         from tkinter import filedialog, messagebox
+
+        initial_dir = self._get_latest_png_subdir()
 
         file_paths = filedialog.askopenfilenames(
             title=t("ana.select_files"),
@@ -2569,6 +2585,7 @@ class AnalysisDialog(tk.Toplevel):
                 ("Videos", "*.mp4;*.avi;*.wmv"),
                 ("All Files", "*.*"),
             ],
+            initialdir=initial_dir,
             parent=self,
         )
         if not file_paths:
