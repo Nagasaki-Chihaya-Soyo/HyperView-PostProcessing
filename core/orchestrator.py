@@ -418,6 +418,24 @@ class Orchestrator:
         finally:
             self._set_state(State.AGENT_READY)
 
+    def contour_clear(self) -> bool:
+        """Clear current contour: hwc result scalar clear 'Current Contour'"""
+        if self.state != State.AGENT_READY:
+            self._log(f"HyperView is not ready (state={self.state})")
+            return False
+        self._set_state(State.RUNNING)
+        try:
+            self._log("Clearing current contour")
+            result = self.bridge.send_job(cmd="contour_clear", params={})
+            if result.get('success', False):
+                self._log("Current contour cleared")
+                return True
+            else:
+                self._log(f"Contour clear failed: {result.get('error', 'Unknown')}")
+                return False
+        finally:
+            self._set_state(State.AGENT_READY)
+
     def hotspot_clear(self) -> bool:
         """Clear all hotspots: hwc kpi hotspot clear"""
         if self.state != State.AGENT_READY:

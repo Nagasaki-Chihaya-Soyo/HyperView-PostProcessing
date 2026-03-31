@@ -452,6 +452,19 @@ proc process_job {job_file} {
                 puts "hotspot_clear completed"
                 write_result $job_id {{"success":true}}
             }
+            "contour_clear" {
+                puts "Executing contour_clear"
+                if { [catch {
+                    hwc result scalar clear "Current Contour"
+                } err] } {
+                    puts "contour_clear error: $err"
+                    set escaped_err [escape_json_string $err]
+                    write_result $job_id [format {{"success":false,"error":"%s"}} $escaped_err]
+                    return
+                }
+                puts "contour_clear completed"
+                write_result $job_id {{"success":true}}
+            }
             "hotspot_delete" {
                 puts "Executing hotspot_delete: hotspot_name=$hotspot_name"
                 if { [catch {

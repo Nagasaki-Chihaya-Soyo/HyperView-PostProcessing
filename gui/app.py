@@ -1333,6 +1333,16 @@ class ReadMaxValueDialog(tk.Toplevel):
             import time as _time
             _t0 = _time.time()
 
+            # ── Step 0: 清理旧云图和 hotspot ──
+            try:
+                self.orchestrator.contour_clear()
+            except Exception as e:
+                print(f"[ReadMaxValue] contour_clear error: {e}")
+            try:
+                self.orchestrator.hotspot_clear()
+            except Exception as e:
+                print(f"[ReadMaxValue] hotspot_clear error: {e}")
+
             # ── Step 1: result scalar edit + plot (0 → 30%) ──
             # Matches ContourOptionDialog._on_find_hotspot → apply_contour,
             # but WITHOUT the 'hwc report Report add slide' PPT command.

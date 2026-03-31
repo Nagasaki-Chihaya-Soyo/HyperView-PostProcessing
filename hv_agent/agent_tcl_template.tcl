@@ -204,6 +204,12 @@ proc process_job {job_file} {
                 puts "TCL>>> hotspot_clear completed"
                 write_result $job_id {{"success":true}}
             }
+            "contour_clear" {
+                puts "TCL>>> contour_clear"
+                hwc result scalar clear "Current Contour"
+                puts "TCL>>> contour_clear completed"
+                write_result $job_id {{"success":true}}
+            }
             "hotspot_delete" {
                 puts "TCL>>> hotspot_delete: hotspot_name=$hotspot_name"
                 hwc kpi hotspot delete $hotspot_name
