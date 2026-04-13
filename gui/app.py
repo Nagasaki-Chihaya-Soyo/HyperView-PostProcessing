@@ -1,3 +1,4 @@
+# Last updated: 2026-04-13 — contour_clear + per-type counters + insert image fixes
 import os
 import sys
 import webbrowser
