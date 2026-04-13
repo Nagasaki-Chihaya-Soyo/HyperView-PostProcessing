@@ -1,3 +1,4 @@
+# Last updated: 2026-04-13 — fix slide numbering collision in insert_slides_to_pptx
 """
 纯 Python 标准库生成 PPTX 文件（无第三方依赖）。
 

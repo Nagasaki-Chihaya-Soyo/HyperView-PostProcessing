@@ -1,3 +1,4 @@
+# Last updated: 2026-04-13 — contour_clear + hotspot_clear before read max value
 import os
 import json
 import time

@@ -1,3 +1,4 @@
+# Last updated: 2026-04-13 — added contour_clear handler
 set READY_FILE "{{READY_FILE}}"
 set INBOX_DIR "{{INBOX_DIR}}"
 set OUTBOX_DIR "{{OUTBOX_DIR}}"
